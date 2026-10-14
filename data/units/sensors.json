@@ -1,0 +1,109 @@
+{
+  "$schema": "../schema/sensor.schema.json",
+  "sensors": [
+    {
+      "id": "national_early_warning",
+      "nameKey": "sensor.national_early_warning.name",
+      "layer": "national", "detectionRangeKm": null, "coverage": "full_map",
+      "lowAltitude": "poor", "trackQuality": "vague",
+      "emission": "none", "exposureLevel": "none",
+      "deployGameSec": null, "packGameSec": null, "priceMusd": null, "automatic": true,
+      "firstAvailable": { "level": 1, "infoSourceOnly": true },
+      "_source": { "detectionRangeKm": "全图 + 地图外", "trackQuality": "模糊（方向 + 大致时间）" }
+    },
+    {
+      "id": "soviet_long_range_radar",
+      "nameKey": "sensor.soviet_long_range_radar.name",
+      "layer": "regional", "detectionRangeKm": 250,
+      "lowAltitude": "poor", "largeLowAltitudeBlindZone": true, "trackQuality": "approximate",
+      "emission": "active", "exposureLevel": "high",
+      "deployGameSec": 30, "packGameSec": 30, "priceMusd": null, "stockOnly": true,
+      "firstAvailable": { "level": 3 },
+      "_source": { "detectionRangeKm": "150–250" }
+    },
+    {
+      "id": "soviet_mid_range_radar",
+      "nameKey": "sensor.soviet_mid_range_radar.name",
+      "layer": "regional", "detectionRangeKm": 150,
+      "lowAltitude": "medium", "trackQuality": "approximate",
+      "emission": "active", "exposureLevel": "high",
+      "deployGameSec": 15, "packGameSec": 15, "priceMusd": null, "stockOnly": true,
+      "firstAvailable": { "level": 3 },
+      "_source": { "detectionRangeKm": "80–150" }
+    },
+    {
+      "id": "western_3d_radar",
+      "nameKey": "sensor.western_3d_radar.name",
+      "layer": "regional", "detectionRangeKm": 250,
+      "lowAltitude": "medium", "trackQuality": "approximate", "fastUpdate": true,
+      "emission": "active", "exposureLevel": "medium",
+      "deployGameSec": 10, "packGameSec": 10, "priceMusd": 22.5,
+      "firstAvailable": { "level": 6 },
+      "_source": { "detectionRangeKm": "100–250", "priceMusd": "15–30" }
+    },
+    {
+      "id": "gap_filler_radar",
+      "nameKey": "sensor.gap_filler_radar.name",
+      "layer": "regional", "detectionRangeKm": 75,
+      "lowAltitude": "good", "trackQuality": "approximate",
+      "emission": "active", "exposureLevel": "medium",
+      "deployGameSec": 5, "packGameSec": 5, "priceMusd": 6.5,
+      "firstAvailable": { "level": 7 },
+      "_source": { "name": "低空补盲雷达（车载 / 塔架）", "detectionRangeKm": "30–75", "priceMusd": "3–10" }
+    },
+    {
+      "id": "acoustic_post",
+      "nameKey": "sensor.acoustic_post.name",
+      "layer": "local", "detectionRangeKm": 5,
+      "lowAltitude": "very_good", "trackQuality": "vague", "falseAlarms": "some",
+      "emission": "passive", "exposureLevel": "zero",
+      "deployGameSec": 0.5, "packGameSec": 0.5, "priceMusd": 0.001,
+      "firstAvailable": { "level": 5 },
+      "_source": { "name": "声学哨；1.1 表\"声学探测网（Sky Fortress）\"", "detectionRangeKm": "3–5" }
+    },
+    {
+      "id": "visual_observer",
+      "nameKey": "sensor.visual_observer.name",
+      "layer": "local", "detectionRangeKm": 8,
+      "nightRangeMult": 0.3, "nightPenaltyNegatedBy": ["searchlight", "thermal"],
+      "lowAltitude": "very_good", "trackQuality": "vague",
+      "trackQualityUpgrades": [{ "to": "approximate", "condition": "close_range" }],
+      "emission": "passive", "exposureLevel": "zero",
+      "deployGameSec": 1, "packGameSec": 1, "priceMusd": 0.002,
+      "firstAvailable": { "level": 2 },
+      "_source": { "detectionRangeKm": "3–8（夜间 ×0.3，探照灯 / 热像可抵消）", "trackQuality": "模糊 → 大致（近距离）" }
+    },
+    {
+      "id": "radio_detector",
+      "nameKey": "sensor.radio_detector.name",
+      "layer": "local", "detectionRangeKm": 10,
+      "lowAltitude": "good", "onlyDetects": "radio_linked_drones", "trackQuality": "vague",
+      "trackQualityUpgrades": [{ "to": "approximate", "condition": "linked_drone_types", "enemies": ["lancet", "orlan_10"] }],
+      "emission": "passive", "exposureLevel": "zero",
+      "deployGameSec": 1, "packGameSec": 1, "priceMusd": 0.01,
+      "firstAvailable": { "level": 8 },
+      "_source": { "detectionRangeKm": "5–10", "trackQuality": "模糊；对 FPV / Lancet / Orlan 为大致" },
+      "provisional": { "trackQualityUpgrades[0].enemies": "数值表列出的 FPV（无线电型）在敌方单位表中没有对应条目，暂只列 Lancet、Orlan" }
+    },
+    {
+      "id": "civilian_reports",
+      "nameKey": "sensor.civilian_reports.name",
+      "layer": "local", "detectionRangeKm": null, "coverage": "urban_areas",
+      "lowAltitude": "good", "trackQuality": "vague", "falseAlarms": "high", "reportDelay": true,
+      "emission": "passive", "exposureLevel": "zero",
+      "deployGameSec": null, "packGameSec": null, "priceMusd": 0, "automatic": true,
+      "firstAvailable": { "level": 3 },
+      "_source": { "layer": "本地（自动）", "detectionRangeKm": "城区全覆盖", "trackQuality": "模糊，误报率高、延迟" }
+    },
+    {
+      "id": "tethered_balloon",
+      "nameKey": "sensor.tethered_balloon.name",
+      "layer": "regional", "detectionRangeKm": 80,
+      "lowAltitude": "good", "trackQuality": "approximate",
+      "emission": "active", "exposureLevel": "medium",
+      "deployGameSec": 20, "packGameSec": 20, "priceMusd": 2,
+      "firstAvailable": { "level": 16, "optional": true },
+      "_source": { "name": "系留气球传感器 ≈", "detectionRangeKm": "40–80" }
+    }
+  ]
+}

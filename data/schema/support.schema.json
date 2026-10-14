@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "support.schema.json",
+  "title": "呼叫型外部支援（数值表 1.6）",
+  "type": "object",
+  "required": ["support"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "support": { "type": "array", "items": { "$ref": "#/$defs/support" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "support": {
+      "type": "object",
+      "required": ["id", "nameKey", "provider", "effect", "delay", "cost"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "provider": { "enum": ["air_force", "higher_ew", "neighbor_oblast", "regional_ad_command"] },
+        "effect": {
+          "enum": ["area_patrol", "directed_intercept", "uav_hunt", "accuracy_drop", "reinforcement", "sector_coverage"]
+        },
+        "fighterRef": { "$ref": "common.schema.json#/$defs/id", "description": "引用 support/fighters.json" },
+        "fighterWeaponRef": { "$ref": "common.schema.json#/$defs/id", "description": "使用的机载武器 ID" },
+        "targets": {
+          "type": "array", "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/targetTag" }
+        },
+        "killsPerSortie": { "type": "integer", "minimum": 1 },
+        "accuracyTierDrop": { "type": "integer", "minimum": 1 },
+        "affectsSameAsEwUnit": { "$ref": "common.schema.json#/$defs/id", "description": "影响对象与该电子战单位相同（引用 units/ew.json）" },
+        "reinforcementUnit": { "$ref": "common.schema.json#/$defs/id", "description": "引用 units/air_defense.json" },
+        "reinforcementCount": { "type": "integer", "minimum": 1 },
+        "coverageUnits": {
+          "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" },
+          "description": "提供覆盖的系统（引用 units/air_defense.json）"
+        },
+        "delay": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["game_sec", "next_day", "instant"] },
+            "offMapGameSec": { "$ref": "common.schema.json#/$defs/nonNegative" },
+            "onMapAirbaseGameSec": { "$ref": "common.schema.json#/$defs/nonNegative" },
+            "gameSec": { "$ref": "common.schema.json#/$defs/nonNegative" }
+          },
+          "additionalProperties": false
+        },
+        "duration": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["game_sec", "until_ammo_out", "nights", "same_as_ew_unit"] },
+            "gameSec": { "$ref": "common.schema.json#/$defs/positive" },
+            "nights": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "commandPoints": { "type": "integer", "minimum": 0 },
+            "trust": { "enum": ["small", "large"], "description": "信任度代价：一般 / 大" }
+          },
+          "additionalProperties": false,
+          "minProperties": 1
+        },
+        "firstAvailable": { "$ref": "common.schema.json#/$defs/firstAvailable" },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

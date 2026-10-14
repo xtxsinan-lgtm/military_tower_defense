@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "deception.schema.json",
+  "title": "欺骗单位（数值表 1.5）",
+  "type": "object",
+  "required": ["deceptionUnits"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "deceptionUnits": { "type": "array", "items": { "$ref": "#/$defs/unit" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "required": ["id", "nameKey", "effect", "duration", "priceMusd"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "effect": { "enum": ["fake_emitter", "sacrificial_emitter", "fake_launcher"] },
+        "attracts": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["anti_radiation", "recon", "iskander", "lancet"] },
+          "description": "吸引的敌方行为 / 武器"
+        },
+        "seeThroughByReconQuality": { "type": "boolean", "description": "敌方侦察质量越高越容易识破" },
+        "duration": { "enum": ["one_shot", "until_destroyed", "nights"] },
+        "durationNights": { "type": "integer", "minimum": 1 },
+        "priceMusd": { "type": ["number", "null"], "minimum": 0, "description": "null = 使用库存" },
+        "stockOnly": { "type": "boolean" },
+        "firstAvailable": { "$ref": "common.schema.json#/$defs/firstAvailable" },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

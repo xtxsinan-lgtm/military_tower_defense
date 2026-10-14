@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "common.schema.json",
+  "title": "公共定义",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "数据 ID：小写字母开头，只含小写字母、数字、下划线"
+    },
+    "locKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+      "description": "本地化键，指向 loc/*.json"
+    },
+    "yearMonth": {
+      "type": "string",
+      "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])$",
+      "description": "YYYY-MM，表示该月起生效"
+    },
+    "targetTag": {
+      "enum": ["UAV", "JET_UAV", "DECOY", "CM", "SCM", "BM", "HBM", "GB", "HELI", "AC_LOW", "AC_HIGH"],
+      "description": "目标标签（数值表第 0 节）"
+    },
+    "accuracyTier": { "enum": ["A", "B", "C", "D"] },
+    "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+    "nonNegative": { "type": "number", "minimum": 0 },
+    "positive": { "type": "number", "exclusiveMinimum": 0 },
+    "levelNumber": { "type": "integer", "minimum": 1, "maximum": 18 },
+    "minMax": {
+      "type": "object",
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      },
+      "additionalProperties": false,
+      "description": "随机范围（由 SimRandom 掷骰），仅用于数据约定第 3 节列出的例外"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "数值表原始写法，键为字段名，仅供参考，程序不读取"
+    },
+    "provisional": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string" },
+      "description": "暂定值：键为字段路径，值为原因。需要人审核"
+    },
+    "periodValue": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["from", "value"],
+        "properties": {
+          "from": { "$ref": "#/$defs/yearMonth" },
+          "value": { "type": "number" }
+        },
+        "additionalProperties": false
+      },
+      "description": "随时期变化的数值，按 from 升序；取不晚于当前日期的最后一项"
+    },
+    "gatedTag": {
+      "type": "object",
+      "required": ["tag", "from"],
+      "properties": {
+        "tag": { "$ref": "#/$defs/targetTag" },
+        "from": { "$ref": "#/$defs/yearMonth" }
+      },
+      "additionalProperties": false
+    },
+    "firstAvailable": {
+      "type": "object",
+      "properties": {
+        "level": { "$ref": "#/$defs/levelNumber" },
+        "fullStrengthLevel": { "$ref": "#/$defs/levelNumber" },
+        "optional": { "type": "boolean" },
+        "infoSourceOnly": { "type": "boolean" }
+      },
+      "additionalProperties": false,
+      "description": "首次可用关卡（数值表中给出时才填写）"
+    }
+  }
+}

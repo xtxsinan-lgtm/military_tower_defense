@@ -1,0 +1,170 @@
+{
+  "$schema": "../schema/enemy_munition.schema.json",
+  "munitions": [
+    { "id": "gerbera", "nameKey": "enemy.gerbera.name", "category": "decoy", "tag": "DECOY",
+      "speedKmh": 160, "altitudeBand": "low", "interceptable": true, "hp": 1,
+      "damageLevel": 1, "splashCells": 0, "accuracy": "D", "costMusd": 0.01,
+      "_source": { "damageLevel": "0–1" } },
+
+    { "id": "shahed_136", "nameKey": "enemy.shahed_136.name", "category": "drone", "tag": "UAV",
+      "speedKmh": 185, "altitudeBand": "low", "altitudeM": { "min": 500, "max": 2000 }, "interceptable": true, "hp": 2,
+      "damageLevel": 3, "splashCells": 1, "accuracy": "C", "accuracyByPeriod": [{ "from": "2025-01", "tier": "B" }], "costMusd": 0.05,
+      "_source": { "name": "Shahed‑136 / Geran‑2", "altitudeM": "低（500 m–2 km）", "accuracy": "C → B（2025 AI 升级）" },
+      "provisional": { "accuracyByPeriod[0].from": "数值表只写 2025，暂定 2025-01" } },
+
+    { "id": "geran_2_heavy", "nameKey": "enemy.geran_2_heavy.name", "category": "drone", "tag": "UAV",
+      "speedKmh": 170, "altitudeBand": "low", "interceptable": true, "hp": 2,
+      "damageLevel": 5, "splashCells": 1, "accuracy": "B", "costMusd": 0.07,
+      "_source": { "name": "Geran‑2 大战斗部型（2025）" } },
+
+    { "id": "geran_3", "nameKey": "enemy.geran_3.name", "category": "jet_drone", "tag": "JET_UAV",
+      "speedKmh": 600, "altitudeBand": "low_mid", "interceptable": true, "hp": 3,
+      "damageLevel": 3, "splashCells": 1, "accuracy": "B", "costMusd": 0.35,
+      "_source": { "name": "Geran‑3 / 4 / 5", "speedKmh": "500–600", "costMusd": "0.2–0.5" } },
+
+    { "id": "geran_4", "nameKey": "enemy.geran_4.name", "category": "jet_drone", "tag": "JET_UAV",
+      "speedKmh": 600, "altitudeBand": "low_mid", "interceptable": true, "hp": 3,
+      "damageLevel": 3, "splashCells": 1, "accuracy": "B", "costMusd": 0.35,
+      "_source": { "name": "Geran‑3 / 4 / 5", "speedKmh": "500–600", "costMusd": "0.2–0.5" } },
+
+    { "id": "geran_5", "nameKey": "enemy.geran_5.name", "category": "jet_drone", "tag": "JET_UAV",
+      "speedKmh": 600, "altitudeBand": "low_mid", "interceptable": true, "hp": 3,
+      "damageLevel": 5, "splashCells": 1, "accuracy": "B", "costMusd": 0.35,
+      "_source": { "name": "Geran‑3 / 4 / 5", "speedKmh": "500–600", "costMusd": "0.2–0.5" } },
+
+    { "id": "lancet", "nameKey": "enemy.lancet.name", "category": "loitering", "tag": "UAV",
+      "speedKmh": 110, "diveFaster": true, "altitudeBand": "very_low", "interceptable": true, "hp": 1,
+      "damageLevel": 2, "vehicleDamageMult": 3, "splashCells": 0, "accuracy": "A", "costMusd": 0.035,
+      "_source": { "speedKmh": "110 km/h（俯冲更快）", "damageLevel": "2（对车辆加成 ×3）" } },
+
+    { "id": "fpv_fiber", "nameKey": "enemy.fpv_fiber.name", "category": "fpv", "tag": "UAV",
+      "speedKmh": 100, "altitudeBand": "very_low", "interceptable": true, "hp": 1,
+      "damageLevel": 1, "vehicleDamageMult": 3, "splashCells": 0, "accuracy": "A", "ewImmune": true, "costMusd": 0.001,
+      "_source": { "accuracy": "A，免疫电子战" } },
+
+    { "id": "kh101", "nameKey": "enemy.kh101.name", "category": "cruise_missile", "tag": "CM",
+      "speedKmh": 700, "altitudeBand": "very_low", "altitudeM": { "min": 30, "max": 70 }, "interceptable": true, "hp": 5,
+      "damageLevel": 7, "splashCells": 2, "accuracy": "A", "costMusd": 13,
+      "_source": { "name": "Kh‑101 / Kh‑555", "altitudeM": "极低（30–70 m）" } },
+
+    { "id": "kalibr", "nameKey": "enemy.kalibr.name", "category": "cruise_missile", "tag": "CM",
+      "speedKmh": 850, "altitudeBand": "very_low", "interceptable": true, "hp": 5,
+      "damageLevel": 7, "splashCells": 2, "accuracy": "A", "costMusd": 6.5 },
+
+    { "id": "iskander_k", "nameKey": "enemy.iskander_k.name", "category": "cruise_missile", "tag": "CM",
+      "speedKmh": 850, "altitudeBand": "very_low", "interceptable": true, "hp": 5,
+      "damageLevel": 7, "splashCells": 2, "accuracy": "A", "costMusd": 3 },
+
+    { "id": "kh59", "nameKey": "enemy.kh59.name", "category": "cruise_missile", "tag": "CM",
+      "speedKmh": 900, "altitudeBand": "very_low", "interceptable": true, "hp": 4,
+      "damageLevel": 6, "splashCells": 2, "accuracy": "A", "costMusd": 2,
+      "_source": { "name": "Kh‑59 / Kh‑69", "costMusd": "1–3" } },
+
+    { "id": "banderol", "nameKey": "enemy.banderol.name", "category": "cruise_missile", "tag": "CM",
+      "speedKmh": 700, "altitudeBand": "low", "interceptable": true, "hp": 3,
+      "damageLevel": 4, "splashCells": 1, "accuracy": "B", "costMusd": 0.5,
+      "_source": { "name": "S8000 Banderol" } },
+
+    { "id": "oniks", "nameKey": "enemy.oniks.name", "category": "supersonic_missile", "tag": "SCM",
+      "speedKmh": 3000, "altitudeBand": "low", "interceptable": true, "hp": 6,
+      "damageLevel": 7, "splashCells": 2, "accuracy": "B", "costMusd": 2,
+      "_source": { "speedKmh": "Mach 2.5" } },
+
+    { "id": "kh22", "nameKey": "enemy.kh22.name", "category": "supersonic_missile", "tag": "SCM",
+      "speedKmh": 4800, "altitudeBand": "high_dive", "interceptable": true, "hp": 7,
+      "damageLevel": 9, "splashCells": 3, "accuracy": "D", "costMusd": 1.5,
+      "_source": { "name": "Kh‑22 / Kh‑32", "speedKmh": "Mach 3–4", "costMusd": "1–2" } },
+
+    { "id": "kh32", "nameKey": "enemy.kh32.name", "category": "supersonic_missile", "tag": "SCM",
+      "speedKmh": 4800, "altitudeBand": "high_dive", "interceptable": true, "hp": 7,
+      "damageLevel": 9, "splashCells": 3, "accuracy": "B", "costMusd": 1.5,
+      "_source": { "name": "Kh‑22 / Kh‑32", "speedKmh": "Mach 3–4", "costMusd": "1–2" } },
+
+    { "id": "kh31p", "nameKey": "enemy.kh31p.name", "category": "anti_radiation", "tag": "SCM",
+      "speedKmh": 3600, "altitudeBand": "mid", "interceptable": true, "hp": 4,
+      "damageLevel": 4, "splashCells": 1, "accuracy": "A", "tracksEmittingRadarOnly": true, "costMusd": 1,
+      "_source": { "name": "Kh‑31P 反辐射", "speedKmh": "Mach 3", "damageLevel": "4（只追踪开机雷达）" } },
+
+    { "id": "s300_ground", "nameKey": "enemy.s300_ground.name", "category": "ballistic", "tag": "BM",
+      "speedKmh": 7200, "altitudeBand": "ballistic", "interceptable": true, "hp": 3,
+      "damageLevel": 3, "splashCells": 1, "accuracy": "D", "costMusd": 0.5,
+      "_source": { "name": "S‑300 对地", "speedKmh": "Mach 6" } },
+
+    { "id": "kn23", "nameKey": "enemy.kn23.name", "category": "ballistic", "tag": "BM",
+      "speedKmh": 7200, "altitudeBand": "quasi_ballistic", "interceptable": true, "hp": 7,
+      "damageLevel": 8, "splashCells": 2, "accuracy": "C", "costMusd": 2,
+      "_source": { "speedKmh": "Mach 6+" } },
+
+    { "id": "iskander_m", "nameKey": "enemy.iskander_m.name", "category": "ballistic", "tag": "BM",
+      "speedKmh": 8400, "altitudeBand": "quasi_ballistic", "interceptable": true, "hp": 8,
+      "damageLevel": 8, "splashCells": 2, "accuracy": "A", "costMusd": 3,
+      "_source": { "speedKmh": "Mach 6–7" } },
+
+    { "id": "iskander_m_mod", "nameKey": "enemy.iskander_m_mod.name", "category": "ballistic", "tag": "BM",
+      "speedKmh": 8400, "altitudeBand": "terminal_maneuver", "interceptable": true, "hp": 10, "interceptProbMult": 0.7,
+      "damageLevel": 8, "splashCells": 2, "accuracy": "A", "costMusd": 3.5,
+      "_source": { "name": "伊斯坎德尔‑M 改（2025）", "speedKmh": "Mach 6–7", "hp": "10（拦截概率 −30%）" } },
+
+    { "id": "kinzhal", "nameKey": "enemy.kinzhal.name", "category": "hypersonic", "tag": "HBM",
+      "speedKmh": 12000, "altitudeBand": "quasi_ballistic", "interceptable": true, "hp": 10,
+      "damageLevel": 9, "splashCells": 2, "accuracy": "A", "ewImmune": true, "costMusd": 10,
+      "_source": { "name": "匕首 Kinzhal", "speedKmh": "Mach 10（末端更低）", "ewImmune": "3.1：匕首不受电子战影响" } },
+
+    { "id": "zircon", "nameKey": "enemy.zircon.name", "category": "hypersonic", "tag": "HBM",
+      "speedKmh": 9600, "altitudeBand": "high_dive", "interceptable": true, "hp": 10,
+      "damageLevel": 8, "splashCells": 2, "accuracy": "B", "costMusd": 10,
+      "_source": { "name": "锆石 Zircon", "speedKmh": "Mach 8", "altitudeBand": "高空→俯冲" } },
+
+    { "id": "oreshnik", "nameKey": "enemy.oreshnik.name", "category": "hypersonic", "tag": "HBM",
+      "speedKmh": 12000, "altitudeBand": "ballistic", "interceptable": false, "hp": null,
+      "damageLevel": 6, "splashCells": 1, "submunitions": { "count": 6, "damageLevel": 6, "splashCells": 1 },
+      "accuracy": "C", "ewImmune": true, "costMusd": null, "storyEventOnly": true,
+      "_source": { "speedKmh": "Mach 10+", "hp": "不可拦截", "damageLevel": "6 × 6 次命中", "splashCells": "各 1", "costMusd": "剧情事件" } },
+
+    { "id": "fab250", "nameKey": "enemy.fab250.name", "category": "unguided_bomb", "tag": null,
+      "speedKmh": null, "altitudeBand": "carrier", "interceptable": false, "hp": null, "releaseRangeKm": 0,
+      "damageLevel": 4, "splashCells": 1, "accuracy": "D", "costMusd": null,
+      "_source": { "name": "无制导 FAB‑250/500", "speedKmh": "由载机决定", "note": "2022 年载机暴露在近程防空下" } },
+
+    { "id": "fab500", "nameKey": "enemy.fab500.name", "category": "unguided_bomb", "tag": null,
+      "speedKmh": null, "altitudeBand": "carrier", "interceptable": false, "hp": null, "releaseRangeKm": 0,
+      "damageLevel": 6, "splashCells": 2, "accuracy": "D", "costMusd": null,
+      "_source": { "name": "无制导 FAB‑250/500", "speedKmh": "由载机决定" } },
+
+    { "id": "fab250_umpk", "nameKey": "enemy.fab250_umpk.name", "category": "glide_bomb", "tag": "GB",
+      "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 2, "releaseRangeKm": 60, "mostCommon": true,
+      "damageLevel": 4, "splashCells": 1, "accuracy": "C", "costMusd": null,
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "40–60" },
+      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+
+    { "id": "fab500_umpk", "nameKey": "enemy.fab500_umpk.name", "category": "glide_bomb", "tag": "GB",
+      "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 3, "releaseRangeKm": 70,
+      "damageLevel": 6, "splashCells": 2, "accuracy": "C", "costMusd": null,
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "40–70" },
+      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+
+    { "id": "fab1500_umpk", "nameKey": "enemy.fab1500_umpk.name", "category": "glide_bomb", "tag": "GB",
+      "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 4, "releaseRangeKm": 70, "bonusVsFortification": true,
+      "damageLevel": 9, "splashCells": 3, "accuracy": "C", "costMusd": null,
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "60–70", "bonusVsFortification": "对工事加成（倍率未给出）" },
+      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+
+    { "id": "fab3000_umpk", "nameKey": "enemy.fab3000_umpk.name", "category": "glide_bomb", "tag": "GB",
+      "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 5, "releaseRangeKm": 60, "rare": true,
+      "damageLevel": 10, "splashCells": 4, "accuracy": "C", "costMusd": null,
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "50–60" },
+      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+
+    { "id": "umpb_d30", "nameKey": "enemy.umpb_d30.name", "category": "glide_bomb", "tag": "GB",
+      "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 2, "releaseRangeKm": 90, "groundLaunchCapable": true,
+      "damageLevel": 4, "splashCells": 1, "accuracy": "B", "costMusd": null,
+      "_source": { "speedKmh": "亚音速滑翔" },
+      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+
+    { "id": "umpb_5r", "nameKey": "enemy.umpb_5r.name", "category": "glide_bomb", "tag": "GB",
+      "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 2, "releaseRangeKm": 150, "threatensDeepCities": true,
+      "damageLevel": 4, "splashCells": 1, "accuracy": "B", "costMusd": null,
+      "_source": { "name": "UMPB‑5R 喷气滑翔弹", "speedKmh": "亚音速 + 推进", "releaseRangeKm": "100–150+" },
+      "provisional": { "speedKmh": "数值表只写\"亚音速 + 推进\"，暂定 600" } }
+  ]
+}

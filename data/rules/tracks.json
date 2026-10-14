@@ -1,0 +1,26 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "tracks",
+  "qualities": [
+    { "id": "vague",       "decoyDiscrimination": 0,    "missilesAllowed": false, "display": "area_and_arrow",
+      "actions": ["pre_position", "raise_alert"] },
+    { "id": "approximate", "decoyDiscrimination": 0.7,  "missilesAllowed": false, "display": "icon_and_error_circle",
+      "actions": ["pre_position", "raise_alert", "vector_fighters", "vector_fire_teams", "vector_interceptor_drones", "cue_fire_control"] },
+    { "id": "precise",     "decoyDiscrimination": 0.95, "missilesAllowed": true,  "display": "precise_icon",
+      "actions": ["pre_position", "raise_alert", "vector_fighters", "vector_fire_teams", "vector_interceptor_drones", "cue_fire_control", "launch_missile"] }
+  ],
+  "approximateFromLocalSensorCount": 2,
+  "cueing": {
+    "cued":   { "minTrackQuality": "approximate", "fireControlOnlyLastReactionTime": true, "exposureMult": 0.3 },
+    "uncued": { "exposureMult": 1.0, "firstShotReactionTimeMult": 1.5 }
+  },
+  "warningRadarEnemyAiWeightAs": "medium_sam",
+  "bLine": { "regionalRadarDirectControl": false, "relayDelayGameSec": 1.5, "maxTrackQuality": "approximate" },
+  "_source": {
+    "qualities": "数值表 1.3 航迹质量规则",
+    "approximateFromLocalSensorCount": "警戒 / 补盲雷达，或 ≥2 个本地传感器交叉 → 大致",
+    "cueing": "火控指示：大致以上航迹覆盖内，火控只需在最后 X 秒开机（X = 系统反应时间），暴露 ×0.3；无外部指示 ×1.0 且首发反应时间 +50%",
+    "warningRadarEnemyAiWeightAs": "敌方 AI 对警戒雷达的权重 = 一个中程防空单元",
+    "bLine": "B 线空情经上级转发，延迟 1–2 游戏秒，质量最高为\"大致\""
+  }
+}

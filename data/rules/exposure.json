@@ -1,0 +1,36 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "exposure",
+  "min": 0,
+  "max": 100,
+  "ratesPerGameSec": {
+    "warningRadarSoviet": 1.0,
+    "warningRadarWestern": 0.6,
+    "fireControlSelfSearch": 2.0,
+    "fireControlCued": 0.6,
+    "highPowerEw": 1.0,
+    "silent": -0.5,
+    "enemyReconNearby": 0.5
+  },
+  "perMissileLaunched": 5,
+  "enemyReconRadiusKm": 5,
+  "onRelocate": { "resetTo": 0, "toScoutedPositionMult": 0.5 },
+  "sensorExposureLevelRates": { "high": 1.0, "medium": 0.6, "zero": 0, "none": 0 },
+  "ewExposureLevelRates": { "high": 1.0, "medium": 0.6, "low": 0.3 },
+  "thresholds": [
+    { "atLeast": 40, "consequence": "anti_radiation_priority_tonight" },
+    { "atLeast": 70, "consequence": "known_target_list_next_night" },
+    { "atLeast": 100, "consequence": "precision_strike_tonight" }
+  ],
+  "_source": {
+    "ratesPerGameSec": "数值表 3.4",
+    "ratesPerGameSec.enemyReconNearby": "敌方侦察无人机（Orlan 等）在 5 km 内存活：每秒 +0.5（不论是否开机）",
+    "onRelocate": "撤收转移完成：归零（转移到已被敌方侦察过的阵地则减半）",
+    "thresholds": "≥ 40 当夜反辐射导弹优先锁定；≥ 70 次夜进入已知目标清单；100 当夜即遭定点打击"
+  },
+  "provisional": {
+    "sensorExposureLevelRates": "1.3 的\"暴露速度 高 / 中\"换算成每秒数值：高 = 苏制警戒雷达 1.0，中 = 西方警戒雷达 0.6（推断）",
+    "ewExposureLevelRates.medium": "1.4 的\"辐射暴露 中\"暂定 0.6",
+    "ewExposureLevelRates.low": "1.4 的\"辐射暴露 低\"暂定 0.3"
+  }
+}

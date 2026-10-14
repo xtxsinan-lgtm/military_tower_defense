@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "air_defense.schema.json",
+  "title": "防空单位（数值表 1.1、1.2）",
+  "type": "object",
+  "required": ["units"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "units": { "type": "array", "items": { "$ref": "#/$defs/unit" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "required": ["id", "nameKey", "deployTier", "deployGameSec", "packGameSec", "mobility", "moveSpeedKmh", "fireOnMove", "systemPriceMusd", "weapons"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "deployTier": {
+          "enum": ["instant", "minutes", "hours_short", "hours", "fixed"],
+          "description": "部署档：即时 / 分钟 / 小时（短）/ 小时 / 固定阵地"
+        },
+        "deployGameSec": {
+          "type": ["number", "null"], "minimum": 0,
+          "description": "展开时间（游戏秒）；null = 不可移动、开局即在阵地"
+        },
+        "packGameSec": { "type": ["number", "null"], "minimum": 0, "description": "撤收时间（游戏秒）；null = 不可撤收" },
+        "mobility": {
+          "enum": ["vehicle", "towed", "portable", "fixed"],
+          "description": "车载 / 牵引 / 便携 / 固定"
+        },
+        "moveSpeedKmh": { "type": ["number", "null"], "minimum": 0, "description": "移动速度；null = 不可移动" },
+        "fireOnMove": { "enum": ["yes", "partial", "no"], "description": "行进间射击：✔ / 部分 / ✘" },
+        "systemPriceMusd": {
+          "type": ["number", "null"], "minimum": 0,
+          "description": "系统价格（一个火力单元 / 连）；null = 只有库存，无采购价"
+        },
+        "stockOnly": { "type": "boolean", "description": "苏制库存装备，不可采购" },
+        "weapons": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/weapon" } },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    },
+    "weapon": {
+      "type": "object",
+      "required": ["id", "nameKey", "kind", "interceptClass", "rangeKm", "ceilingKm", "shotCostMusd", "ammoSupply", "targets"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "kind": { "enum": ["gun", "missile", "rocket", "interceptor_drone"] },
+        "interceptClass": {
+          "$ref": "common.schema.json#/$defs/id",
+          "description": "拦截概率类别，引用 rules/intercept.json 的 classes"
+        },
+        "rangeKm": { "$ref": "common.schema.json#/$defs/positive" },
+        "rangeByTagKm": {
+          "type": "object",
+          "propertyNames": { "$ref": "common.schema.json#/$defs/targetTag" },
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/positive" },
+          "description": "对特定目标的射程（如反导射程）；未列出的目标使用 rangeKm"
+        },
+        "ceilingKm": { "$ref": "common.schema.json#/$defs/positive" },
+        "shotCostMusd": {
+          "type": ["number", "null"], "minimum": 0,
+          "description": "单发 / 单次拦截成本；null = 数值表未给出"
+        },
+        "magazine": {
+          "type": ["integer", "null"], "minimum": 1,
+          "description": "每个发射架的弹仓（发 / 架）；null = 弹药充足，不计数"
+        },
+        "magazineRounds": { "type": "integer", "minimum": 1, "description": "身管武器的备弹（发），每次交战耗弹量由 WS01-009 决定" },
+        "launchers": {
+          "type": ["integer", "null"], "minimum": 1,
+          "description": "每个火力单元的发射架数；null = 由关卡配置"
+        },
+        "perLevelLimit": { "type": "integer", "minimum": 1, "description": "每关最多可发射的数量" },
+        "ammoSupply": {
+          "enum": ["ample", "medium", "limited", "scarce", "none"],
+          "description": "充足 / 中 / 配额 / 稀缺 / 耗尽不补"
+        },
+        "targets": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/targetTag" },
+          "description": "可拦截目标"
+        },
+        "lowEfficiencyTargets": {
+          "type": "array", "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/targetTag" },
+          "description": "数值表标注\"低效\"的目标（必须同时出现在 targets 中）。低效已体现在拦截概率矩阵中，此字段供界面提示和 AI 选目标参考"
+        },
+        "targetsFrom": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/gatedTag" },
+          "description": "从某日期起才可拦截的目标"
+        },
+        "restrictToEnemies": {
+          "type": "array", "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/id" },
+          "description": "只能攻击这些敌方单位（引用 enemies/*.json 的 ID）"
+        },
+        "barrelCooldown": { "type": "boolean", "description": "持续射击需要换枪管冷却" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

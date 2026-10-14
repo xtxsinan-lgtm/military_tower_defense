@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enemy_munition.schema.json",
+  "title": "敌方导弹、无人机、滑翔炸弹（数值表 2.1、2.2）",
+  "type": "object",
+  "required": ["munitions"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "munitions": { "type": "array", "items": { "$ref": "#/$defs/munition" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "altitudeBand": {
+      "enum": ["very_low", "low", "low_mid", "mid", "mid_high", "high", "high_dive", "ballistic", "quasi_ballistic", "terminal_maneuver", "glide", "carrier"],
+      "description": "飞行高度 / 剖面：极低 / 低 / 低中 / 中 / 中高 / 高 / 高空俯冲 / 弹道 / 准弹道 / 末端机动 / 滑翔 / 由载机决定"
+    },
+    "munition": {
+      "type": "object",
+      "required": ["id", "nameKey", "category", "tag", "speedKmh", "altitudeBand", "interceptable", "hp", "damageLevel", "splashCells", "accuracy", "costMusd"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "category": {
+          "enum": ["decoy", "drone", "jet_drone", "loitering", "fpv", "cruise_missile", "supersonic_missile", "anti_radiation", "ballistic", "hypersonic", "glide_bomb", "unguided_bomb"]
+        },
+        "tag": {
+          "oneOf": [{ "$ref": "common.schema.json#/$defs/targetTag" }, { "type": "null" }],
+          "description": "目标标签；null = 不可拦截、无标签"
+        },
+        "speedKmh": { "type": ["number", "null"], "minimum": 0, "description": "null = 由载机决定" },
+        "diveFaster": { "type": "boolean", "description": "俯冲时更快" },
+        "altitudeBand": { "$ref": "#/$defs/altitudeBand" },
+        "altitudeM": { "$ref": "common.schema.json#/$defs/minMax", "description": "飞行高度范围（米），数值表给出时才填写" },
+        "interceptable": { "type": "boolean" },
+        "hp": { "type": ["integer", "null"], "minimum": 1, "description": "游戏 HP；null = 不可拦截" },
+        "interceptProbMult": { "type": "number", "minimum": 0, "description": "被拦截概率倍率（如末端机动 −30% → 0.7）" },
+        "damageLevel": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "vehicleDamageMult": { "type": "number", "minimum": 1, "description": "对车辆的伤害加成" },
+        "splashCells": { "type": "number", "minimum": 0 },
+        "submunitions": {
+          "type": "object",
+          "required": ["count", "damageLevel", "splashCells"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 1 },
+            "damageLevel": { "type": "integer", "minimum": 0, "maximum": 10 },
+            "splashCells": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "accuracy": { "$ref": "common.schema.json#/$defs/accuracyTier" },
+        "accuracyByPeriod": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["from", "tier"],
+            "properties": { "from": { "$ref": "common.schema.json#/$defs/yearMonth" }, "tier": { "$ref": "common.schema.json#/$defs/accuracyTier" } },
+            "additionalProperties": false
+          },
+          "description": "精度档随时期升级"
+        },
+        "ewImmune": { "type": "boolean", "description": "不受电子战影响（数值表 3.1）" },
+        "tracksEmittingRadarOnly": { "type": "boolean", "description": "只追踪开机雷达（反辐射）" },
+        "releaseRangeKm": { "type": "number", "minimum": 0, "description": "投放距离；0 = 必须飞到目标上空" },
+        "bonusVsFortification": { "type": "boolean" },
+        "rare": { "type": "boolean" },
+        "mostCommon": { "type": "boolean" },
+        "groundLaunchCapable": { "type": "boolean", "description": "也可由火箭炮发射" },
+        "threatensDeepCities": { "type": "boolean" },
+        "costMusd": { "type": ["number", "null"], "minimum": 0, "description": "敌方成本；null = 数值表未给出" },
+        "storyEventOnly": { "type": "boolean", "description": "只作为剧情事件出现" },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

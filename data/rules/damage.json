@@ -1,0 +1,39 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "damage",
+  "bands": [
+    { "minLevel": 1, "maxLevel": 2,
+      "airDefense": { "effect": "light_damage", "efficiencyMult": 0.8, "repairable": true },
+      "civilBuildings": { "effect": "minor", "destroyed": { "min": 0, "max": 0 } },
+      "gridDamagePct": 0 },
+    { "minLevel": 3, "maxLevel": 4,
+      "airDefense": { "effect": "heavy_damage", "suspendGameSec": 30 },
+      "civilBuildings": { "effect": "buildings", "destroyed": { "min": 1, "max": 1 } },
+      "gridDamagePct": 10 },
+    { "minLevel": 5, "maxLevel": 6,
+      "airDefense": { "effect": "destroy_component" },
+      "civilBuildings": { "effect": "buildings", "destroyed": { "min": 1, "max": 2 } },
+      "gridDamagePct": 20 },
+    { "minLevel": 7, "maxLevel": 8,
+      "airDefense": { "effect": "destroy_fire_unit" },
+      "civilBuildings": { "effect": "buildings", "destroyed": { "min": 2, "max": 3 } },
+      "gridDamagePct": 35 },
+    { "minLevel": 9, "maxLevel": 10,
+      "airDefense": { "effect": "destroy_fire_unit_and_adjacent" },
+      "civilBuildings": { "effect": "block" },
+      "gridDamagePct": 50 }
+  ],
+  "splashFalloff": { "center": 1.0, "edge": 0.3, "curve": "linear" },
+  "_source": {
+    "bands": "数值表 3.2",
+    "bands[0].airDefense": "轻伤（−20% 效能，可维修）",
+    "bands[1].airDefense": "重伤（暂停 30 秒）",
+    "bands[2].airDefense": "摧毁雷达或发射车其一",
+    "bands[4].airDefense": "摧毁 1 个火力单元并波及相邻格",
+    "bands[4].civilBuildings": "区块损毁",
+    "splashFalloff": "伤害随溅射半径线性衰减：中心 100% → 边缘 30%"
+  },
+  "provisional": {
+    "bands[1].airDefense.suspendGameSec": "数值表写\"暂停 30 秒\"，暂按游戏秒理解（= 30 世界分钟）"
+  }
+}

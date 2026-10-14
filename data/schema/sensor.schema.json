@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sensor.schema.json",
+  "title": "探测单位（数值表 1.3）",
+  "type": "object",
+  "required": ["sensors"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "sensors": { "type": "array", "items": { "$ref": "#/$defs/sensor" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sensor": {
+      "type": "object",
+      "required": ["id", "nameKey", "layer", "detectionRangeKm", "lowAltitude", "trackQuality", "emission", "exposureLevel", "deployGameSec", "packGameSec", "priceMusd"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "layer": { "enum": ["national", "regional", "local"], "description": "国家层（地图外）/ 区域层 / 本地层" },
+        "detectionRangeKm": {
+          "type": ["number", "null"], "minimum": 0,
+          "description": "探测距离（游戏 km）；null = 覆盖由 coverage 决定"
+        },
+        "coverage": { "enum": ["full_map", "urban_areas"], "description": "特殊覆盖方式：全图 / 城区全覆盖" },
+        "lowAltitude": {
+          "enum": ["poor", "medium", "good", "very_good"],
+          "description": "低空能力：差 / 中 / 好 / 很好。数值化由 WS01-007 决定"
+        },
+        "largeLowAltitudeBlindZone": { "type": "boolean", "description": "数值表注明\"低空盲区大\"" },
+        "trackQuality": { "enum": ["vague", "approximate", "precise"], "description": "输出航迹质量：模糊 / 大致 / 精确" },
+        "trackQualityUpgrades": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["to", "condition"],
+            "properties": {
+              "to": { "enum": ["approximate", "precise"] },
+              "condition": { "enum": ["close_range", "linked_drone_types"] },
+              "enemies": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } }
+            },
+            "additionalProperties": false
+          },
+          "description": "特定条件下航迹质量提升"
+        },
+        "fastUpdate": { "type": "boolean", "description": "更新快、误差圈小" },
+        "onlyDetects": { "enum": ["radio_linked_drones"], "description": "只能探测某类目标" },
+        "falseAlarms": { "enum": ["some", "high"], "description": "有误报 / 误报率高" },
+        "reportDelay": { "type": "boolean", "description": "上报有延迟" },
+        "nightRangeMult": { "type": "number", "minimum": 0, "description": "夜间探测距离倍率" },
+        "nightPenaltyNegatedBy": {
+          "type": "array", "items": { "enum": ["searchlight", "thermal"] },
+          "description": "可抵消夜间惩罚的装备"
+        },
+        "emission": { "enum": ["active", "passive", "none"], "description": "辐射：主动 / 被动 / 无" },
+        "exposureLevel": {
+          "enum": ["high", "medium", "zero", "none"],
+          "description": "暴露速度：高 / 中 / 0 / 不适用。每秒数值见 rules/exposure.json"
+        },
+        "deployGameSec": { "type": ["number", "null"], "minimum": 0 },
+        "packGameSec": { "type": ["number", "null"], "minimum": 0 },
+        "priceMusd": { "type": ["number", "null"], "minimum": 0, "description": "null = 库存或不可购买" },
+        "stockOnly": { "type": "boolean" },
+        "automatic": { "type": "boolean", "description": "自动生效，不需要部署" },
+        "firstAvailable": { "$ref": "common.schema.json#/$defs/firstAvailable" },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

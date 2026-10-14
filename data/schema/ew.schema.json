@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ew.schema.json",
+  "title": "电子战单位（数值表 1.4）",
+  "type": "object",
+  "required": ["ewUnits"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "ewUnits": { "type": "array", "items": { "$ref": "#/$defs/ewUnit" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ewUnit": {
+      "type": "object",
+      "required": ["id", "nameKey", "radiusKm", "effect", "effectiveAgainst", "emissionExposure", "deployGameSec", "packGameSec", "priceMusd"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "radiusKm": { "$ref": "common.schema.json#/$defs/positive" },
+        "effect": {
+          "enum": ["nav_jam", "nav_spoof", "link_cut", "link_cut_directional", "self_protection"],
+          "description": "导航干扰 / 导航欺骗 / 链路中断 / 定向链路中断 / 本车防护"
+        },
+        "offsetCellsAdd": { "type": "number", "minimum": 0, "description": "落点额外偏移（格）" },
+        "accuracyTierDrop": { "type": "integer", "minimum": 0, "description": "精度下降档数" },
+        "pullChance": { "$ref": "common.schema.json#/$defs/probability", "description": "把目标拉向诱导点的概率" },
+        "aiVisionEffectMult": { "type": "number", "minimum": 0, "description": "对 AI 视觉制导型（2025+）的效果倍率" },
+        "linkCutOutcomes": {
+          "type": "array", "items": { "enum": ["crash", "hover", "return"] },
+          "description": "链路中断后的可能结果：坠落 / 悬停 / 返航。权重由 WS01-015 决定"
+        },
+        "hitProbMult": { "type": "number", "minimum": 0, "description": "冲向受保护目标的命中概率倍率" },
+        "protectsSelfOnly": { "type": "boolean" },
+        "equipmentSlot": { "type": "boolean", "description": "装在车辆上的装备槽，不单独占位" },
+        "effectiveAgainst": {
+          "type": "array", "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/id" },
+          "description": "有效对象（敌方单位 ID）"
+        },
+        "ineffectiveAgainst": {
+          "type": "array", "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/id" },
+          "description": "数值表明确列出的无效对象（敌方单位 ID），供界面提示；未出现在 effectiveAgainst 中的单位一律不受影响"
+        },
+        "emissionExposure": { "enum": ["high", "medium", "low"], "description": "辐射暴露：高 / 中 / 低" },
+        "deployGameSec": { "type": "number", "minimum": 0 },
+        "packGameSec": { "type": "number", "minimum": 0 },
+        "priceMusd": { "type": "number", "minimum": 0 },
+        "firstAvailable": { "$ref": "common.schema.json#/$defs/firstAvailable" },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

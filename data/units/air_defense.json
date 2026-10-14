@@ -1,0 +1,473 @@
+{
+  "$schema": "../schema/air_defense.schema.json",
+  "units": [
+    {
+      "id": "manpads",
+      "nameKey": "unit.manpads.name",
+      "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
+      "mobility": "portable", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "systemPriceMusd": 0.1,
+      "weapons": [
+        { "id": "manpads_missile", "nameKey": "weapon.manpads_missile.name", "kind": "missile", "interceptClass": "manpads",
+          "rangeKm": 6.5, "ceilingKm": 4, "shotCostMusd": 0.25, "magazine": 1, "ammoSupply": "limited",
+          "targets": ["UAV", "DECOY", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "单兵防空（Igla / Stinger / Piorun）", "weapons[0].rangeKm": "4.5–6.5", "weapons[0].ceilingKm": "3.5–4", "weapons[0].shotCostMusd": "0.1–0.4", "moveSpeedKmh": "步兵/皮卡 60" }
+    },
+    {
+      "id": "starstreak_martlet",
+      "nameKey": "unit.starstreak_martlet.name",
+      "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
+      "mobility": "portable", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "systemPriceMusd": 0.1,
+      "weapons": [
+        { "id": "starstreak_martlet_missile", "nameKey": "weapon.starstreak_martlet_missile.name", "kind": "missile", "interceptClass": "manpads",
+          "rangeKm": 7, "ceilingKm": 5, "shotCostMusd": 0.25, "magazine": 1, "ammoSupply": "limited",
+          "targets": ["UAV", "HELI", "AC_LOW"] }
+      ],
+      "provisional": {
+        "systemPriceMusd": "数值表 1.2 没有 Starstreak / Martlet 行，暂按单兵防空",
+        "weapons[0].shotCostMusd": "同上",
+        "weapons[0].magazine": "同上",
+        "weapons[0].ammoSupply": "同上",
+        "weapons[0].targets": "同上（不含 DECOY，参照 Strela / Avenger 一类）",
+        "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入单兵导弹",
+        "mobility": "暂定为便携"
+      }
+    },
+    {
+      "id": "mobile_fire_team",
+      "nameKey": "unit.mobile_fire_team.name",
+      "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "partial",
+      "systemPriceMusd": 0.05,
+      "weapons": [
+        { "id": "mobile_fire_team_gun", "nameKey": "weapon.mobile_fire_team_gun.name", "kind": "gun", "interceptClass": "gun",
+          "rangeKm": 2.5, "ceilingKm": 2, "shotCostMusd": 0.001, "magazine": null, "ammoSupply": "ample", "barrelCooldown": true,
+          "targets": ["UAV", "DECOY"] }
+      ],
+      "_source": { "name": "机动火力组（皮卡 + 机枪/ZU‑23）", "weapons[0].rangeKm": "1.5–2.5", "weapons[0].ceilingKm": "1.5–2", "weapons[0].shotCostMusd": "≈ 0.001", "weapons[0].magazine": "弹药充足，换枪管冷却" }
+    },
+    {
+      "id": "zu23_2",
+      "nameKey": "unit.zu23_2.name",
+      "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
+      "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "systemPriceMusd": 0.05,
+      "weapons": [
+        { "id": "zu23_2_gun", "nameKey": "weapon.zu23_2_gun.name", "kind": "gun", "interceptClass": "gun",
+          "rangeKm": 2.5, "ceilingKm": 2, "shotCostMusd": 0.002, "magazine": null, "ammoSupply": "ample",
+          "targets": ["UAV", "DECOY", "HELI"] }
+      ],
+      "_source": { "name": "ZU‑23‑2 / S‑60 牵引高炮", "weapons[0].rangeKm": "2.5–6（合并行）", "weapons[0].ceilingKm": "2–4（合并行）" },
+      "provisional": { "weapons[0].rangeKm": "合并行拆分：区间下端归 ZU‑23‑2、上端归 S‑60", "weapons[0].ceilingKm": "同上" }
+    },
+    {
+      "id": "s60",
+      "nameKey": "unit.s60.name",
+      "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
+      "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "systemPriceMusd": 0.05,
+      "weapons": [
+        { "id": "s60_gun", "nameKey": "weapon.s60_gun.name", "kind": "gun", "interceptClass": "gun",
+          "rangeKm": 6, "ceilingKm": 4, "shotCostMusd": 0.002, "magazine": null, "ammoSupply": "ample",
+          "targets": ["UAV", "DECOY", "HELI"] }
+      ],
+      "_source": { "name": "ZU‑23‑2 / S‑60 牵引高炮", "weapons[0].rangeKm": "2.5–6（合并行）", "weapons[0].ceilingKm": "2–4（合并行）" },
+      "provisional": { "weapons[0].rangeKm": "合并行拆分：区间下端归 ZU‑23‑2、上端归 S‑60", "weapons[0].ceilingKm": "同上" }
+    },
+    {
+      "id": "sky_sentinel",
+      "nameKey": "unit.sky_sentinel.name",
+      "deployTier": "minutes", "deployGameSec": 4, "packGameSec": 4,
+      "mobility": "fixed", "moveSpeedKmh": null, "fireOnMove": "no",
+      "systemPriceMusd": 0.15,
+      "weapons": [
+        { "id": "sky_sentinel_gun", "nameKey": "weapon.sky_sentinel_gun.name", "kind": "gun", "interceptClass": "gun",
+          "rangeKm": 1.5, "ceilingKm": 1.5, "shotCostMusd": 0.001, "magazine": null, "ammoSupply": "ample",
+          "targets": ["UAV", "DECOY"] }
+      ],
+      "_source": { "moveSpeedKmh": "固定/卡车" },
+      "provisional": { "mobility": "数值表写\"固定/卡车\"，暂按固定处理（有展开 / 撤收时间，可由卡车整体转移）" }
+    },
+    {
+      "id": "gepard",
+      "nameKey": "unit.gepard.name",
+      "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
+      "mobility": "vehicle", "moveSpeedKmh": 65, "fireOnMove": "yes",
+      "systemPriceMusd": 5,
+      "weapons": [
+        { "id": "gepard_35mm", "nameKey": "weapon.gepard_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
+          "rangeKm": 5.5, "ceilingKm": 3.5, "shotCostMusd": 0.01, "magazine": null, "magazineRounds": 680, "ammoSupply": "scarce",
+          "targets": ["UAV", "DECOY", "HELI", "AC_LOW", "CM"], "lowEfficiencyTargets": ["CM"] }
+      ],
+      "_source": { "systemPriceMusd": "5（二手）", "weapons[0].magazineRounds": "680 发，弹药稀缺" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未给雷达火控自行高炮归类，新增类别 gun_radar" }
+    },
+    {
+      "id": "skynex",
+      "nameKey": "unit.skynex.name",
+      "deployTier": "minutes", "deployGameSec": 8, "packGameSec": 8,
+      "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "systemPriceMusd": 22.5,
+      "weapons": [
+        { "id": "skynex_35mm", "nameKey": "weapon.skynex_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
+          "rangeKm": 4, "ceilingKm": 3, "shotCostMusd": 0.02, "magazine": null, "ammoSupply": "medium",
+          "targets": ["UAV", "JET_UAV", "DECOY", "CM"], "lowEfficiencyTargets": ["CM"] }
+      ],
+      "_source": { "name": "Skynex / Skyranger 35", "weapons[0].rangeKm": "3–4", "systemPriceMusd": "15–30", "moveSpeedKmh": "牵引", "weapons[0].ammoSupply": "中" },
+      "provisional": {
+        "moveSpeedKmh": "数值表只写\"牵引\"，暂取其他牵引装备的 40",
+        "weapons[0].interceptClass": "数值表 3.3 未归类，归入新增类别 gun_radar"
+      }
+    },
+    {
+      "id": "skyranger_35",
+      "nameKey": "unit.skyranger_35.name",
+      "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "systemPriceMusd": 22.5,
+      "weapons": [
+        { "id": "skyranger_35mm", "nameKey": "weapon.skyranger_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
+          "rangeKm": 4, "ceilingKm": 3, "shotCostMusd": 0.02, "magazine": null, "ammoSupply": "medium",
+          "targets": ["UAV", "JET_UAV", "DECOY", "CM"], "lowEfficiencyTargets": ["CM"] }
+      ],
+      "_source": { "name": "Skynex / Skyranger 35", "weapons[0].rangeKm": "3–4", "systemPriceMusd": "15–30", "weapons[0].ammoSupply": "中" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，归入新增类别 gun_radar" }
+    },
+    {
+      "id": "strela_10",
+      "nameKey": "unit.strela_10.name",
+      "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "partial",
+      "systemPriceMusd": null, "stockOnly": true,
+      "weapons": [
+        { "id": "strela_10_missile", "nameKey": "weapon.strela_10_missile.name", "kind": "missile", "interceptClass": "manpads",
+          "rangeKm": 5, "ceilingKm": 3.5, "shotCostMusd": 0.125, "magazine": 4, "ammoSupply": "scarce",
+          "targets": ["UAV", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Strela‑10 / Osa‑AKM", "weapons[0].shotCostMusd": "0.05–0.2", "weapons[0].magazine": "4–6" },
+      "provisional": {
+        "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入单兵导弹（同为红外近程弹）",
+        "weapons[0].ammoSupply": "苏制库存弹药，暂定为稀缺"
+      }
+    },
+    {
+      "id": "osa_akm",
+      "nameKey": "unit.osa_akm.name",
+      "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "partial",
+      "systemPriceMusd": null, "stockOnly": true,
+      "weapons": [
+        { "id": "osa_akm_missile", "nameKey": "weapon.osa_akm_missile.name", "kind": "missile", "interceptClass": "shorad",
+          "rangeKm": 10, "ceilingKm": 5, "shotCostMusd": 0.125, "magazine": 4, "ammoSupply": "scarce",
+          "targets": ["UAV", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Strela‑10 / Osa‑AKM", "weapons[0].shotCostMusd": "0.05–0.2", "weapons[0].magazine": "4–6" },
+      "provisional": {
+        "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入近程导弹（雷达制导，射程 10 km）",
+        "weapons[0].ammoSupply": "苏制库存弹药，暂定为稀缺"
+      }
+    },
+    {
+      "id": "avenger",
+      "nameKey": "unit.avenger.name",
+      "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "yes",
+      "systemPriceMusd": 3,
+      "weapons": [
+        { "id": "avenger_stinger", "nameKey": "weapon.avenger_stinger.name", "kind": "missile", "interceptClass": "manpads",
+          "rangeKm": 5.5, "ceilingKm": 3.8, "shotCostMusd": 0.25, "magazine": 8, "ammoSupply": "limited",
+          "targets": ["UAV", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Avenger / Stormer HVM", "weapons[0].shotCostMusd": "0.1–0.4" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入单兵导弹（车载 Stinger）" }
+    },
+    {
+      "id": "stormer_hvm",
+      "nameKey": "unit.stormer_hvm.name",
+      "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "systemPriceMusd": 2,
+      "weapons": [
+        { "id": "stormer_starstreak", "nameKey": "weapon.stormer_starstreak.name", "kind": "missile", "interceptClass": "manpads",
+          "rangeKm": 7, "ceilingKm": 5, "shotCostMusd": 0.25, "magazine": 8, "ammoSupply": "limited",
+          "targets": ["UAV", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Avenger / Stormer HVM", "weapons[0].shotCostMusd": "0.1–0.4" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入单兵导弹（车载 Starstreak）" }
+    },
+    {
+      "id": "vampire",
+      "nameKey": "unit.vampire.name",
+      "deployTier": "minutes", "deployGameSec": 4, "packGameSec": 4,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "systemPriceMusd": 2,
+      "weapons": [
+        { "id": "vampire_apkws", "nameKey": "weapon.vampire_apkws.name", "kind": "rocket", "interceptClass": "shorad",
+          "rangeKm": 5, "ceilingKm": 3, "shotCostMusd": 0.025, "magazine": 4, "ammoSupply": "limited",
+          "targets": ["UAV", "DECOY"] }
+      ],
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入近程导弹（激光制导火箭）" }
+    },
+    {
+      "id": "raven",
+      "nameKey": "unit.raven.name",
+      "deployTier": "minutes", "deployGameSec": 6, "packGameSec": 6,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "systemPriceMusd": 5,
+      "weapons": [
+        { "id": "raven_aim9", "nameKey": "weapon.raven_aim9.name", "kind": "missile", "interceptClass": "shorad",
+          "rangeKm": 15, "ceilingKm": 6, "shotCostMusd": 0.4, "magazine": 2, "ammoSupply": "limited",
+          "targets": ["UAV", "JET_UAV", "CM", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Raven / Gravehawk", "weapons[0].magazine": "2–4" }
+    },
+    {
+      "id": "gravehawk",
+      "nameKey": "unit.gravehawk.name",
+      "deployTier": "minutes", "deployGameSec": 6, "packGameSec": 6,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": 8,
+      "weapons": [
+        { "id": "gravehawk_missile", "nameKey": "weapon.gravehawk_missile.name", "kind": "missile", "interceptClass": "shorad",
+          "rangeKm": 15, "ceilingKm": 6, "shotCostMusd": 0.4, "magazine": 2, "ammoSupply": "limited",
+          "targets": ["UAV", "JET_UAV", "CM", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Raven / Gravehawk", "moveSpeedKmh": "卡车", "weapons[0].magazine": "2–4" },
+      "provisional": { "moveSpeedKmh": "数值表只写\"卡车\"，暂定 60" }
+    },
+    {
+      "id": "crotale_ng",
+      "nameKey": "unit.crotale_ng.name",
+      "deployTier": "minutes", "deployGameSec": 6, "packGameSec": 6,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": 15,
+      "weapons": [
+        { "id": "crotale_vt1", "nameKey": "weapon.crotale_vt1.name", "kind": "missile", "interceptClass": "shorad",
+          "rangeKm": 11, "ceilingKm": 6, "shotCostMusd": 0.4, "magazine": 8, "ammoSupply": "limited",
+          "targets": ["UAV", "CM", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Crotale / RBS 70", "weapons[0].shotCostMusd": "0.2–0.6" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入近程导弹" }
+    },
+    {
+      "id": "rbs_70",
+      "nameKey": "unit.rbs_70.name",
+      "deployTier": "minutes", "deployGameSec": 3, "packGameSec": 3,
+      "mobility": "portable", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": 1,
+      "weapons": [
+        { "id": "rbs_70_missile", "nameKey": "weapon.rbs_70_missile.name", "kind": "missile", "interceptClass": "manpads",
+          "rangeKm": 8, "ceilingKm": 5, "shotCostMusd": 0.4, "magazine": 1, "ammoSupply": "limited",
+          "targets": ["UAV", "CM", "HELI", "AC_LOW"] }
+      ],
+      "_source": { "name": "Crotale / RBS 70", "moveSpeedKmh": "便携", "weapons[0].shotCostMusd": "0.2–0.6" },
+      "provisional": {
+        "moveSpeedKmh": "数值表只写\"便携\"，暂按单兵防空的车辆转运速度 60",
+        "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入单兵导弹"
+      }
+    },
+    {
+      "id": "iris_t_sls",
+      "nameKey": "unit.iris_t_sls.name",
+      "deployTier": "minutes", "deployGameSec": 10, "packGameSec": 10,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "systemPriceMusd": 40,
+      "weapons": [
+        { "id": "iris_t_sls_missile", "nameKey": "weapon.iris_t_sls_missile.name", "kind": "missile", "interceptClass": "shorad",
+          "rangeKm": 12, "ceilingKm": 8, "shotCostMusd": 0.4, "magazine": 8, "ammoSupply": "limited",
+          "targets": ["UAV", "JET_UAV", "CM", "HELI", "AC_LOW"] }
+      ]
+    },
+    {
+      "id": "frankensam",
+      "nameKey": "unit.frankensam.name",
+      "deployTier": "minutes", "deployGameSec": 15, "packGameSec": 15,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": 5,
+      "weapons": [
+        { "id": "frankensam_missile", "nameKey": "weapon.frankensam_missile.name", "kind": "missile", "interceptClass": "shorad",
+          "rangeKm": 20, "ceilingKm": 10, "shotCostMusd": 0.7, "magazine": 2, "ammoSupply": "limited",
+          "targets": ["UAV", "CM", "AC_LOW"] }
+      ],
+      "_source": { "name": "FrankenSAM（RIM‑7 / AIM‑9M）", "weapons[0].rangeKm": "15–20", "weapons[0].shotCostMusd": "0.4–1", "weapons[0].magazine": "2–4" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入近程导弹" }
+    },
+    {
+      "id": "buk_m1",
+      "nameKey": "unit.buk_m1.name",
+      "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
+      "mobility": "vehicle", "moveSpeedKmh": 65, "fireOnMove": "no",
+      "systemPriceMusd": null, "stockOnly": true,
+      "weapons": [
+        { "id": "buk_m1_missile", "nameKey": "weapon.buk_m1_missile.name", "kind": "missile", "interceptClass": "medium",
+          "rangeKm": 35, "ceilingKm": 22, "shotCostMusd": 0.5, "magazine": 4, "ammoSupply": "none",
+          "targets": ["UAV", "CM", "SCM", "HELI", "AC_LOW", "AC_HIGH"] }
+      ],
+      "_source": { "weapons[0].magazine": "4（导弹极稀缺）", "weapons[0].ammoSupply": "A 线全国共享库存，耗尽不补（数值表第 4 节）" }
+    },
+    {
+      "id": "hawk",
+      "nameKey": "unit.hawk.name",
+      "deployTier": "hours", "deployGameSec": 45, "packGameSec": 40,
+      "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "systemPriceMusd": 30,
+      "weapons": [
+        { "id": "hawk_missile", "nameKey": "weapon.hawk_missile.name", "kind": "missile", "interceptClass": "medium",
+          "rangeKm": 40, "ceilingKm": 18, "shotCostMusd": 0.4, "magazine": 3, "ammoSupply": "limited",
+          "targets": ["CM", "HELI", "AC_LOW", "AC_HIGH"] }
+      ],
+      "_source": { "name": "Hawk Phase III / Hawk / Aspide", "weapons[0].shotCostMusd": "0.3–0.5" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入中程" }
+    },
+    {
+      "id": "aspide",
+      "nameKey": "unit.aspide.name",
+      "deployTier": "hours", "deployGameSec": 30, "packGameSec": 30,
+      "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "systemPriceMusd": 20,
+      "weapons": [
+        { "id": "aspide_missile", "nameKey": "weapon.aspide_missile.name", "kind": "missile", "interceptClass": "medium",
+          "rangeKm": 25, "ceilingKm": 6, "shotCostMusd": 0.4, "magazine": 6, "ammoSupply": "limited",
+          "targets": ["CM", "HELI", "AC_LOW", "AC_HIGH"] }
+      ],
+      "_source": { "name": "Aspide / Spada；Hawk / Aspide", "weapons[0].shotCostMusd": "0.3–0.5" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，暂归入中程" }
+    },
+    {
+      "id": "nasams",
+      "nameKey": "unit.nasams.name",
+      "deployTier": "hours_short", "deployGameSec": 20, "packGameSec": 15,
+      "mobility": "vehicle", "moveSpeedKmh": 70, "fireOnMove": "no",
+      "systemPriceMusd": 100,
+      "weapons": [
+        { "id": "nasams_missile", "nameKey": "weapon.nasams_missile.name", "kind": "missile", "interceptClass": "medium",
+          "rangeKm": 40, "ceilingKm": 20, "shotCostMusd": 0.85, "magazine": 6, "launchers": 3, "ammoSupply": "limited",
+          "targets": ["UAV", "JET_UAV", "CM", "SCM", "HELI", "AC_LOW", "AC_HIGH"], "lowEfficiencyTargets": ["SCM"] }
+      ],
+      "_source": { "weapons[0].rangeKm": "25–40", "weapons[0].ceilingKm": "15–20", "weapons[0].shotCostMusd": "0.5–1.2 M$（AIM‑9X / AIM‑120）", "weapons[0].magazine": "6×3 发射架" }
+    },
+    {
+      "id": "iris_t_slm",
+      "nameKey": "unit.iris_t_slm.name",
+      "deployTier": "minutes", "deployGameSec": 10, "packGameSec": 10,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "systemPriceMusd": 150,
+      "weapons": [
+        { "id": "iris_t_slm_missile", "nameKey": "weapon.iris_t_slm_missile.name", "kind": "missile", "interceptClass": "medium",
+          "rangeKm": 40, "ceilingKm": 20, "shotCostMusd": 0.4, "magazine": 8, "launchers": 3, "ammoSupply": "limited",
+          "targets": ["UAV", "JET_UAV", "CM", "SCM", "HELI", "AC_LOW", "AC_HIGH"] }
+      ],
+      "_source": { "weapons[0].magazine": "8×3" }
+    },
+    {
+      "id": "s300ps",
+      "nameKey": "unit.s300ps.name",
+      "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": null, "stockOnly": true,
+      "weapons": [
+        { "id": "s300_missile", "nameKey": "weapon.s300_missile.name", "kind": "missile", "interceptClass": "s300",
+          "rangeKm": 100, "ceilingKm": 25, "shotCostMusd": 1, "magazine": 4, "launchers": null, "ammoSupply": "none",
+          "targets": ["CM", "SCM", "BM", "AC_HIGH"], "lowEfficiencyTargets": ["BM"] }
+      ],
+      "_source": { "name": "S‑300PS/PT", "weapons[0].rangeKm": "75–100", "weapons[0].shotCostMusd": "≈ 1 M$（不可补充）", "weapons[0].magazine": "4×N，耗尽不补" }
+    },
+    {
+      "id": "s300pt",
+      "nameKey": "unit.s300pt.name",
+      "deployTier": "hours", "deployGameSec": 60, "packGameSec": 60,
+      "mobility": "towed", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": null, "stockOnly": true,
+      "weapons": [
+        { "id": "s300_missile", "nameKey": "weapon.s300_missile.name", "kind": "missile", "interceptClass": "s300",
+          "rangeKm": 100, "ceilingKm": 25, "shotCostMusd": 1, "magazine": 4, "launchers": null, "ammoSupply": "none",
+          "targets": ["CM", "SCM", "BM", "AC_HIGH"], "lowEfficiencyTargets": ["BM"] }
+      ],
+      "_source": { "name": "S‑300PS/PT", "weapons[0].rangeKm": "75–100", "weapons[0].shotCostMusd": "≈ 1 M$（不可补充）", "weapons[0].magazine": "4×N，耗尽不补" },
+      "provisional": { "mobility": "PT 为半固定型，暂按牵引处理" }
+    },
+    {
+      "id": "samp_t",
+      "nameKey": "unit.samp_t.name",
+      "deployTier": "minutes", "deployGameSec": 15, "packGameSec": 15,
+      "mobility": "vehicle", "moveSpeedKmh": 70, "fireOnMove": "no",
+      "systemPriceMusd": 500,
+      "weapons": [
+        { "id": "aster_30", "nameKey": "weapon.aster_30.name", "kind": "missile", "interceptClass": "samp_t",
+          "rangeKm": 100, "rangeByTagKm": { "BM": 25 }, "ceilingKm": 20, "shotCostMusd": 2, "magazine": 8, "launchers": 6, "ammoSupply": "limited",
+          "targets": ["CM", "SCM", "BM", "AC_HIGH"] }
+      ],
+      "_source": { "weapons[0].rangeKm": "100+（反导 ~25）", "weapons[0].magazine": "8×6" }
+    },
+    {
+      "id": "patriot",
+      "nameKey": "unit.patriot.name",
+      "deployTier": "hours", "deployGameSec": 45, "packGameSec": 30,
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "systemPriceMusd": 1000,
+      "weapons": [
+        { "id": "pac2", "nameKey": "weapon.pac2.name", "kind": "missile", "interceptClass": "pac2",
+          "rangeKm": 160, "rangeByTagKm": { "BM": 20 }, "ceilingKm": 24, "shotCostMusd": 3, "magazine": 4, "launchers": null, "ammoSupply": "limited",
+          "targets": ["CM", "SCM", "BM", "AC_HIGH"] },
+        { "id": "pac3_mse", "nameKey": "weapon.pac3_mse.name", "kind": "missile", "interceptClass": "pac3",
+          "rangeKm": 60, "ceilingKm": 24, "shotCostMusd": 4, "magazine": 16, "launchers": null, "ammoSupply": "limited",
+          "targets": ["CM", "SCM", "BM", "HBM"] }
+      ],
+      "_source": { "name": "Patriot PAC‑2 / PAC‑3", "systemPriceMusd": "1000（连）", "weapons[].rangeKm": "160 / 反导 35–60", "weapons[].magazine": "4–16 / 发射架", "weapons[].targets": "CM, SCM, BM, HBM, AC_HIGH（整个 Patriot）" },
+      "provisional": {
+        "weapons[0].interceptClass": "数值表 3.3 只有 PAC‑3 行，新增类别 pac2",
+        "weapons[0].rangeByTagKm.BM": "PAC‑2 反导射程数值表未给出，暂定 20",
+        "weapons[0].magazine": "\"4–16 / 发射架\"拆分：4 归 PAC‑2、16 归 PAC‑3 MSE",
+        "weapons[1].magazine": "同上",
+        "weapons[0].targets": "Patriot 的目标列表拆分：PAC‑2 不打 HBM；AC_HIGH 只归 PAC‑2（3.3 的 PAC‑3 行没有飞机）",
+        "weapons[1].targets": "同上"
+      }
+    },
+    {
+      "id": "s200",
+      "nameKey": "unit.s200.name",
+      "deployTier": "fixed", "deployGameSec": null, "packGameSec": null,
+      "mobility": "fixed", "moveSpeedKmh": null, "fireOnMove": "no",
+      "systemPriceMusd": null, "stockOnly": true,
+      "weapons": [
+        { "id": "s200_missile", "nameKey": "weapon.s200_missile.name", "kind": "missile", "interceptClass": "s200",
+          "rangeKm": 250, "ceilingKm": 40, "shotCostMusd": 1, "magazine": 1, "perLevelLimit": 1, "ammoSupply": "none",
+          "targets": ["AC_HIGH"], "restrictToEnemies": ["a50u", "tu22m3"] }
+      ],
+      "_source": { "name": "S‑200（复活）", "deployTier": "固定阵地，不可移动", "weapons[0].shotCostMusd": "极少量", "weapons[0].perLevelLimit": "每局限 1–3 发", "weapons[0].targets": "AC_HIGH（大型机：A‑50、Tu‑22M3）" },
+      "provisional": {
+        "weapons[0].shotCostMusd": "数值表只写\"极少量\"（指数量而非价格），单发成本暂定 1",
+        "weapons[0].interceptClass": "数值表 3.3 未归类，新增类别 s200"
+      }
+    },
+    {
+      "id": "interceptor_drone_team",
+      "nameKey": "unit.interceptor_drone_team.name",
+      "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "systemPriceMusd": 0.05,
+      "weapons": [
+        { "id": "interceptor_drone", "nameKey": "weapon.interceptor_drone.name", "kind": "interceptor_drone", "interceptClass": "interceptor_drone",
+          "rangeKm": 40, "ceilingKm": 5, "shotCostMusd": 0.0035, "magazine": 10, "ammoSupply": "limited",
+          "targets": ["UAV", "DECOY"], "targetsFrom": [{ "tag": "JET_UAV", "from": "2026-09" }] }
+      ],
+      "_source": { "name": "拦截无人机班组（Sting 等）", "weapons[0].rangeKm": "15–40", "weapons[0].ceilingKm": "3–5", "weapons[0].shotCostMusd": "0.002–0.005", "weapons[0].magazine": "每班 10–30 架", "weapons[0].targets": "UAV, DECOY（2026.09 前不能打 JET_UAV）" }
+    },
+    {
+      "id": "jet_interceptor_drone",
+      "nameKey": "unit.jet_interceptor_drone.name",
+      "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
+      "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "systemPriceMusd": 0.1,
+      "weapons": [
+        { "id": "jet_interceptor", "nameKey": "weapon.jet_interceptor.name", "kind": "interceptor_drone", "interceptClass": "jet_interceptor_drone",
+          "rangeKm": 30, "ceilingKm": 6, "shotCostMusd": 0.03, "magazine": 6, "ammoSupply": "limited",
+          "targets": ["UAV", "JET_UAV", "CM"] }
+      ],
+      "_source": { "name": "喷气式拦截无人机（2026 原型）", "weapons[0].rangeKm": "30+" },
+      "provisional": { "weapons[0].interceptClass": "数值表 3.3 未归类，新增类别 jet_interceptor_drone" }
+    }
+  ]
+}

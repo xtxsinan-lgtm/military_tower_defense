@@ -1,0 +1,73 @@
+{
+  "$schema": "../schema/support.schema.json",
+  "support": [
+    {
+      "id": "fighter_area_patrol",
+      "nameKey": "support.fighter_area_patrol.name",
+      "provider": "air_force", "effect": "area_patrol",
+      "fighterRef": "fighter", "fighterWeaponRef": "fighter_aam",
+      "targets": ["CM", "UAV"],
+      "delay": { "kind": "game_sec", "offMapGameSec": 8, "onMapAirbaseGameSec": 3 },
+      "duration": { "kind": "game_sec", "gameSec": 20 },
+      "cost": { "commandPoints": 2 },
+      "firstAvailable": { "level": 6 },
+      "_source": { "name": "战斗机·区域巡逻", "delay": "6–10（场外）/ 3（机场在地图内）", "duration": "15–25" }
+    },
+    {
+      "id": "fighter_directed_intercept",
+      "nameKey": "support.fighter_directed_intercept.name",
+      "provider": "air_force", "effect": "directed_intercept",
+      "fighterRef": "fighter", "fighterWeaponRef": "fighter_aam",
+      "delay": { "kind": "game_sec", "offMapGameSec": 8, "onMapAirbaseGameSec": 3 },
+      "duration": { "kind": "until_ammo_out" },
+      "cost": { "commandPoints": 2 },
+      "firstAvailable": { "level": 6 },
+      "_source": { "name": "战斗机·定向拦截", "effect": "迎击某方向的已知目标群", "delay": "同上（6–10 / 3）", "duration": "至弹药耗尽" }
+    },
+    {
+      "id": "fighter_apkws_hunter",
+      "nameKey": "support.fighter_apkws_hunter.name",
+      "provider": "air_force", "effect": "uav_hunt",
+      "fighterRef": "fighter", "fighterWeaponRef": "fighter_apkws",
+      "targets": ["UAV"], "killsPerSortie": 10,
+      "delay": { "kind": "game_sec", "offMapGameSec": 8, "onMapAirbaseGameSec": 3 },
+      "duration": { "kind": "game_sec", "gameSec": 20 },
+      "cost": { "commandPoints": 1 },
+      "firstAvailable": { "level": 15 },
+      "_source": { "name": "战斗机·猎杀无人机（APKWS）", "killsPerSortie": "每架次可拦截 10–20 架 UAV" }
+    },
+    {
+      "id": "national_gnss_spoof",
+      "nameKey": "support.national_gnss_spoof.name",
+      "provider": "higher_ew", "effect": "accuracy_drop",
+      "accuracyTierDrop": 2, "affectsSameAsEwUnit": "area_nav_jammer",
+      "delay": { "kind": "game_sec", "gameSec": 3 },
+      "duration": { "kind": "game_sec", "gameSec": 30 },
+      "cost": { "commandPoints": 2 },
+      "firstAvailable": { "level": 10 },
+      "_source": { "name": "国家级导航欺骗（1.4、1.6）", "effect": "一段时间内某区域全部 GNSS 制导目标精度 −2 档", "affectsSameAsEwUnit": "同区域导航干扰" }
+    },
+    {
+      "id": "neighbor_fire_teams",
+      "nameKey": "support.neighbor_fire_teams.name",
+      "provider": "neighbor_oblast", "effect": "reinforcement",
+      "reinforcementUnit": "mobile_fire_team", "reinforcementCount": 2,
+      "delay": { "kind": "next_day" },
+      "duration": { "kind": "nights", "nights": 1 },
+      "cost": { "trust": "small" },
+      "firstAvailable": { "level": 6 },
+      "_source": { "name": "邻州机动火力组", "reinforcementCount": "临时增加 2–4 个火力组", "duration": "1–2 夜" }
+    },
+    {
+      "id": "adjacent_sector_coverage",
+      "nameKey": "support.adjacent_sector_coverage.name",
+      "provider": "regional_ad_command", "effect": "sector_coverage",
+      "coverageUnits": ["patriot", "samp_t"],
+      "delay": { "kind": "instant" },
+      "duration": { "kind": "nights", "nights": 1 },
+      "cost": { "trust": "large" },
+      "firstAvailable": { "level": 11 },
+      "_source": { "name": "邻近扇区覆盖", "effect": "邻近 Patriot / SAMP/T 扇区覆盖地图边缘" }
+    }
+  ]
+}

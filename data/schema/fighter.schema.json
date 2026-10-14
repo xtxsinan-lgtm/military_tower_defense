@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fighter.schema.json",
+  "title": "战斗机性能（数值表 1.1、1.2 战斗机行；外部支援使用）",
+  "type": "object",
+  "required": ["fighters"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "fighters": { "type": "array", "items": { "$ref": "#/$defs/fighter" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "fighter": {
+      "type": "object",
+      "required": ["id", "nameKey", "ceilingKm", "takeoffGameSec", "rearmGameSec", "patrolSpeedKmh", "priceMusd", "weapons"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "ceilingKm": { "$ref": "common.schema.json#/$defs/positive" },
+        "takeoffGameSec": { "$ref": "common.schema.json#/$defs/nonNegative" },
+        "rearmGameSec": { "$ref": "common.schema.json#/$defs/nonNegative", "description": "返航补给时间" },
+        "patrolSpeedKmh": { "$ref": "common.schema.json#/$defs/positive" },
+        "fireOnMove": { "const": "yes" },
+        "priceMusd": { "$ref": "common.schema.json#/$defs/nonNegative", "description": "每架" },
+        "weapons": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "nameKey", "interceptClass", "rangeKm", "shotCostMusd", "loadout", "targets"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+              "interceptClass": { "$ref": "common.schema.json#/$defs/id" },
+              "rangeKm": { "$ref": "common.schema.json#/$defs/positive" },
+              "shotCostMusd": { "$ref": "common.schema.json#/$defs/nonNegative" },
+              "loadout": { "type": "integer", "minimum": 1, "description": "每架次携带数量" },
+              "targets": {
+                "type": "array", "minItems": 1, "uniqueItems": true,
+                "items": { "$ref": "common.schema.json#/$defs/targetTag" }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

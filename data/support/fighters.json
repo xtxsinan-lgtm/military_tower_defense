@@ -1,0 +1,32 @@
+{
+  "$schema": "../schema/fighter.schema.json",
+  "fighters": [
+    {
+      "id": "fighter",
+      "nameKey": "fighter.fighter.name",
+      "ceilingKm": 15, "takeoffGameSec": 8, "rearmGameSec": 30, "patrolSpeedKmh": 900, "fireOnMove": "yes",
+      "priceMusd": 45,
+      "weapons": [
+        { "id": "fighter_aam", "nameKey": "weapon.fighter_aam.name", "interceptClass": "fighter_aam",
+          "rangeKm": 80, "shotCostMusd": 0.75, "loadout": 4,
+          "targets": ["UAV", "CM", "SCM", "HELI", "AC_LOW", "AC_HIGH"] },
+        { "id": "fighter_apkws", "nameKey": "weapon.fighter_apkws.name", "interceptClass": "fighter_apkws",
+          "rangeKm": 5, "shotCostMusd": 0.025, "loadout": 14,
+          "targets": ["UAV"] }
+      ],
+      "_source": {
+        "name": "F‑16 / Mirage 2000 / MiG‑29",
+        "weapons[0].rangeKm": "机载导弹 30–80",
+        "priceMusd": "30–60（每架）",
+        "weapons[0].shotCostMusd": "0.5–1 M$（导弹）",
+        "weapons[].loadout": "4–6 导弹或 14–28 火箭"
+      },
+      "provisional": {
+        "weapons[1].rangeKm": "数值表未给 APKWS 射程，暂按 VAMPIRE 的 5 km",
+        "weapons[1].targets": "APKWS 只用于猎杀 UAV（1.6 猎杀无人机）",
+        "weapons[0].interceptClass": "数值表 3.3 没有战斗机行，新增类别 fighter_aam",
+        "weapons[1].interceptClass": "新增类别 fighter_apkws"
+      }
+    }
+  ]
+}

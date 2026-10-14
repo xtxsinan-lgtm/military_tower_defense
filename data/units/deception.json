@@ -1,0 +1,29 @@
+{
+  "$schema": "../schema/deception.schema.json",
+  "deceptionUnits": [
+    {
+      "id": "decoy_emitter",
+      "nameKey": "deception.decoy_emitter.name",
+      "effect": "fake_emitter", "attracts": ["anti_radiation", "recon"],
+      "duration": "one_shot", "priceMusd": 0.125,
+      "firstAvailable": { "level": 7 },
+      "_source": { "name": "诱饵辐射源（假雷达）", "effect": "模拟某型雷达开机；吸引反辐射导弹与侦察，被命中后销毁", "priceMusd": "0.05–0.2" }
+    },
+    {
+      "id": "sacrificial_radar",
+      "nameKey": "deception.sacrificial_radar.name",
+      "effect": "sacrificial_emitter", "attracts": ["anti_radiation", "recon"],
+      "duration": "until_destroyed", "priceMusd": null, "stockOnly": true,
+      "firstAvailable": { "level": 3 },
+      "_source": { "name": "旧雷达\"牺牲开机\"", "effect": "用库存老雷达开机吸引火力" }
+    },
+    {
+      "id": "fake_launcher",
+      "nameKey": "deception.fake_launcher.name",
+      "effect": "fake_launcher", "attracts": ["recon", "iskander", "lancet"], "seeThroughByReconQuality": true,
+      "duration": "nights", "durationNights": 2, "priceMusd": 0.055,
+      "firstAvailable": { "level": 6 },
+      "_source": { "name": "充气 / 木制假发射车", "durationNights": "2–3 夜", "priceMusd": "0.01–0.1" }
+    }
+  ]
+}

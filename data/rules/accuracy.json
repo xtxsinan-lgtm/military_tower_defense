@@ -1,0 +1,17 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "accuracy",
+  "tierOrder": ["D", "C", "B", "A"],
+  "tiers": {
+    "A": { "offsetCells": { "min": 0, "max": 0 }, "ewExtraCells": 1 },
+    "B": { "offsetCells": { "min": 0, "max": 1 }, "ewExtraCells": 1 },
+    "C": { "offsetCells": { "min": 0, "max": 2 }, "ewExtraCells": 2 },
+    "D": { "offsetCells": { "min": 1, "max": 3 }, "ewExtraCells": 2 }
+  },
+  "spotterTierBoost": 1,
+  "_source": {
+    "tiers": "数值表 3.1：精度档 → 落点随机偏移（格）；受电子战影响",
+    "spotterTierBoost": "Orlan 标记目标时，精度档提升一档（D→C、C→B……）",
+    "ewImmune": "光纤 FPV、匕首、Oreshnik 不受电子战影响（见 enemies/munitions.json 的 ewImmune）"
+  }
+}

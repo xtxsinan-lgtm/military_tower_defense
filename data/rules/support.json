@@ -1,0 +1,17 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "support",
+  "fighterSortiesPerNight": { "min": 0, "max": 4 },
+  "bigRaidRefusalChance": 0.45,
+  "frontlineRiskZoneBlocksCalls": true,
+  "airspace": {
+    "restrictedEngagement": { "isDefault": true, "confirmedHostileOnly": true, "reactionTimeMult": 1.3 },
+    "fighterExclusiveZone": { "isDefault": false, "groundHoldFire": true }
+  },
+  "_source": {
+    "fighterSortiesPerNight": "每夜额度 0–4 架次（随关卡与时期递增）。这是关卡可配置的范围，具体值写在关卡数据里",
+    "bigRaidRefusalChance": "大空袭当晚有 30–60% 概率被\"调往其他方向\"而拒绝",
+    "frontlineRiskZoneBlocksCalls": "地图上标注前线风险区，区域内不可呼叫",
+    "airspace": "战斗机所在区域，地面防空默认\"限制交战\"（只打已确认的敌方目标，反应时间 +30%）；可改为\"战斗机专区\"（地面防空停火）"
+  }
+}

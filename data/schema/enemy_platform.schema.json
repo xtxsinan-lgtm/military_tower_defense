@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enemy_platform.schema.json",
+  "title": "敌方飞机、直升机、平台型无人机（数值表 2.3）",
+  "type": "object",
+  "required": ["platforms"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "platforms": { "type": "array", "items": { "$ref": "#/$defs/platform" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "platform": {
+      "type": "object",
+      "required": ["id", "nameKey", "tag", "cruiseSpeedKmh", "altitudeBand", "hp", "entersMap", "behavior"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "tag": {
+          "oneOf": [{ "$ref": "common.schema.json#/$defs/targetTag" }, { "type": "null" }],
+          "description": "null = 不进入地图，不可攻击"
+        },
+        "cruiseSpeedKmh": { "$ref": "common.schema.json#/$defs/positive" },
+        "maxSpeedKmh": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "altitudeBand": { "$ref": "enemy_munition.schema.json#/$defs/altitudeBand" },
+        "hp": { "type": ["integer", "null"], "minimum": 1 },
+        "entersMap": { "type": "boolean" },
+        "loadout": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["options"],
+            "properties": {
+              "options": {
+                "type": "array", "minItems": 1,
+                "items": { "$ref": "common.schema.json#/$defs/id" },
+                "description": "可选弹药（引用 enemies/munitions.json），每次出击选其一"
+              },
+              "count": { "type": ["integer", "null"], "minimum": 1, "description": "null = 数值表未给数量" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "otherArmament": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["atgm", "rockets", "unguided_bombs", "long_range_aam", "small_guided_bombs"] },
+          "description": "未单独建模为弹药的武器"
+        },
+        "behavior": {
+          "enum": ["frontline_attack", "must_enter_shorad", "low_strike", "standoff_release_and_return", "hunt_fighters_and_radars", "launch_from_map_edge", "global_alert_on_takeoff", "wave_source_only", "armed_recon", "spotter", "awacs"]
+        },
+        "standoffFrom": { "$ref": "common.schema.json#/$defs/yearMonth", "description": "从此时起在远程投弹后返航" },
+        "whileAlive": {
+          "type": "object",
+          "properties": {
+            "enemyAccuracyTierBoost": { "type": "integer", "minimum": 1, "description": "敌方精度档提升" },
+            "cruiseMissilesAvoidAirDefense": { "type": "boolean" }
+          },
+          "additionalProperties": false,
+          "description": "存活期间的效果"
+        },
+        "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

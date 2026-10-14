@@ -1,0 +1,16 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "conventions",
+  "gameSecToWorldSec": 60,
+  "worldStepSec": 1,
+  "cellKm": 1,
+  "machKmh": 1200,
+  "currency": "Musd",
+  "_source": {
+    "gameSecToWorldSec": "数值表第 0 节：1 游戏秒 ≈ 真实 1 分钟；WBS 01.A：游戏秒 × 60 = 世界秒",
+    "worldStepSec": "WBS 01.A：固定 1 世界秒一步",
+    "cellKm": "数值表第 0 节：1 格 ≈ 1 km",
+    "machKmh": "游戏约定（人工确认 2026-10-14）",
+    "currency": "百万美元（M$），系统价格 = 一个火力单元/连"
+  }
+}
