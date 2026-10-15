@@ -95,14 +95,14 @@
       "id": "skynex",
       "nameKey": "unit.skynex.name",
       "deployTier": "minutes", "deployGameSec": 8, "packGameSec": 8,
-      "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
       "systemPriceMusd": 22.5,
       "weapons": [
         { "id": "skynex_35mm", "nameKey": "weapon.skynex_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
           "rangeKm": 4, "ceilingKm": 3, "shotCostMusd": 0.02, "magazine": null, "ammoSupply": "medium",
           "targets": ["UAV", "JET_UAV", "DECOY", "CM", "GB"], "lowEfficiencyTargets": ["CM"] }
       ],
-      "_source": { "name": "Skynex / Skyranger 35", "weapons[0].rangeKm": "3–4", "systemPriceMusd": "15–30", "moveSpeedKmh": "牵引", "weapons[0].ammoSupply": "中" }
+      "_source": { "name": "Skynex / Skyranger 35", "weapons[0].rangeKm": "3–4", "systemPriceMusd": "15–30", "moveSpeedKmh": "车载 60（依据 WS10-003 外观清单：乌克兰收到的 Skynex 整套装在卡车上；2026-10-15 人工审核通过）", "weapons[0].ammoSupply": "中" }
     },
     {
       "id": "skyranger_35",
@@ -295,7 +295,7 @@
           "rangeKm": 25, "ceilingKm": 6, "shotCostMusd": 0.4, "magazine": 6, "ammoSupply": "limited",
           "targets": ["CM", "HELI", "AC_LOW", "AC_HIGH", "GB"] }
       ],
-      "_source": { "name": "Aspide / Spada；Hawk / Aspide", "weapons[0].shotCostMusd": "0.3–0.5" }
+      "_source": { "name": "Skyguard‑Aspide（原写 Aspide / Spada，WS10-003 审核改名）；Hawk / Aspide", "weapons[0].shotCostMusd": "0.3–0.5" }
     },
     {
       "id": "nasams",

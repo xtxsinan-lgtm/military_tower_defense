@@ -37,7 +37,7 @@
 | 20 | `frankensam` | FrankenSAM | 自行（视组合而定） | 5–10 m | |
 | 21 | `buk_m1` | Buk‑M1 | 自行（履带） | 5–10 m | ✔ |
 | 22 | `hawk` | Hawk Phase III | 牵引 | 5–10 m | |
-| 23 | `aspide` | Aspide / Spada | 牵引 / 方舱 | 5–10 m | |
+| 23 | `aspide` | Skyguard‑Aspide | 牵引 / 方舱 | 5–10 m | |
 | 24 | `nasams` | NASAMS | 牵引 / 卡车载 | 5–10 m | |
 | 25 | `iris_t_slm` | IRIS‑T SLM | 卡车载（8×8） | 10–15 m | ✔（IRIS‑T 系列） |
 | 26 | `s300ps` | S‑300PS | 自行（轮式 8×8） | 10–15 m | ✔ |
@@ -366,7 +366,7 @@
 - **参考图检索**：Commons [Category:MIM-23 Hawk](https://commons.wikimedia.org/wiki/Category:MIM-23_Hawk)、[Category:AN/MPQ-50 Pulse Acquisition Radar](https://commons.wikimedia.org/wiki/Category:AN/MPQ-50_Pulse_Acquisition_Radar)；维基 [MIM-23 Hawk](https://en.wikipedia.org/wiki/MIM-23_Hawk)。
 - **注意**：三联装发射架是识别要点；Phase III 雷达组件与早期型略有不同 ≈。
 
-### Aspide / Spada（`aspide`）
+### Skyguard‑Aspide（`aspide`）
 - **类别**：牵引 / 方舱。Aspide 导弹用于 Skyguard（西班牙等）和 Spada（意大利）两种地面系统 [26]。
 - **关键外形特征**（≈）：
   1. 牵引式多联装发射架（Skyguard‑Aspide 为 4 联装箱 ≈；Spada 为 6 联装 ≈）。
@@ -761,23 +761,35 @@
 
 1. **输出路径**：WBS WS10-003 的输出写的是 `docs/reference_list.md`（单文件），本次按分派要求写到 `docs/reference_list/friendly.md`。如果确认采用目录结构，需要更新 WBS。
 2. **`fighter` 单条目对应三种机型**：数据中 `fighter` 只有一个 ID，但 F‑16 / Mirage 2000 / MiG‑29 外观完全不同（单发 / 无尾三角翼 / 双发双垂尾）。需要决定：拆成三个 ID，还是在同一 ID 下按关卡 / 时间段切换外观。
+   **已定（2026-10-15）**：不改数据 ID；`fighter` 按关卡时期切换 F‑16 / Mirage 2000 / MiG‑29 外观（三套精灵）。
 3. **`skynex` 的 mobility**：数据为 `towed`（数值表"牵引"），但英文维基称乌克兰获得的 Skynex 组件全部装在 HX 卡车上 [11]。外观上应为卡车载；玩法上是否仍按"牵引 / 分钟级展开"处理由人决定。
+   **已定（2026-10-15）**：改为车载（`mobility: vehicle`，移动速度 60 km/h），数据与数值表已同步；外观按卡车载建模。
 4. **`aspide` 的显示名 "Aspide / Spada"**：时间表文档写"Aspide 2000 / Spada，西班牙"。按维基，西班牙使用的是 Skyguard‑Aspide，Spada 为意大利空军系统 [26]，两者外观不同 ≈。需确认乌克兰实际接收的是哪种（或两种都有），以决定建模对象。
+   **已定（2026-10-15）**：显示名改为"Skyguard‑Aspide"（`data/loc/zh.json`、数值表已同步），按 Skyguard‑Aspide 建模。
 5. **`frankensam` 是一类组合而非单一装备**：时间表列出至少三种组合，外观各不相同，而数据只有一个单位。且 Buk + RIM‑7 组合与 `buk_m1` 外观几乎相同。
+   **已定（2026-10-15）**：代表外观用"卡车载 + 改装发射架"的组合，与 Buk 拉开区别。
 6. **`sky_sentinel` 命名冲突**：英文维基 "Sky Sentinel" 是无关的无人飞艇条目，检索资料时容易误用（不影响数据，仅提示）。
 7. **`tethered_balloon`**：数据和数值表均标 ≈，本次也未找到乌克兰使用系留气球传感器的公开资料。
 8. **`s300pt` / `s300ps`**：WS03-007 只写"S‑300"，数据中是两个外观不同的单位（PS 为 8×8 自行，PT 为半挂牵引）[32]。
+   **已定（2026-10-15）**：两种都做，共用发射筒和雷达部件；WBS WS03-007 已更新。
 
 ## 七、需要人工确认的事项
 
 1. **S‑300 首批建模范围**：只做 S‑300PS（8×8），还是 PS + PT（半挂）都做？两者可共用发射筒和 30N6 雷达天线部件。
+   **已定（2026-10-15）**：PS + PT 都做，共用发射筒和雷达部件。
 2. **IRIS‑T 首批建模范围**：WS03-007 写"IRIS‑T"，数据中有 SLS 和 SLM 两个单位，外观差异大。建议首批做 SLM（发射车 + TRML‑4D 雷达车）。
+   **已定（2026-10-15）**：首批做 SLM（发射车 + 雷达车）。
 3. **FrankenSAM 外观方案**：选一种组合作为代表外观，并决定如何与 Buk‑M1 区分。
+   **已定（2026-10-15）**：用"卡车载 + 改装发射架"的组合，与 Buk 拉开区别。
 4. **Patriot 外观版本**：美式（M860 半挂 + M983 HEMTT）还是德式（卡车载）为主。乌克兰同时有两类来源 ≈。
+   **已定（2026-10-15）**：美式为主。
 5. **Buk‑M1 负重轮数、Gepard 负重轮数、IRIS‑T SLM 发射箱排列、Patriot 发射架抬起角度**：以上均标 ≈，建模前需对照 Commons 乌克兰服役照片确认。
 6. **探测单位的代表型号**：数据只给类别；本清单建议苏制远程 = P‑18、苏制中程 = 36D6 或 P‑19、西方 3D = GM200/400 或 TRML‑4D、补盲 = Sentinel 类小型雷达。需人工选定。
+   **已定（2026-10-15）**：苏制远程 = P‑18、苏制中程 = 36D6、西方 3D = TRML‑4D、补盲 = 小型补盲雷达。
 7. **车辆品牌**：火力组皮卡、拦截无人机班组的民用车辆建议做成"无品牌通用皮卡"，避免商标问题（GDD 17 第 8 条）。
+   **已定（2026-10-15）**：做成无品牌的通用外观。
 8. **乌军识别标记**：白色十字 / 三角等识别标记在不同时期、不同方向使用不同，是否在模型上表现、用哪种，需人工决定 ≈。
+   **已定（2026-10-15）**：不画，保持中性。
 
 ## 来源
 
