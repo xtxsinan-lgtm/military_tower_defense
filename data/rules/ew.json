@@ -23,9 +23,5 @@
     "sideEffects.friendlyInterceptorDroneMult": "己方拦截无人机效能 −40%（与 intercept.json 修正项一致）",
     "sideEffects.ownDroneLinkCut": "己方无人机链路有概率中断（概率未给出）",
     "sideEffects.urbanNavJamCityResiliencePerNight": "城区内长时间开启导航干扰，每夜城市韧性 −1"
-  },
-  "provisional": {
-    "effectivenessByPeriod[3].from": "\"2025 春\"暂定 2025-03",
-    "effectivenessByPeriod[4].from": "\"2026 起\"暂定 2026-01"
   }
 }

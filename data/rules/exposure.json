@@ -27,10 +27,5 @@
     "ratesPerGameSec.enemyReconNearby": "敌方侦察无人机（Orlan 等）在 5 km 内存活：每秒 +0.5（不论是否开机）",
     "onRelocate": "撤收转移完成：归零（转移到已被敌方侦察过的阵地则减半）",
     "thresholds": "≥ 40 当夜反辐射导弹优先锁定；≥ 70 次夜进入已知目标清单；100 当夜即遭定点打击"
-  },
-  "provisional": {
-    "sensorExposureLevelRates": "1.3 的\"暴露速度 高 / 中\"换算成每秒数值：高 = 苏制警戒雷达 1.0，中 = 西方警戒雷达 0.6（推断）",
-    "ewExposureLevelRates.medium": "1.4 的\"辐射暴露 中\"暂定 0.6",
-    "ewExposureLevelRates.low": "1.4 的\"辐射暴露 低\"暂定 0.3"
   }
 }

@@ -16,9 +16,5 @@
     "ammoTiers": "数值表第 4 节：苏制 S‑300 / Buk 导弹为 A 线全国共享库存，耗尽不补（设保底）；西方弹药按关卡限量配额 + 补给窗口",
     "historicalEvents": "GDD 9.6：2023.04 之前申请不到 Patriot；2026 伊朗战争期间 PAC‑3 补给减半；苏制导弹全国库存只减不增",
     "commandPointsPerNight": "GDD 9.2：指挥点每夜 3–6 点（关卡可配置范围）"
-  },
-  "provisional": {
-    "historicalEvents[1].from": "\"2026 伊朗战争期间\"的起止月份未定，暂定 2026-01 起、无结束",
-    "historicalEvents[0].until": "\"2023.04 之前\"：until 为不含当月"
   }
 }

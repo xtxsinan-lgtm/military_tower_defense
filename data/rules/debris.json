@@ -12,8 +12,5 @@
     "ruralInterceptDamageFraction": "拦截点位于城外：无碎片伤害",
     "divertedImpactFullDamageInUrban": "被电子战诱偏的目标：落点按精度档偏移；若偏移后落入城区仍会造成全额伤害",
     "scoreUrbanInterceptRatio": "评分中单列\"城区上空拦截比例\""
-  },
-  "provisional": {
-    "urbanInterceptRadiusCells": "\"正下方 1 格\"理解为只影响拦截点所在的 1 格（半径 0），而不是半径 1 格"
   }
 }

@@ -78,12 +78,11 @@
       "nameKey": "sensor.radio_detector.name",
       "layer": "local", "detectionRangeKm": 10,
       "lowAltitude": "good", "onlyDetects": "radio_linked_drones", "trackQuality": "vague",
-      "trackQualityUpgrades": [{ "to": "approximate", "condition": "linked_drone_types", "enemies": ["lancet", "orlan_10"] }],
+      "trackQualityUpgrades": [{ "to": "approximate", "condition": "linked_drone_types", "enemies": ["fpv_radio", "lancet", "orlan_10"] }],
       "emission": "passive", "exposureLevel": "zero",
       "deployGameSec": 1, "packGameSec": 1, "priceMusd": 0.01,
       "firstAvailable": { "level": 8 },
-      "_source": { "detectionRangeKm": "5–10", "trackQuality": "模糊；对 FPV / Lancet / Orlan 为大致" },
-      "provisional": { "trackQualityUpgrades[0].enemies": "数值表列出的 FPV（无线电型）在敌方单位表中没有对应条目，暂只列 Lancet、Orlan" }
+      "_source": { "detectionRangeKm": "5–10", "trackQuality": "模糊；对 FPV / Lancet / Orlan 为大致" }
     },
     {
       "id": "civilian_reports",

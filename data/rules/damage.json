@@ -32,8 +32,5 @@
     "bands[4].airDefense": "摧毁 1 个火力单元并波及相邻格",
     "bands[4].civilBuildings": "区块损毁",
     "splashFalloff": "伤害随溅射半径线性衰减：中心 100% → 边缘 30%"
-  },
-  "provisional": {
-    "bands[1].airDefense.suspendGameSec": "数值表写\"暂停 30 秒\"，暂按游戏秒理解（= 30 世界分钟）"
   }
 }

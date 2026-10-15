@@ -105,6 +105,8 @@
   "enemy.geran_5.name": "Geran‑5",
   "enemy.lancet.name": "Lancet",
   "enemy.fpv_fiber.name": "光纤 FPV",
+  "enemy.fpv_radio.name": "无线电 FPV",
+  "enemy.molniya.name": "Molniya",
   "enemy.kh101.name": "Kh‑101 / Kh‑555",
   "enemy.kalibr.name": "口径 Kalibr",
   "enemy.iskander_k.name": "伊斯坎德尔‑K",

@@ -9,8 +9,7 @@
     { "id": "shahed_136", "nameKey": "enemy.shahed_136.name", "category": "drone", "tag": "UAV",
       "speedKmh": 185, "altitudeBand": "low", "altitudeM": { "min": 500, "max": 2000 }, "interceptable": true, "hp": 2,
       "damageLevel": 3, "splashCells": 1, "accuracy": "C", "accuracyByPeriod": [{ "from": "2025-01", "tier": "B" }], "costMusd": 0.05,
-      "_source": { "name": "Shahed‑136 / Geran‑2", "altitudeM": "低（500 m–2 km）", "accuracy": "C → B（2025 AI 升级）" },
-      "provisional": { "accuracyByPeriod[0].from": "数值表只写 2025，暂定 2025-01" } },
+      "_source": { "name": "Shahed‑136 / Geran‑2", "altitudeM": "低（500 m–2 km）", "accuracy": "C → B（2025 AI 升级）" } },
 
     { "id": "geran_2_heavy", "nameKey": "enemy.geran_2_heavy.name", "category": "drone", "tag": "UAV",
       "speedKmh": 170, "altitudeBand": "low", "interceptable": true, "hp": 2,
@@ -41,6 +40,29 @@
       "speedKmh": 100, "altitudeBand": "very_low", "interceptable": true, "hp": 1,
       "damageLevel": 1, "vehicleDamageMult": 3, "splashCells": 0, "accuracy": "A", "ewImmune": true, "costMusd": 0.001,
       "_source": { "accuracy": "A，免疫电子战" } },
+
+    { "id": "fpv_radio", "nameKey": "enemy.fpv_radio.name", "category": "fpv", "tag": "UAV",
+      "speedKmh": 100, "altitudeBand": "very_low", "interceptable": true, "hp": 1,
+      "damageLevel": 1, "vehicleDamageMult": 3, "splashCells": 0, "accuracy": "A", "costMusd": 0.0005,
+      "_source": { "name": "无线电 FPV（数值表 v1.2 新增；1.3 / 1.4 中的\"FPV\"）" },
+      "provisional": {
+        "speedKmh": "参照光纤 FPV",
+        "damageLevel": "参照光纤 FPV",
+        "costMusd": "比光纤 FPV 便宜，暂定 0.0005",
+        "ewImmune": "与光纤 FPV 的区别：受反无人机干扰影响"
+      } },
+
+    { "id": "molniya", "nameKey": "enemy.molniya.name", "category": "loitering", "tag": "UAV",
+      "speedKmh": 90, "altitudeBand": "very_low", "interceptable": true, "hp": 1,
+      "damageLevel": 2, "vehicleDamageMult": 2, "splashCells": 0, "accuracy": "B", "costMusd": 0.001,
+      "_source": { "name": "Molniya 廉价固定翼攻击无人机（数值表 v1.2 新增；1.4 中提到）" },
+      "provisional": {
+        "speedKmh": "整行参照 Lancet 降档起草：更慢、更便宜、精度 B、对车辆加成 ×2",
+        "damageLevel": "同上",
+        "vehicleDamageMult": "同上",
+        "accuracy": "同上",
+        "costMusd": "同上"
+      } },
 
     { "id": "kh101", "nameKey": "enemy.kh101.name", "category": "cruise_missile", "tag": "CM",
       "speedKmh": 700, "altitudeBand": "very_low", "altitudeM": { "min": 30, "max": 70 }, "interceptable": true, "hp": 5,
@@ -134,37 +156,31 @@
     { "id": "fab250_umpk", "nameKey": "enemy.fab250_umpk.name", "category": "glide_bomb", "tag": "GB",
       "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 2, "releaseRangeKm": 60, "mostCommon": true,
       "damageLevel": 4, "splashCells": 1, "accuracy": "C", "costMusd": null,
-      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "40–60" },
-      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "40–60" } },
 
     { "id": "fab500_umpk", "nameKey": "enemy.fab500_umpk.name", "category": "glide_bomb", "tag": "GB",
       "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 3, "releaseRangeKm": 70,
       "damageLevel": 6, "splashCells": 2, "accuracy": "C", "costMusd": null,
-      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "40–70" },
-      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "40–70" } },
 
     { "id": "fab1500_umpk", "nameKey": "enemy.fab1500_umpk.name", "category": "glide_bomb", "tag": "GB",
       "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 4, "releaseRangeKm": 70, "bonusVsFortification": true,
       "damageLevel": 9, "splashCells": 3, "accuracy": "C", "costMusd": null,
-      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "60–70", "bonusVsFortification": "对工事加成（倍率未给出）" },
-      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "60–70", "bonusVsFortification": "对工事加成（倍率未给出）" } },
 
     { "id": "fab3000_umpk", "nameKey": "enemy.fab3000_umpk.name", "category": "glide_bomb", "tag": "GB",
       "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 5, "releaseRangeKm": 60, "rare": true,
       "damageLevel": 10, "splashCells": 4, "accuracy": "C", "costMusd": null,
-      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "50–60" },
-      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+      "_source": { "speedKmh": "亚音速滑翔", "releaseRangeKm": "50–60" } },
 
     { "id": "umpb_d30", "nameKey": "enemy.umpb_d30.name", "category": "glide_bomb", "tag": "GB",
       "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 2, "releaseRangeKm": 90, "groundLaunchCapable": true,
       "damageLevel": 4, "splashCells": 1, "accuracy": "B", "costMusd": null,
-      "_source": { "speedKmh": "亚音速滑翔" },
-      "provisional": { "speedKmh": "数值表只写\"亚音速滑翔\"，暂定 600" } },
+      "_source": { "speedKmh": "亚音速滑翔" } },
 
     { "id": "umpb_5r", "nameKey": "enemy.umpb_5r.name", "category": "glide_bomb", "tag": "GB",
       "speedKmh": 600, "altitudeBand": "glide", "interceptable": true, "hp": 2, "releaseRangeKm": 150, "threatensDeepCities": true,
       "damageLevel": 4, "splashCells": 1, "accuracy": "B", "costMusd": null,
-      "_source": { "name": "UMPB‑5R 喷气滑翔弹", "speedKmh": "亚音速 + 推进", "releaseRangeKm": "100–150+" },
-      "provisional": { "speedKmh": "数值表只写\"亚音速 + 推进\"，暂定 600" } }
+      "_source": { "name": "UMPB‑5R 喷气滑翔弹", "speedKmh": "亚音速 + 推进", "releaseRangeKm": "100–150+" } }
   ]
 }

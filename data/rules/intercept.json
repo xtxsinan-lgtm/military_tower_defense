@@ -4,7 +4,7 @@
   "decoyUsesColumn": "UAV",
   "classes": {
     "gun":                   { "UAV": 0.25, "JET_UAV": 0.10, "CM": 0.10, "GB": 0.05, "HELI": 0.20 },
-    "gun_radar":             { "UAV": 0.45, "JET_UAV": 0.25, "CM": 0.15, "HELI": 0.40, "AC_LOW": 0.25 },
+    "gun_radar":             { "UAV": 0.45, "JET_UAV": 0.25, "CM": 0.15, "GB": 0.05, "HELI": 0.40, "AC_LOW": 0.25 },
     "manpads":               { "UAV": 0.50, "JET_UAV": 0.25, "CM": 0.20, "HELI": 0.45, "AC_LOW": 0.35 },
     "interceptor_drone":     { "UAV": 0.60, "JET_UAV": 0.35 },
     "jet_interceptor_drone": { "UAV": 0.70, "JET_UAV": 0.50, "CM": 0.30 },
@@ -30,7 +30,7 @@
     "evasiveTargetVsInterceptorDrone": { "probMult": 0.6, "from": "2025-09", "enemies": ["shahed_136", "geran_2_heavy"] }
   },
   "_source": {
-    "classes": "数值表 3.3（游戏平衡起始值，不是真实拦截率）",
+    "classes": "数值表 v1.2 3.3（游戏平衡起始值，不是真实拦截率）；※ 标记的值为暂定，待 WS09 批量模拟后调整",
     "classes.pac3.BM": "75% → 55%（2025 后）",
     "modifiers.aceCrew": "×1.1–1.2",
     "modifiers.crewFatigue": "班组疲劳（连续 3 夜以上）",
@@ -38,19 +38,6 @@
     "lowEfficiency": "数值表 1.2 的\"低效\"视为已体现在本矩阵中，不再额外乘倍率"
   },
   "provisional": {
-    "decoyUsesColumn": "3.3 没有 DECOY 列，暂定诱饵按 UAV 列判定（诱饵外观与无人机相同，打掉诱饵会浪费弹药）",
-    "classes.*.HELI": "3.3 没有 HELI 列，全部为暂定值",
-    "classes.*.AC_LOW": "3.3 没有 AC_LOW 列，全部为暂定值",
-    "classes.*.AC_HIGH": "3.3 没有 AC_HIGH 列，全部为暂定值",
-    "classes.gun_radar": "新增类别（Gepard、Skynex、Skyranger），整行暂定",
-    "classes.interceptor_drone.JET_UAV": "2026.09 起可打 JET_UAV，概率暂定",
-    "classes.jet_interceptor_drone": "新增类别，整行暂定",
-    "classes.pac2": "新增类别，整行暂定",
-    "classes.s200": "新增类别，整行暂定",
-    "classes.fighter_aam": "新增类别，整行暂定",
-    "classes.fighter_apkws": "新增类别，整行暂定",
-    "classes.pac3.BM[1].from": "\"2025 后\"暂定 2025-01",
-    "modifiers.evasiveTargetVsInterceptorDrone.from": "\"2025 秋\"暂定 2025-09",
-    "modifiers.evasiveTargetVsInterceptorDrone.enemies": "\"后视摄像头 Geran‑2\"暂定对应 shahed_136 与 geran_2_heavy"
+    "classes.gun_radar.GB": "审核结论\"高炮可以打 GB\"，雷达火控高炮暂按高炮的 5%"
   }
 }

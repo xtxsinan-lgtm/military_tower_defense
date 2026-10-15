@@ -16,15 +16,13 @@
       "cruiseSpeedKmh": 900, "maxSpeedKmh": 1300, "altitudeBand": "low_mid", "hp": 8, "entersMap": true,
       "loadout": [{ "options": ["fab250", "fab500", "kh59"], "count": null }],
       "behavior": "low_strike",
-      "_source": { "loadout": "无制导炸弹、Kh‑59", "behavior": "（数值表未写）" },
-      "provisional": { "behavior": "数值表未写行为，暂定低空突击" } },
+      "_source": { "loadout": "无制导炸弹、Kh‑59", "behavior": "（数值表未写）" } },
 
     { "id": "su34", "nameKey": "enemy.su34.name", "tag": "AC_HIGH",
       "cruiseSpeedKmh": 900, "maxSpeedKmh": 1900, "altitudeBand": "mid_high", "hp": 10, "entersMap": true,
       "loadout": [{ "options": ["fab250_umpk", "fab500_umpk", "fab1500_umpk", "fab3000_umpk", "kh59", "kh31p"], "count": 2 }],
       "behavior": "standoff_release_and_return", "standoffFrom": "2023-01",
-      "_source": { "loadout": "2–4 枚滑翔炸弹或 Kh‑59/Kh‑31", "behavior": "2023 后在远程投弹后返航" },
-      "provisional": { "standoffFrom": "数值表只写 2023 后，暂定 2023-01" } },
+      "_source": { "loadout": "2–4 枚滑翔炸弹或 Kh‑59/Kh‑31", "behavior": "2023 后在远程投弹后返航" } },
 
     { "id": "su35s", "nameKey": "enemy.su35s.name", "tag": "AC_HIGH",
       "cruiseSpeedKmh": 900, "maxSpeedKmh": 2400, "altitudeBand": "high", "hp": 10, "entersMap": true,
@@ -54,8 +52,7 @@
       "cruiseSpeedKmh": 120, "maxSpeedKmh": 200, "altitudeBand": "mid", "hp": 3, "entersMap": true,
       "loadout": [{ "options": ["banderol"], "count": null }], "otherArmament": ["small_guided_bombs"],
       "behavior": "armed_recon",
-      "_source": { "name": "Orion 无人机", "loadout": "Banderol / 小型制导弹", "behavior": "（数值表未写）" },
-      "provisional": { "behavior": "数值表未写行为，暂定武装侦察" } },
+      "_source": { "name": "Orion 无人机", "loadout": "Banderol / 小型制导弹", "behavior": "（数值表未写）" } },
 
     { "id": "orlan_10", "nameKey": "enemy.orlan_10.name", "tag": "UAV",
       "cruiseSpeedKmh": 80, "maxSpeedKmh": 150, "altitudeBand": "low_mid", "hp": 1, "entersMap": true,

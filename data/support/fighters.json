@@ -20,12 +20,6 @@
         "priceMusd": "30–60（每架）",
         "weapons[0].shotCostMusd": "0.5–1 M$（导弹）",
         "weapons[].loadout": "4–6 导弹或 14–28 火箭"
-      },
-      "provisional": {
-        "weapons[1].rangeKm": "数值表未给 APKWS 射程，暂按 VAMPIRE 的 5 km",
-        "weapons[1].targets": "APKWS 只用于猎杀 UAV（1.6 猎杀无人机）",
-        "weapons[0].interceptClass": "数值表 3.3 没有战斗机行，新增类别 fighter_aam",
-        "weapons[1].interceptClass": "新增类别 fighter_apkws"
       }
     }
   ]
