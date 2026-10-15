@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schema/level_content.schema.json",
+  "kind": "events",
+  "events": [
+    {
+      "id": "ev_night1_start",
+      "trigger": { "type": "night_start", "night": 1 },
+      "actions": [{ "type": "dialogue", "dialogueKey": "dialogue.test_01.night1_start" }]
+    }
+  ]
+}

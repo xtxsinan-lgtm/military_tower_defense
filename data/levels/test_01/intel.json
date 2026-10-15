@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schema/level_content.schema.json",
+  "kind": "intel",
+  "nights": [
+    {
+      "night": 1,
+      "items": [
+        { "textKey": "intel.test_01.n1_drones_east", "accurate": false, "relatedWave": "w2_shahed" },
+        { "textKey": "intel.test_01.n1_bombers_airborne", "accurate": true, "relatedWave": "w3_cruise_valley" }
+      ]
+    }
+  ]
+}

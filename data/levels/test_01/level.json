@@ -1,0 +1,37 @@
+{
+  "$schema": "../../schema/level.schema.json",
+  "id": "test_01",
+  "number": null,
+  "nameKey": "level.test_01.name",
+  "briefingKey": "level.test_01.briefing",
+  "protagonist": "A",
+  "dateRange": { "from": "2022-11-15", "to": "2022-11-16" },
+  "timeStructure": "B",
+  "fighterMode": "none",
+  "nights": 1,
+  "map": {
+    "widthM": 20000,
+    "heightM": 20000,
+    "heightmap": { "file": "map/heightmap.png", "metersPerPixel": 100, "minElevationM": 80, "maxElevationM": 330 },
+    "attribution": ["程序生成的虚构地形（tools/testmap/gen_test01_heightmap.py）"]
+  },
+  "availableUnits": [
+    { "unit": "mobile_fire_team", "count": 4, "source": "city" },
+    { "unit": "iris_t_sls", "count": 1, "source": "quota" },
+    { "unit": "nasams", "count": 1, "source": "quota" },
+    { "unit": "soviet_mid_range_radar", "count": 1, "source": "stock" },
+    { "unit": "acoustic_post", "count": 6, "source": "city" },
+    { "unit": "visual_observer", "count": 3, "source": "city" }
+  ],
+  "commandPointsPerNight": 4,
+  "victory": [{ "type": "survive_nights", "nights": 1 }],
+  "defeat": [
+    { "type": "weighted_damage_at_least", "fraction": 0.5 },
+    { "type": "grid_collapse" }
+  ],
+  "_source": {
+    "id": "WBS WS02-002：灰盒测试地图（20 × 20 km，一条河、一片城区、3 个保护目标、2 个来袭方向）",
+    "availableUnits": "GDD 18.2 M1：3 种防空（火力组、IRIS‑T SLS、NASAMS）+ 3 种探测；3 种敌人见 waves.json",
+    "dateRange": "2022.11：Shahed 大规模使用、NASAMS / IRIS‑T 已到达，电子战效能处于 70% 档"
+  }
+}

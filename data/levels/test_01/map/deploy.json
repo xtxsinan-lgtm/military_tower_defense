@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../schema/map.schema.json",
+  "kind": "deploy",
+  "zones": [
+    { "id": "zone_all", "polygonM": [[500, 500], [19500, 500], [19500, 19500], [500, 19500]] }
+  ],
+  "forbidden": [
+    { "id": "no_city_core", "reason": "urban_core", "polygonM": [[9500, 9500], [11500, 9200], [12000, 10800], [10500, 12000], [9300, 11200]] },
+    { "id": "no_river", "reason": "water", "polygonM": [[0, 15700], [5000, 13200], [9000, 11200], [12000, 9200], [16000, 6700], [20000, 4700], [20000, 4300], [16000, 6300], [12000, 8800], [9000, 10800], [5000, 12800], [0, 15300]] }
+  ],
+  "alternatePositions": [
+    { "id": "alt_north", "positionM": [10000, 15500], "surveyed": true },
+    { "id": "alt_east", "positionM": [15500, 11500], "surveyed": true },
+    { "id": "alt_south", "positionM": [11000, 5000], "surveyed": true },
+    { "id": "alt_west", "positionM": [5000, 9500], "surveyed": false }
+  ]
+}

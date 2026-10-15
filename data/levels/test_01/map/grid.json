@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../schema/map.schema.json",
+  "kind": "grid",
+  "nodes": [
+    { "id": "node_tpp", "type": "source", "positionM": [13500, 7000] },
+    { "id": "node_sub", "type": "substation", "positionM": [10800, 10400] },
+    { "id": "node_water", "type": "consumer", "positionM": [7600, 12300] },
+    { "id": "node_city", "type": "consumer", "positionM": [10500, 11000] },
+    { "id": "node_radar_site", "type": "consumer", "positionM": [6000, 16000] }
+  ],
+  "links": [
+    { "from": "node_tpp", "to": "node_sub" },
+    { "from": "node_sub", "to": "node_water" },
+    { "from": "node_sub", "to": "node_city" },
+    { "from": "node_sub", "to": "node_radar_site" }
+  ],
+  "_source": { "note": "单电源星形拓扑：热电厂或中心变电站被毁 → 下游全部断电（WS01-018 测试用）" }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../schema/map.schema.json",
+  "kind": "structures",
+  "structures": [
+    { "id": "tpp", "nameKey": "map.test_01.tpp", "type": "power_plant",
+      "positionM": [13500, 7000], "radiusM": 300, "weight": 5, "hp": 20, "gridNode": "node_tpp" },
+    { "id": "substation_central", "nameKey": "map.test_01.substation_central", "type": "substation",
+      "positionM": [10800, 10400], "radiusM": 120, "weight": 3, "hp": 10, "gridNode": "node_sub" },
+    { "id": "water_plant", "nameKey": "map.test_01.water_plant", "type": "water_plant",
+      "positionM": [7600, 12300], "radiusM": 200, "weight": 2, "hp": 12, "gridNode": "node_water" }
+  ],
+  "_source": { "note": "3 个保护目标（WBS WS02-002）；全部虚构" }
+}

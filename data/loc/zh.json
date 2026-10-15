@@ -147,5 +147,17 @@
   "emission.on_warning.name": "按预警开机",
   "emission.intermittent.name": "间歇开机",
   "emission.silent_standby.name": "静默待机",
-  "emission.decoy_coordinated.name": "诱饵配合"
+  "emission.decoy_coordinated.name": "诱饵配合",
+
+  "level.test_01.name": "测试地图 01",
+  "level.test_01.briefing": "灰盒测试：一夜空袭，东面无人机、西北方向巡航导弹沿河谷低飞。保护热电厂、中心变电站和水厂。",
+  "map.test_01.river_main": "主河道",
+  "map.test_01.tpp": "热电厂",
+  "map.test_01.substation_central": "中心变电站",
+  "map.test_01.water_plant": "水厂",
+  "map.test_01.entry_east": "东方向",
+  "map.test_01.entry_northwest": "西北方向",
+  "intel.test_01.n1_drones_east": "国家预警：东方向约 20 架无人机正在接近。",
+  "intel.test_01.n1_bombers_airborne": "国家预警：战略轰炸机已起飞，预计有巡航导弹。",
+  "dialogue.test_01.night1_start": "各单位注意，空袭警报。按预案进入战斗位置。"
 }

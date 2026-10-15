@@ -30,3 +30,6 @@ game/**/*.otf       filter=lfs diff=lfs merge=lfs -text
 
 # 高程图（16 位 PNG）→ Git LFS
 data/levels/**/heightmap.png filter=lfs diff=lfs merge=lfs -text
+
+# 测试关卡的高程图体积很小（< 100 KB），不走 LFS，方便在未安装 git-lfs 的环境中使用
+data/levels/test_*/map/heightmap.png -filter binary
