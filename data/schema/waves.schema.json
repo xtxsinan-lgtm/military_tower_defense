@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "waves.schema.json",
+  "title": "波次 waves.json（WBS 02.A）",
+  "type": "object",
+  "required": ["$schema", "entryPoints", "nights"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "entryPoints": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["id", "positionM"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/id" },
+          "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+          "positionM": { "$ref": "common.schema.json#/$defs/pointM", "description": "进入点（可在地图边缘或地图外）" },
+          "warningGameSec": { "type": "number", "minimum": 0, "description": "国家预警网提前多少游戏秒给出\"模糊\"预警" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "nights": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["night", "durationGameSec", "waves"],
+        "properties": {
+          "night": { "type": "integer", "minimum": 1 },
+          "durationGameSec": { "type": "number", "exclusiveMinimum": 0, "description": "一夜的长度（游戏秒）；GDD 11.2：一夜约 6–10 分钟" },
+          "weather": { "enum": ["clear", "moonlit", "low_cloud", "fog"], "description": "GDD 8.8" },
+          "season": { "enum": ["spring", "summer", "autumn", "winter"] },
+          "waves": {
+            "type": "array",
+            "items": {
+              "type": "object", "required": ["id", "atGameSec", "groups"],
+              "properties": {
+                "id": { "$ref": "common.schema.json#/$defs/id" },
+                "atGameSec": { "type": "number", "minimum": 0, "description": "本波开始时刻（相对夜晚开始）" },
+                "aiTags": {
+                  "type": "array", "uniqueItems": true,
+                  "items": { "enum": ["probe", "suppress", "hunt", "bypass", "saturate"] },
+                  "description": "GDD 7.4：试探 / 压制 / 猎杀 / 绕行 / 饱和"
+                },
+                "groups": {
+                  "type": "array", "minItems": 1,
+                  "items": {
+                    "type": "object", "required": ["enemy", "count", "entry", "route", "target"],
+                    "properties": {
+                      "enemy": { "$ref": "common.schema.json#/$defs/id", "description": "引用 enemies/*.json 的 ID" },
+                      "count": { "type": "integer", "minimum": 1 },
+                      "entry": { "$ref": "common.schema.json#/$defs/id", "description": "引用 entryPoints" },
+                      "spacingGameSec": { "type": "number", "minimum": 0, "description": "同组目标之间的间隔" },
+                      "route": {
+                        "oneOf": [
+                          {
+                            "type": "object", "required": ["template"],
+                            "properties": { "template": { "$ref": "common.schema.json#/$defs/id", "description": "航线模板（WS02-004）" } },
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object", "required": ["waypointsM"],
+                            "properties": {
+                              "waypointsM": {
+                                "type": "array", "minItems": 1,
+                                "items": { "$ref": "common.schema.json#/$defs/pointM" },
+                                "description": "进入点与目标之间的中间航点"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object", "required": ["direct"],
+                            "properties": { "direct": { "const": true } },
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "target": {
+                        "oneOf": [
+                          {
+                            "type": "object", "required": ["structure"],
+                            "properties": { "structure": { "$ref": "common.schema.json#/$defs/id" } },
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object", "required": ["mode"],
+                            "properties": { "mode": { "enum": ["weighted_random", "known_targets", "air_defense", "decoy_flight"] } },
+                            "additionalProperties": false
+                          }
+                        ],
+                        "description": "指定保护目标，或按模式选目标：按权重随机 / 已知目标清单 / 防空单位 / 诱饵（只飞航线不攻击）"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "_source": { "$ref": "common.schema.json#/$defs/source" },
+    "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+  },
+  "additionalProperties": false
+}

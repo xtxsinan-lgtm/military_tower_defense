@@ -18,6 +18,27 @@
       "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])$",
       "description": "YYYY-MM，表示该月起生效"
     },
+    "date": {
+      "type": "string",
+      "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+      "description": "YYYY-MM-DD"
+    },
+    "pointM": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2, "maxItems": 2,
+      "description": "地图坐标 [x, y]（米）：原点在地图西南角，x 向东、y 向北"
+    },
+    "polylineM": {
+      "type": "array", "minItems": 2,
+      "items": { "$ref": "#/$defs/pointM" },
+      "description": "折线（米）"
+    },
+    "polygonM": {
+      "type": "array", "minItems": 3,
+      "items": { "$ref": "#/$defs/pointM" },
+      "description": "多边形（米），首尾不必重复，顶点按逆时针排列"
+    },
     "targetTag": {
       "enum": ["UAV", "JET_UAV", "DECOY", "CM", "SCM", "BM", "HBM", "GB", "HELI", "AC_LOW", "AC_HIGH"],
       "description": "目标标签（数值表第 0 节）"

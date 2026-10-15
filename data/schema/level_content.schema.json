@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "level_content.schema.json",
+  "title": "关卡情报 intel.json 与剧情事件 events.json（WBS 02.A）",
+  "type": "object",
+  "required": ["$schema", "kind"],
+  "properties": {
+    "kind": { "enum": ["intel", "events"] }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "intel" } } },  "then": { "$ref": "#/$defs/intel" } },
+    { "if": { "properties": { "kind": { "const": "events" } } }, "then": { "$ref": "#/$defs/events" } }
+  ],
+  "$defs": {
+    "intel": {
+      "type": "object",
+      "required": ["nights"],
+      "properties": {
+        "$schema": true, "kind": true,
+        "nights": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["night", "items"],
+            "properties": {
+              "night": { "type": "integer", "minimum": 1 },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object", "required": ["textKey", "accurate"],
+                  "properties": {
+                    "textKey": { "$ref": "common.schema.json#/$defs/locKey" },
+                    "accurate": { "type": "boolean", "description": "情报是否准确（可能有误，GDD 5.1）" },
+                    "relatedWave": { "$ref": "common.schema.json#/$defs/id" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "events": {
+      "type": "object",
+      "required": ["events"],
+      "properties": {
+        "$schema": true, "kind": true,
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "trigger", "actions"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "trigger": {
+                "type": "object", "required": ["type"],
+                "properties": {
+                  "type": { "enum": ["night_start", "at_game_sec", "structure_destroyed", "unit_destroyed", "wave_spawned"] },
+                  "night": { "type": "integer", "minimum": 1 },
+                  "gameSec": { "type": "number", "minimum": 0 },
+                  "ref": { "$ref": "common.schema.json#/$defs/id", "description": "相关的保护目标 / 单位 / 波次 ID" }
+                },
+                "additionalProperties": false
+              },
+              "actions": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "required": ["type"],
+                  "properties": {
+                    "type": { "enum": ["dialogue", "spawn_wave", "choice", "set_alert"] },
+                    "dialogueKey": { "$ref": "common.schema.json#/$defs/locKey" },
+                    "wave": { "$ref": "common.schema.json#/$defs/id" },
+                    "choiceKey": { "$ref": "common.schema.json#/$defs/locKey" },
+                    "timeoutGameSec": { "type": "number", "exclusiveMinimum": 0 },
+                    "defaultOption": { "type": "integer", "minimum": 0 }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

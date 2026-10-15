@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "map.schema.json",
+  "title": "关卡地图数据：layers / structures / grid / deploy（WBS 02.A）",
+  "description": "四个地图文件共用本 Schema，用 kind 区分",
+  "type": "object",
+  "required": ["$schema", "kind"],
+  "properties": {
+    "kind": { "enum": ["layers", "structures", "grid", "deploy"] }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "layers" } } },     "then": { "$ref": "#/$defs/layers" } },
+    { "if": { "properties": { "kind": { "const": "structures" } } }, "then": { "$ref": "#/$defs/structures" } },
+    { "if": { "properties": { "kind": { "const": "grid" } } },       "then": { "$ref": "#/$defs/grid" } },
+    { "if": { "properties": { "kind": { "const": "deploy" } } },     "then": { "$ref": "#/$defs/deploy" } }
+  ],
+  "$defs": {
+    "layers": {
+      "type": "object",
+      "required": ["rivers", "roads", "bridges", "urban", "forests", "borders", "restrictedZones"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "rivers": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "pathM", "widthM"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+              "pathM": { "$ref": "common.schema.json#/$defs/polylineM" },
+              "widthM": { "type": "number", "exclusiveMinimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "roads": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "pathM", "class"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "pathM": { "$ref": "common.schema.json#/$defs/polylineM" },
+              "class": { "enum": ["highway", "main", "local"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "bridges": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "pathM"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "pathM": { "$ref": "common.schema.json#/$defs/polylineM" },
+              "road": { "$ref": "common.schema.json#/$defs/id" },
+              "destructible": { "type": "boolean", "description": "可被炸毁（如第 2 关的炸桥技能）" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "urban": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "polygonM", "density"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "polygonM": { "$ref": "common.schema.json#/$defs/polygonM" },
+              "density": { "enum": ["core", "dense", "suburban"], "description": "城区密度；城区上空拦截产生碎片（数值表 3.6）" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "forests": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "polygonM"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "polygonM": { "$ref": "common.schema.json#/$defs/polygonM" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "borders": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "pathM", "kind"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "pathM": { "$ref": "common.schema.json#/$defs/polylineM" },
+              "kind": { "enum": ["oblast", "national", "frontline"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "restrictedZones": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "polygonM", "rule"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "polygonM": { "$ref": "common.schema.json#/$defs/polygonM" },
+              "rule": { "enum": ["no_engagement", "restricted_engagement", "frontline_risk"], "description": "禁止交战 / 限制交战 / 前线风险区（不可呼叫战斗机）（GDD 8.9、8.10）" },
+              "reason": { "enum": ["border", "nuclear_plant", "civil_corridor", "frontline"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "structures": {
+      "type": "object",
+      "required": ["structures"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "structures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "nameKey", "type", "positionM", "radiusM", "weight", "hp"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+              "type": {
+                "enum": ["power_plant", "substation", "command_post", "factory", "residential", "port", "shipyard", "water_plant", "hospital", "shelter", "airbase_runway", "airbase_hangar", "repair_plant", "bridge"],
+                "description": "保护目标类型；生产设施一律虚构（GDD 17）"
+              },
+              "positionM": { "$ref": "common.schema.json#/$defs/pointM" },
+              "radiusM": { "type": "number", "exclusiveMinimum": 0, "description": "占地半径，用于命中判定" },
+              "weight": { "type": "number", "minimum": 0, "description": "保护权重（上级下达，GDD 8.5）" },
+              "hp": { "type": "integer", "minimum": 1 },
+              "gridNode": { "$ref": "common.schema.json#/$defs/id", "description": "所属电网节点（引用 grid.json）" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "grid": {
+      "type": "object",
+      "required": ["nodes", "links"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "type", "positionM"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "type": { "enum": ["source", "substation", "consumer"], "description": "电源 / 变电站 / 用户" },
+              "positionM": { "$ref": "common.schema.json#/$defs/pointM" },
+              "offMapSupply": { "type": "boolean", "description": "地图外的上游电源（外部电网）" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["from", "to"],
+            "properties": {
+              "from": { "$ref": "common.schema.json#/$defs/id", "description": "上游节点" },
+              "to": { "$ref": "common.schema.json#/$defs/id", "description": "下游节点" }
+            },
+            "additionalProperties": false
+          },
+          "description": "有向连线：上游 → 下游。下游节点只要有一条通向电源的路径就有电"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "deploy": {
+      "type": "object",
+      "required": ["zones", "forbidden", "alternatePositions"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" },
+        "zones": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["id", "polygonM"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "polygonM": { "$ref": "common.schema.json#/$defs/polygonM" },
+              "allowedMobility": {
+                "type": "array", "items": { "enum": ["vehicle", "towed", "portable", "fixed"] },
+                "description": "允许部署的机动类型；不写 = 全部允许"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "forbidden": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "polygonM", "reason"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "polygonM": { "$ref": "common.schema.json#/$defs/polygonM" },
+              "reason": { "enum": ["water", "urban_core", "frontline", "other"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "alternatePositions": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "positionM", "surveyed"],
+            "properties": {
+              "id": { "$ref": "common.schema.json#/$defs/id" },
+              "positionM": { "$ref": "common.schema.json#/$defs/pointM" },
+              "surveyed": { "type": "boolean", "description": "预先勘察的备用阵地（rules/positions.json）" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -17,8 +17,15 @@
 | `enemies/platforms.json` | 敌方飞机、直升机、侦察 / 打击无人机平台 | `schema/enemy_platform.schema.json` |
 | `rules/*.json` | 规则参数：拦截概率、精度、伤害、暴露度、辐射策略、碎片、航迹质量、电子战、阵地、经济 | `schema/rules.schema.json` |
 | `loc/zh.json` | 本地化文本（中文为源语言） | — |
+| `levels/<id>/level.json` | 关卡元数据：主角线、日期、时间结构、战斗机模式、地图尺寸与高程图、可用单位、配额、胜负条件 | `schema/level.schema.json` |
+| `levels/<id>/waves.json` | 进入点与每夜的波次 | `schema/waves.schema.json` |
+| `levels/<id>/intel.json`、`events.json` | 每夜情报（可能不准确）、剧情事件 | `schema/level_content.schema.json` |
+| `levels/<id>/map/layers.json`、`structures.json`、`grid.json`、`deploy.json` | 矢量图层、保护目标、电网拓扑、部署区域 | `schema/map.schema.json` |
+| `levels/<id>/map/heightmap.png` | 16 位灰度高程图；像素 (0,0) 为西北角，比例和海拔范围写在 `level.json` | — |
 
 > `rules/` 是 WBS 0.5 节之外新增的目录：数值表第 3 节的规则参数不属于任何单位，单独存放。
+>
+> **地图坐标**：单位米，原点在地图西南角，x 向东、y 向北（与模拟层一致，WBS 01.A）。地图外的点（进入点、航点）可以是负数或超出地图尺寸。
 
 ## 2. 单位与字段命名
 

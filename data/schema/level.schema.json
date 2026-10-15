@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "level.schema.json",
+  "title": "关卡元数据 level.json（WBS 02.A）",
+  "type": "object",
+  "required": ["$schema", "id", "nameKey", "protagonist", "dateRange", "timeStructure", "fighterMode", "nights", "map", "availableUnits", "commandPointsPerNight", "victory", "defeat"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "$ref": "common.schema.json#/$defs/id" },
+    "number": {
+      "oneOf": [{ "$ref": "common.schema.json#/$defs/levelNumber" }, { "type": "null" }],
+      "description": "战役关卡编号 1–18；null = 测试 / 非战役关卡"
+    },
+    "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+    "briefingKey": { "$ref": "common.schema.json#/$defs/locKey" },
+    "protagonist": { "enum": ["A", "B", "AB"], "description": "主角线：A 空军防空 / B 陆军 / 双主角" },
+    "dateRange": {
+      "type": "object", "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "common.schema.json#/$defs/date" },
+        "to": { "$ref": "common.schema.json#/$defs/date" }
+      },
+      "additionalProperties": false,
+      "description": "历史日期范围；决定电子战效能、拦截概率等随时期变化的数值"
+    },
+    "timeStructure": { "enum": ["A", "B", "C", "D", "E"], "description": "GDD 11.4：A 单场战斗 / B 决定性一夜 / C 关键夜晚组合 / D 持续压力 / E 经营战役" },
+    "fighterMode": {
+      "enum": ["none", "offmap_auto", "offmap_call", "onmap_airbase", "onmap_support_facility"],
+      "description": "GDD 8.9：无 / 场外 AI 自动 / 场外呼叫 / 机场在地图内 / 支撑设施在地图内"
+    },
+    "fighterSortiesPerNight": { "type": "integer", "minimum": 0, "description": "每夜战斗机额度（rules/support.json 的范围内）" },
+    "nights": { "type": "integer", "minimum": 1, "description": "需要亲自指挥的夜晚数" },
+    "map": {
+      "type": "object",
+      "required": ["widthM", "heightM", "heightmap"],
+      "properties": {
+        "widthM": { "type": "number", "exclusiveMinimum": 0 },
+        "heightM": { "type": "number", "exclusiveMinimum": 0 },
+        "heightmap": {
+          "type": "object",
+          "required": ["file", "metersPerPixel", "minElevationM", "maxElevationM"],
+          "properties": {
+            "file": { "type": "string", "pattern": "^map/[a-z0-9_]+\\.png$", "description": "16 位灰度 PNG，相对关卡目录；像素 (0,0) 为西北角" },
+            "metersPerPixel": { "type": "number", "exclusiveMinimum": 0 },
+            "minElevationM": { "type": "number", "description": "灰度 0 对应的海拔" },
+            "maxElevationM": { "type": "number", "description": "灰度 65535 对应的海拔" }
+          },
+          "additionalProperties": false
+        },
+        "attribution": { "type": "array", "items": { "type": "string" }, "description": "地图数据来源与许可署名（OSM 等）" }
+      },
+      "additionalProperties": false
+    },
+    "availableUnits": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["unit", "count"],
+        "properties": {
+          "unit": { "$ref": "common.schema.json#/$defs/id", "description": "引用 units/*.json 的 ID" },
+          "count": { "type": "integer", "minimum": 1 },
+          "source": { "enum": ["quota", "city", "stock"], "description": "配额 / 城市资源 / 苏制库存（GDD 9.2）" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "ammoQuota": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["weapon", "count"],
+        "properties": {
+          "weapon": { "$ref": "common.schema.json#/$defs/id" },
+          "count": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "description": "开局弹药配额（不写 = 每个发射架按弹仓满载）"
+    },
+    "commandPointsPerNight": { "type": "integer", "minimum": 0 },
+    "cityResourcePerDay": { "type": "number", "minimum": 0 },
+    "victory": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } },
+    "defeat": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } },
+    "_source": { "$ref": "common.schema.json#/$defs/source" },
+    "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "condition": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["survive_nights", "survive_game_sec", "structure_destroyed", "weighted_damage_at_least", "grid_collapse"],
+          "description": "撑过 N 夜 / 撑过 N 游戏秒 / 指定保护目标被毁 / 加权损失达到比例 / 电网崩溃"
+        },
+        "nights": { "type": "integer", "minimum": 1 },
+        "gameSec": { "type": "number", "exclusiveMinimum": 0 },
+        "structure": { "$ref": "common.schema.json#/$defs/id" },
+        "fraction": { "$ref": "common.schema.json#/$defs/probability" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
