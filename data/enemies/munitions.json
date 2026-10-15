@@ -8,8 +8,8 @@
 
     { "id": "shahed_136", "nameKey": "enemy.shahed_136.name", "category": "drone", "tag": "UAV",
       "speedKmh": 185, "altitudeBand": "low", "altitudeM": { "min": 500, "max": 2000 }, "interceptable": true, "hp": 2,
-      "damageLevel": 3, "splashCells": 1, "accuracy": "C", "accuracyByPeriod": [{ "from": "2025-01", "tier": "B" }], "costMusd": 0.05,
-      "_source": { "name": "Shahed‑136 / Geran‑2", "altitudeM": "低（500 m–2 km）", "accuracy": "C → B（2025 AI 升级）" } },
+      "damageLevel": 3, "splashCells": 1, "accuracy": "C", "accuracyByPeriod": [{ "from": "2025-06", "tier": "B" }], "costMusd": 0.05,
+      "_source": { "name": "Shahed‑136 / Geran‑2", "altitudeM": "低（500 m–2 km）", "accuracy": "C → B（2025.06 AI 升级，与时间表 WS10-001 核对结果对齐）" } },
 
     { "id": "geran_2_heavy", "nameKey": "enemy.geran_2_heavy.name", "category": "drone", "tag": "UAV",
       "speedKmh": 170, "altitudeBand": "low", "interceptable": true, "hp": 2,

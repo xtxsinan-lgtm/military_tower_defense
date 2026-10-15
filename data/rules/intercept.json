@@ -13,7 +13,7 @@
     "s300":                  { "CM": 0.70, "SCM": 0.40, "BM": 0.15, "AC_HIGH": 0.70 },
     "samp_t":                { "CM": 0.85, "SCM": 0.70, "BM": 0.60, "HBM": 0.30, "AC_HIGH": 0.85 },
     "pac2":                  { "CM": 0.85, "SCM": 0.60, "BM": 0.30, "AC_HIGH": 0.85 },
-    "pac3":                  { "CM": 0.90, "SCM": 0.75, "BM": [{ "from": "2022-02", "value": 0.75 }, { "from": "2025-01", "value": 0.55 }], "HBM": 0.60 },
+    "pac3":                  { "CM": 0.90, "SCM": 0.75, "BM": [{ "from": "2022-02", "value": 0.75 }, { "from": "2025-08", "value": 0.55 }], "HBM": 0.60 },
     "s200":                  { "AC_HIGH": 0.60 },
     "fighter_aam":           { "UAV": 0.70, "CM": 0.70, "SCM": 0.30, "HELI": 0.80, "AC_LOW": 0.70, "AC_HIGH": 0.50 },
     "fighter_apkws":         { "UAV": 0.80 }
@@ -31,7 +31,7 @@
   },
   "_source": {
     "classes": "数值表 v1.2 3.3（游戏平衡起始值，不是真实拦截率）；※ 标记的值为暂定，待 WS09 批量模拟后调整",
-    "classes.pac3.BM": "75% → 55%（2025 后）",
+    "classes.pac3.BM": "75% → 55%（2025.08 起，与时间表 WS10-001 核对结果对齐）",
     "modifiers.aceCrew": "×1.1–1.2",
     "modifiers.crewFatigue": "班组疲劳（连续 3 夜以上）",
     "modifiers.evasiveTargetVsInterceptorDrone": "目标具备规避能力（后视摄像头 Geran‑2，2025 秋起），针对拦截无人机",
