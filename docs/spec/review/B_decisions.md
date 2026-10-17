@@ -240,3 +240,153 @@
 - 位置：00 §8 Q16；03 §8.3 B15；GDD 16.4 性能目标"600 无人机 + 90 导弹 + 拦截弹 + 碎片"。
 - 建议：碎片在 `ImpactSystem` 当步结算，不做持续实体（`Debris` 存储保持空）；GDD 16.4 的实体估算不变（只是更宽裕）。
 - 分级：T2。
+
+### 2.2 T2 总表（一次性批准）
+
+> "批准后改动"缩写：`S0x §n` = 规格文件及节；`N` = 数值表；`D:` = data 文件（含对应 Schema）；`G` = GDD；"—" = 只需关闭规格中的待决条目。
+> 推荐值写"同规格"表示采用该规格原建议，未作改动。
+
+| 编号 | 问题 | 推荐默认值 | 出处 | 批准后改动 |
+|---|---|---|---|---|
+| B-T2-01 | 系统反应时间 / 射击间隔（冲突） | 见 2.1：挂武器，按 `interceptClass` 0.05–0.5；射击间隔同 03 Q-E2 | 02 Q5；03 Q-E2 | S02 §1/§3、S03 §1；D: `rules/engagement.json`、`units/air_defense.json` |
+| B-T2-02 | 视线是否计地球曲率（冲突） | 计入，`earthRadiusM 6371000`、`refractionK 4/3`；02 低空倍率改释为设备能力 | 01 Q14；02 Q1 | S01 §1.6、S02 §1.6 注释；D: `rules/terrain.json` |
+| B-T2-03 | 天线高度缺省值位置（冲突） | 只留 `rules/terrain.json.defaultAntennaHeightM = 10`；气球 300 | 01 Q3；02 Q5、Q32 | S02 §1.6；D: `rules/terrain.json`、`units/sensors.json` |
+| B-T2-04 | 国家级导航欺骗半径（冲突） | `radiusKm = 30`，中心由呼叫指定 | 02 Q13；03 Q-S5 | S03 §3.4；D: `support/support.json` |
+| B-T2-05 | 断电效果、谁接入电网（冲突） | 主动雷达距离 ×0.5；电子战概率 ×0.5；被动传感器、火力、欺骗单位不接入 | 02 Q31；03 Q-G2、Q-G3 | S02 §3、S03 §3.6；D: `rules/tracks.json`、`rules/ew.json` |
+| B-T2-06 | 新阵地 −30% 作用范围与字段（冲突） | 拦截概率 + 探测 / 火控距离 + 电子战概率 ×0.7；中途增援也算；字段统一 | 02 Q23；03 R-CI；04 B-02e；05 Q-F6、B3、B6 | S02 §2、S03 §2/§3.3、S05 §3.7 |
+| B-T2-07 | 夜晚种子与重试（冲突） | 战役取 flow 序号 + 1；重试不换种子；灰盒 `runSeed = 1` | 00 Q10；05 R-00-3、Q-F5；06 Q10 | S00 §3.1.5 |
+| B-T2-08 | `AllClear` 与悬停平台（冲突） | `EndWhenClear = true`；无挂载平台不阻止 `AllClear` | 00 Q2；01 Q5、B12；04 8.2C；06 Q4 | S00 §3.5、S01 §3 |
+| B-T2-09 | 自主捕获与夜间光学（与 GDD 8.8 矛盾） | 光学类自主捕获距离 × `nightRangeMult 0.3`（有探照灯 / 热像不打折）；基础值 = 最大射程 | 02 Q4、Q26；03 Q-E11 | S02 §3.2.5；D: `units/air_defense.json`（`selfAcquisitionRangeKm`、`selfAcquisition`） |
+| B-T2-10 | 城市商店拦截无人机下架早于解锁（GDD 内部矛盾） | 第 14 关起可买，`until 2025-10` | 05 8.1 `cityResource.shop`；G 9.2、12.3 | S05 §1.2；D: `rules/campaign.json`；G 9.2 措辞 |
+| B-T2-11 | 硬核模式与二选一 | 硬核不弹自动二选一；剧情二选一保留 | 04 Q-C6；G 14 | S04 —；G 14 措辞 |
+| B-T2-12 | 第 17 关虚构名称 | 不含真实地名，如"第 3 航空技术保障厂（虚构）"（由人选名） | pending #3；G 17.4、19.1 | 战役关卡设计、G 12.2 第 17 关、`data/loc` |
+| B-T2-13 | 拦截无人机打 Geran‑3 | 2025‑11 起 0.10，2026‑09 起 0.35 | pending #1 | N §1.2、§3.3；D: `units/air_defense.json`、`rules/intercept.json` |
+| B-T2-14 | Orlan 升档：重复数值与生效范围 | 全图；只读 `accuracy.spotterTierBoost` | 03 Q-D6；02 Q21 | N §3.1 措辞；D: `enemies/platforms.json` |
+| B-T2-15 | "阶段 0"与剧情执行者 | 批准阶段 0（命令 → 二选一 → 剧情）在系统 1 之前；剧情归 04 | 00 Q5、Q15；04 8.2B | WBS 01.B 补注；S00 §3.4 |
+| B-T2-16 | 碎片是否为实体 | 当步结算，不建实体 | 00 Q16；03 B15 | S00 §2.3 注释 |
+| B-T2-17 | 多夜关卡按哪个日期解析时期数值 | 整关 `dateRange.from`；`nights[].date` 可选覆盖 | 00 Q1 | S00 §1.4；D: `schema/waves` |
+| B-T2-18 | 失败条件达成是否立即结束当夜 | 立即结束（`Defeated / DefeatCondition`） | 00 Q3 | — |
+| B-T2-19 | `survive_game_sec` 与 `durationGameSec` | 同规格（加载检查 ≤ 各夜之和） | 00 Q4 | — |
+| B-T2-20 | 回放是否跨平台一致 | 只保证同平台；文件记 `runtime` | 00 Q9 | — |
+| B-T2-21 | 快照是否含敌方真值 | 含；正常界面不渲染 | 00 Q12；06 B6 | — |
+| B-T2-22 | 高度带 → 米 | 同规格（`very_low 30–100` … `glide 8000–12000`，AGL） | 01 Q1 | D: `rules/movement.json`（新） |
+| B-T2-23 | 弹道 / 俯冲几何 | 同规格（落地倾角 70/40/45/30°、`diveSpeedMult 2`，速度按水平速度） | 01 Q2 | D: `rules/movement.json` |
+| B-T2-24 | 弹道 / 滑翔弹的 `waypointsM` | 忽略并直飞，validate 警告 | 01 Q6 | — |
+| B-T2-25 | 平台挂载 `count: null` | 按 1 枚；数值表补数 | 01 Q7 | N §2.3；D: `enemies/platforms.json` |
+| B-T2-26 | `maxSpeedKmh` 是否使用 | 不使用（保留字段） | 01 Q8 | — |
+| B-T2-27 | `weighted_random` 抽签粒度 | 每个目标独立抽签 | 01 Q9 | — |
+| B-T2-28 | 被 `spawn_wave` 引用的波次 | 不自动生成；注入时刻为起点 | 01 Q10 | — |
+| B-T2-29 | 巡航高度基准 | 全部按 AGL 恒定 | 01 Q12 | — |
+| B-T2-30 | 诱饵终点 | 飞越假目标点后直线飞出地图，不落地 | 01 Q13 | — |
+| B-T2-31 | 视线采样步长与调用频率（原 T3 候选，降为 T2） | `losSampleStepPx 0.5`；**不采用"每 K 步重算"**：先做距离 / 高度筛选，再用"每部传感器展开时预计算的径向地平线表"（按方位格存最小可见仰角），夜内结果与逐步视线等价、确定；单位转移完成时重算 | 01 Q15、§3.3.5、B4；02 §3.2 | S01 §3.3、S02 §3.2；D: `rules/terrain.json`（`horizonAzimuthBins`，建议 720） |
+| B-T2-32 | 低空能力数值化 | 同规格（`lowAltitudeBelowM 1000`，倍率 0.3/0.6/0.9/1.0，大盲区 ×0.5）；与 B-T2-02 一起由 D3 复核 | 02 Q1 | D: `rules/tracks.json` |
+| B-T2-33 | "精确"只来自火控 / 自主捕获 | 是；Schema 删除探测单位的 `precise` 取值 | 02 Q3 | D: `schema/units` |
+| B-T2-34 | 火控雷达参数 | `rangeKm` = 最大射程 × 1.25；低空：近程 good、中远程 medium | 02 Q5 | D: `units/air_defense.json` |
+| B-T2-35 | 电子战数值参数（随 B-T3-08 批准） | 链路中断 坠落 0.5 / 悬停 0.25 / 返航 0.25，悬停 2 游戏秒；未满强度 ×0.5；`aiVisionFrom` shahed_136 2025‑06、geran_2_heavy 2025‑03 | 02 Q10、Q11、Q12 | D: `rules/ew.json`、`enemies/munitions.json` |
+| B-T2-36 | 城区长时间导航干扰的阈值与后果 | 60 游戏秒；每夜触发一次 → 城市资源 −1（GDD 无"城市韧性"资源，并入城市资源） | 02 Q14；05 B8；G 8.3 | S02、S03 `NightResult`、S05 §3；D: `rules/ew.json` |
+| B-T2-37 | 反辐射导弹"射程"的定义 | 首次锁定时的水平距离 | 02 Q16 | — |
+| B-T2-38 | 缺省辐射策略与触发 | `always_on`；`shutdown_immediately`；`stay`；接替关闭 | 02 Q17 | D: `rules/emission.json` |
+| B-T2-39 | 间歇 / 按预警 / 诱饵配合的缺省参数 | 同规格（开 1 / 关 1 游戏秒、诱饵提前 0.25、参考距离 30 km）；按 B-T3-10 由 D3 标定 | 02 Q18 | D: `rules/emission.json` |
+| B-T2-40 | "邻近雷达接替"的含义 | 同规格（参考距离内主动雷达被毁后当夜保持开机） | 02 Q20 | — |
+| B-T2-41 | 侦察平台与假发射车识破 | `spotter`/`armed_recon` 算侦察；`reconQuality` orlan medium、orion high；识破 0.1/0.3/0.6 | 02 Q21 | D: `enemies/platforms.json`、`rules/positions.json` |
+| B-T2-42 | 诱饵辐射源 / 牺牲雷达 | 按"高"速率暴露；牺牲雷达不提供探测 | 02 Q22 | D: `rules/positions.json` |
+| B-T2-43 | 哪些无人机有无线电链路 | `fpv_radio`、`lancet`、`molniya`、`orlan_10`、`orion` 为 true | 02 Q24 | D: `enemies/munitions.json`、`platforms.json` |
+| B-T2-44 | 自动探测单位何时出现 | `level.number == null` 或已到首次可用关时自动创建 | 02 Q25 | — |
+| B-T2-45 | 昼夜与天气倍率 | 每夜按夜间；光学天气 clear 1.0 / moonlit 1.3 / low_cloud 0.6 / fog 0.3 | 02 Q26；05 R-01-2 | D: `rules/tracks.json`；`waves.json nights[].timeOfDay`（WS01-026） |
+| B-T2-46 | 误报频率；误报航迹能否交战 | `some 0.02`、`high 0.1` 次 / 游戏秒；不得交战 | 02 Q27 | D: `rules/tracks.json` |
+| B-T2-47 | 民众上报延迟；B 线空情来源 | 0.5 游戏秒；B 线由关卡预置区域雷达 | 02 Q28 | D: `rules/tracks.json` |
+| B-T2-48 | 航迹位置是否加随机误差 | 不加（误差圈仅显示） | 02 Q29 | — |
+| B-T2-49 | 航迹丢失时间 | 1 游戏秒；外推时精确降为大致 | 02 Q30 | D: `rules/tracks.json` |
+| B-T2-50 | 哪些传感器需要视线 | `lineOfSight` 缺省 true，`acoustic_post` false | 02 Q32 | D: `units/sensors.json` |
+| B-T2-51 | 诱饵甄别升级时再掷 | 条件概率，累计等于表值 | 02 Q33 | — |
+| B-T2-52 | 车载防护罩 | 宿主装备、常开、按"低"暴露；效果随反无人机效能衰减 | 02 Q34 | — |
+| B-T2-53 | 单兵反无人机枪定向 | 按全向处理 | 02 Q35 | — |
+| B-T2-54 | "发射导弹每发 +5"范围 | 只计 `kind == missile` | 02 Q36 | — |
+| B-T2-55 | 拦截弹速度 | 导弹 3600、火箭 2400、拦截无人机 300 km/h，可逐武器覆盖 | 03 Q-E1 | D: `rules/engagement.json` |
+| B-T2-56 | 夜间装填 | 不装填 | 03 Q-E3；05 B5 | — |
+| B-T2-57 | `launchers: null` | 缺省 1；`level.json` 增 `launcherOverrides` | 03 Q-E4 | D: `schema/level`、`rules/engagement.json` |
+| B-T2-58 | "首发反应时间 +50%"的首发 | 每个新锁定目标的第一发 | 03 Q-E5 | — |
+| B-T2-59 | 身管每次射击耗弹 | 34 发 | 03 Q-E6 | D: `rules/engagement.json` |
+| B-T2-60 | "已确认目标"定义 | 航迹 `Precise` | 03 Q-E7 | — |
+| B-T2-61 | 换枪管冷却 | 连续 5 次后冷却 1 游戏秒 | 03 Q-E8 | D: `rules/engagement.json` |
+| B-T2-62 | `fireOnMove: partial` | 行进间只有身管可射击 | 03 Q-E10 | N §1.1 注释 |
+| B-T2-63 | 拦截概率修正叠加 | 全部相乘、固定顺序、最后截断 [0,1] | 03 Q-I1 | N §3.3 注释 |
+| B-T2-64 | 轻伤是否降拦截概率 | 是（×0.8，进修正链） | 03 Q-I2 | — |
+| B-T2-65 | 解析拦截近似 | 同规格（1 s 采样、直线等速、发射后不修正） | 03 Q-I5 | — |
+| B-T2-66 | 发射单位被毁后在飞拦截弹 | 照常结算 | 03 Q-I6 | — |
+| B-T2-67 | 溅射衰减的距离 | 到保护目标边缘 / 单位受击半径外 | 03 Q-D1 | — |
+| B-T2-68 | 衰减后伤害等级取整 | 四舍五入（AwayFromZero） | 03 Q-D2 | — |
+| B-T2-69 | 民用建筑"栋"与 HP | 每栋 1 HP；区块损毁 = HP 归零 | 03 Q-D3 | N §3.2 注释 |
+| B-T2-70 | 伤害 9–10"波及相邻格" | 由溅射体现，不追加效果 | 03 Q-D4 | N §3.2 注释 |
+| B-T2-71 | "摧毁雷达或发射车其一" | `componentRadarChance 0.5` | 03 Q-D5 | D: `rules/damage.json` |
+| B-T2-72 | 对车辆加成适用范围 | `mobility ∈ {vehicle, towed}` 的火力单元 | 03 Q-D7 | — |
+| B-T2-73 | 非防空单位的伤害效果 | 同表；"摧毁部件"视为摧毁 | 03 Q-D8 | N §3.2 注释 |
+| B-T2-74 | 轻伤是否叠加 | 不叠加 | 03 Q-D9 | — |
+| B-T2-75 | 反辐射导弹未命中 | 失锁坠毁，无伤害、不算突防 | 03 Q-D10 | — |
+| B-T2-76 | 我方单位受击半径 | 0.05 格（50 m） | 03 Q-D11 | D: `rules/damage.json` |
+| B-T2-77 | 电网连线方向 | 无向 | 03 Q-G1 | — |
+| B-T2-78 | 电网设施 −10%/−35% | 按比例扣 HP（向上取整） | 03 Q-G4 | — |
+| B-T2-79 | `grid_collapse` 定义 | 全部 consumer 断电；条件可选 `fraction`（缺省 1.0） | 03 Q-G5 | D: `schema/level` |
+| B-T2-80 | 警报效果与疲劳 | 避难 0.8、进入 2 游戏秒、每夜前 2 次不疲劳、之后每次 −0.1、下限 0.3 | 03 Q-A1 | D: `rules/civil.json`（新） |
+| B-T2-81 | 警报疲劳跨夜恢复 | 每个白天 +0.2，新关卡重置为 1.0 | 03 Q-A2 | S05 §3；D: `rules/campaign.json` |
+| B-T2-82 | 避难所断电 | 按 0.5 计入 | 03 Q-A3 | D: `rules/civil.json` |
+| B-T2-83 | 1 次呼叫的架次 | 1 架次 | 03 Q-S1 | — |
+| B-T2-84 | `offmap_auto` / 支撑设施的夜间行为 | 按场外呼叫 | 03 Q-S2 | — |
+| B-T2-85 | 定向拦截无目标时 | 持续到夜末 | 03 Q-S3 | — |
+| B-T2-86 | 战斗机起飞 / 补给参数 | 只用 `support.delay`；到位后定点巡逻 | 03 Q-S4 | — |
+| B-T2-87 | 空域协调耗点 | 不耗 | 03 Q-S7；04 Q-C1 | — |
+| B-T2-88 | 大空袭标记；被拒是否退还 | `nights[].bigRaid`；退还架次与指挥点 | 03 Q-S8；04 Q-C2；05 B10 | D: `schema/waves` |
+| B-T2-89 | 邻近扇区覆盖的夜内效果 | 05 经 `CarryIn.ActiveSupports` 放入关卡给定位置的场外虚拟火力单元（不累积暴露）；03 按普通火力单元处理 | 03 Q-S9；05 B13 | S03 §3.4、S05；D: `schema/level`（`sectorCoverageAnchors`） |
+| B-T2-90 | 突防原因扩展 | 同规格（GDD 5 种 + 补充 6 种，复盘界面按 GDD 5 种 + "其他"分组） | 03 Q-X3；G 15.5 | S06 复盘 |
+| B-T2-91 | 加权损失跨夜累计 | 是 | 03 Q-X4 | — |
+| B-T2-92 | "试探"判定 | 同规格（观察半径 3 km、权重 1.5） | 04 Q-A3 | D: `rules/enemy_ai.json`（新） |
+| B-T2-93 | "压制"放行条件 | 同规格（15–120 s） | 04 Q-A4 | D: `rules/enemy_ai.json` |
+| B-T2-94 | "饱和"能否改进入点 | 不改；只重排时刻，30 s 窗口 | 04 Q-A5；01 Q11 | D: `rules/enemy_ai.json` |
+| B-T2-95 | "绕行"与设计者航点 | 保留航点，只重算最后一段 | 04 Q-A6 | — |
+| B-T2-96 | A‑50 存活时未标绕行的巡航导弹 | 也绕行；半径 ×1.2、代价 ×2 | 04 Q-A7 | D: `rules/enemy_ai.json` |
+| B-T2-97 | 无 `mobility` 字段单位的部署区限制 | 不受限制 | 04 Q-D5 | — |
+| B-T2-98 | 指挥点消耗表 | 每操作 1 点；支援按数据；空域 0；二选一回答 0；警报拉响 / 解除各 1；原地撤收 1、原地展开 0 | 04 Q-C1、Q-C4、Q-D8 | D: `rules/commands.json`（新） |
+| B-T2-99 | 二选一超时 | 不改变状态（预设已执行） | 04 Q-C3 | — |
+| B-T2-100 | 自动二选一触发参数 | 射程内 ≥ 1 个大致以上 CM/SCM；超时 30 s；同时最多 1 个 | 04 Q-C5 | D: `rules/commands.json` |
+| B-T2-101 | `set_alert` 开 / 关 | Schema 增 `on`（缺省 true） | 04 Q-S1 | D: `schema/events` |
+| B-T2-102 | 剧情二选一效果与选项数 | 只记录结果；2 个选项 | 04 Q-S2、Q-S3 | — |
+| B-T2-103 | 信任度全部数值（随 B-T3-04 批准） | 同 05 8.1（50/10/100、分档 −3…+3、单夜 −12/+8、胜 +5 / 败 −8、申请 8/20、修正 ±0.10、跨关上限 ±0.2）；浪费阈值按 B-T3-01 改 | 05 8.1 `trust.*`、`crossLevelModClamp` | D: `rules/economy.json` |
+| B-T2-104 | 城市资源积累 | 开局 1 天、上限 30、警报暂停权重 0.5 | 05 8.1 `cityResource` | D: `rules/economy.json` |
+| B-T2-105 | 城市商店价格与条目 | 同规格价格；"机枪" = 火力组；探照灯作为 `night_aid` 商品；`availableUnits[city].count` = 可购买上限 | 05 8.1 shop；Q-E5、Q-E6 | D: `rules/economy.json`、`schema/level` |
+| B-T2-106 | 补给运力 | 每窗口 10；按稀缺度 / 武器的运力成本同规格 | 05 8.1 `supply.*` | D: `rules/economy.json` |
+| B-T2-107 | 维修 | 轻伤 2 运力 1 天、部件 5 运力 3 天、保护目标每天 10% | 05 8.1 `repair.*` | D: `rules/economy.json` |
+| B-T2-108 | 白天转移时间槽 | 每天 3 槽、每槽 30 游戏秒、勘察 1 槽、白天暴露衰减 20/天 | 05 8.1 `relocation.*` | D: `rules/economy.json` |
+| B-T2-109 | 紧急支援 | 连续 2 次挫折；+1 点、+20% 弹药、信任度抬到 30；每关一次；重试时发放 | 05 8.1、Q-F7 | D: `rules/economy.json` |
+| B-T2-110 | 申请清单 | `req_nasams_loan`、`req_pac3_rush` | 05 8.1 `requests[]` | D: `rules/economy.json` |
+| B-T2-111 | 班组与王牌 | 被毁时王牌阵亡 50% 否则伤 2 夜；每命中 1 经验；"连续 3 夜"含第 3 夜；同日白天 + 夜间连续；经验先只记录；王牌不跨线 | 05 8.1 `crew.*`；Q-C1–C4 | D: `campaign/crews.json` |
+| B-T2-112 | 敌人适应 | `alpha 0.5`、滞回 0.1、类别映射同规格；两线共享；`notBefore` 最多提前一年 | 05 8.1 `adaptation.*`；Q-L6、Q-L7 | D: `rules/campaign.json` |
+| B-T2-113 | 敌情档案 | 每击落 1 点、上限 50、5/20 点两档；按击落计 | 05 8.1 `dossier.*`；Q-L5 | D: `rules/campaign.json` |
+| B-T2-114 | 城市记忆 | 每次 +10%，上限 20% | 05 8.1 `cityMemory.*` | D: `rules/campaign.json` |
+| B-T2-115 | 奖励卡数量 | 3 选 1 | 05 8.1 | — |
+| B-T2-116 | 生产 / 研发 / 电力 | 同规格，全部 `provisional`（M5 再调）；断供作用于产量 ×0.6；每班组 2 名飞手；第 17 关给需求参数 | 05 8.1；Q-P1–P3 | D: `rules/campaign.json` |
+| B-T2-117 | 平衡目标 | 同 05 §1.3（WS09 依据） | 05 8.1 `balanceTargets` | — |
+| B-T2-118 | 伊朗战争 PAC‑3 减半范围 | 开局配额、白天补给、申请都减半；已持有不减；结束月份由人另定 | 05 Q-E3；N §5.3 | N §5.3 |
+| B-T2-119 | 全国库存"保底" | 降到保底后不再减少 | 05 Q-E4 | — |
+| B-T2-120 | 比例修正作用对象 | 配额弹药、城市资源、补给运力；不作用于单位数与全国库存 | 05 Q-E8 | — |
+| B-T2-121 | 结构 D 与 C 的区别 | D 白天缺省为 `Interlude` | 05 Q-F1 | — |
+| B-T2-122 | 结构 E 普通夜补给 | E 关卡必须写 `supplyWindows`（缺 → 警告） | 05 Q-F2 | — |
+| B-T2-123 | `Crippled` 单位能否部署 | 不能，先维修 | 05 Q-F9 | — |
+| B-T2-124 | 跨关节点效果数值 | 05 §3.10.2 表，全部 `provisional` | 05 Q-L1 | D: `campaign/` |
+| B-T2-125 | 组合条件度量 | 3 条命名规则写在代码中，阈值放数据（`flow.levelMetrics`） | 05 Q-L3 | — |
+| B-T2-126 | 条令效果 | 同规格（前推伏击：首次开机前不累积侦察暴露；火力组联网：≥ 2 组同时看到升为大致） | 05 Q-L4 | D: `campaign/` |
+| B-T2-127 | 客户端显示参数位置 | `game/config/client_config.json`（不进 data） | 06 Q1 | — |
+| B-T2-128 | 手动速度档 | 1× / 2× / 4× | 06 Q2 | — |
+| B-T2-129 | 二选一慢放倍率 | 0.5× | 06 Q3 | — |
+| B-T2-130 | 自动快进判定 | 只看可见信息，连续 60 世界秒无航迹 / 拦截弹 / 二选一 | 06 Q4 | — |
+| B-T2-131 | 弹道慢放触发与持续 | 同规格（预警或弹道航迹，持续到最后相关时刻 + 120 世界秒） | 06 Q5 | — |
+| B-T2-132 | 缩放范围与小地图 | 视口宽 400 km–1 km；小地图上限 = 内容范围 × 1.1 | 06 Q6、Q7 | — |
+| B-T2-133 | 覆盖层参考高度 | 50 / 500 / 3000 m，缺省 50 m | 06 Q8 | — |
+| B-T2-134 | 预测航线长度 | 300 世界秒 | 06 Q9 | — |
+| B-T2-135 | 夜间覆盖层是否反映开关机 | 灰盒不反映 | 06 Q13 | — |
+| B-T2-136 | 锁定 Godot 版本与 AGENTS 常用命令 | 最低 4.3 .NET；AGENTS §5 追加客户端测试与烟雾测试命令 | 06 Q15、8.2F | AGENTS.md §5、`tools/doctor` |
+| B-T2-137 | 性能参考机 | Apple Silicon、1920×1080；Windows 机于 WS06-010 定 | 06 Q19 | — |
+| B-T2-138 | 进入点 / 航线显示 | 显示进入点，不显示航点与航线 | 06 Q20 | — |
+| B-T2-139 | 瞬时标记暂停时是否淡出 | 按现实时间淡出 | 06 Q21 | — |
+| B-T2-140 | 界面本地化措辞 | 同 06 8.2E（被毁写"失去功能 / 失去联系"） | 06 8.2E；G 17.1 | D: `loc/zh.json` |
+| B-T2-141 | 第 11 关早期诱饵 | 借用 `gerbera` 参数、通用诱饵外观，不新建 ID | pending #2 | WS02-005 关卡数据 |
+| B-T2-142 | 历史文档残留三项 | Patriot 伏击"累计 10+ 架"加 ≈；补 2025.07.09 的 13 枚导弹；第 12 关改为"F‑16 首次可呼叫，机场在地图内" | pending #4 | 武器投入时间表、战役关卡设计 |
