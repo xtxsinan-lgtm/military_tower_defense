@@ -815,7 +815,7 @@ public sealed class SimRandom : IRandom
     public RandomState GetState();                   // (State, Inc)，用于哈希与检查点
     public void SetState(RandomState s);
     public static ulong ChildSeed(ulong parentSeed, string name);
-    public static ulong NightSeed(ulong runSeed, string levelId, int nightIndex);
+    public static ulong NightSeed(ulong runSeed, string levelId, int nightSeq);  // nightSeq：战役 = flow.nights 下标 + 1，非战役 = NightIndex（3.1.5，P43 / B-T2-07）
     internal static uint Bounded(uint range, Func<uint> next);  // 无偏差取整的核心，返回 [0, range)，供测试注入原始序列
     internal static SimRandom FromPcgSeed(ulong initState, ulong initSeq);   // 仅测试：跳过 SplitMix64，直接 pcg32_srandom_r（T-00-01）
 }
@@ -841,7 +841,7 @@ public abstract class Entity
     public bool Alive;        // false = 已标记删除，步末压缩时移出
     public int CreatedTick;   // 创建时的 State.Tick
     public int RemovedTick;   // 标记删除时的 State.Tick；未删除为 -1
-    public abstract void WriteHash(StateHasher h);   // 只写子类字段（公共字段由存储写）
+    public abstract void WriteHash(StateHasher h);   // 只写子类字段（公共字段 Id / CreatedTick / DefId / Pos / AltM 由存储写）
 }
 
 public sealed class EntityStore<T> where T : Entity
@@ -884,48 +884,71 @@ public sealed class EntityStore<T> where T : Entity
 
 `EntityKind` 的整数值即**哈希顺序**和**快照中的顺序**，不得重排；新增类型只能追加。
 
-| `EntityKind` | 值 | C# 类型 | 中文 | 来源 | 细化规格 |
+| `EntityKind` | 值 | C# 类型 | 中文 | 来源 | 专有字段与细化规格（P25、P26） |
 |---|---|---|---|---|---|
-| `GridNode` | 0 | `GridNode` | 电网节点 | `map/grid.json` | 03 |
-| `Structure` | 1 | `Structure` | 保护目标 | `map/structures.json` | 03 |
-| `FireUnit` | 2 | `FireUnit` | 火力单元（含 `Launcher[]`） | 部署 | 03（交战 / 弹药）、02（辐射 / 暴露）、04（部署状态） |
-| `SensorUnit` | 3 | `SensorUnit` | 探测单位 | 部署；`automatic` 传感器由 02 在 `Initialize` 中创建 | 02 |
-| `EwUnit` | 4 | `EwUnit` | 电子战单位 | 部署 | 02 |
-| `DeceptionUnit` | 5 | `DeceptionUnit` | 欺骗单位 | 部署 | 02 |
-| `Threat` | 6 | `Threat` | 敌方目标（弹药 / 平台） | 波次生成、平台投放 | 01（生成 / 移动）、03（受损 / 落地） |
-| `Track` | 7 | `Track` | 航迹 | 航迹融合 | 02 |
-| `Interceptor` | 8 | `Interceptor` | 拦截弹 / 拦截无人机 | 交战发射 | 03 |
-| `SupportAsset` | 9 | `SupportAsset` | 外部支援（战斗机编队等） | 呼叫支援 | 03 |
-| `Debris` | 10 | `Debris` | 碎片（如需持续存在） | 拦截 | 03（可以不用，保持空） |
-| `ChoiceRequest` | 11 | `ChoiceRequest` | 二选一请求 | 触发 | 04 |
+| `GridNode` | 0 | `GridNode` | 电网节点 | `map/grid.json` | 03 2.7 |
+| `Structure` | 1 | `Structure` | 保护目标 | `map/structures.json` | 03 2.7 |
+| `FireUnit` | 2 | `FireUnit` | 火力单元（含 `Launcher[]`） | 部署 | `PlayerUnitCommon`（2.4）+ 03 2.2：`Weapons`、`RadarDestroyed`、`LaunchersLost`（A-2-20）、`CrewConsecutiveNights`（含今晚，A-2-19）、`AceCrew`、`Engagement`（**删去** 03 的 `NewPositionFirstNight`，统一用 `PlayerUnitCommon.NewPositionPenalty`，A-2-13 / B-T2-06） |
+| `SensorUnit` | 3 | `SensorUnit` | 探测单位 | 部署；`automatic` 传感器由 02 在 `Initialize` 中创建 | `PlayerUnitCommon`（2.4）+ 02 2.3：`Automatic`、`NightAids` |
+| `EwUnit` | 4 | `EwUnit` | 电子战单位 | 部署 | `PlayerUnitCommon`（2.4）+ 02 2.4：`LurePoint` |
+| `DeceptionUnit` | 5 | `DeceptionUnit` | 欺骗单位 | 部署 | `PlayerUnitCommon`（2.4）+ 02 2.4：`SeenThrough`、`ReconCheckedThreatIds`、`AttractedThreatIds` |
+| `Threat` | 6 | `Threat` | 敌方目标（弹药 / 平台） | 波次生成、平台投放 | 01 2.2（32 项）→ 02 2.6（10 项 + `EwEverCovered`）→ 03 2.4（4 项）（见 2.4，P23） |
+| `Track` | 7 | `Track` | 航迹 | 航迹融合 | 02 2.5（`DefId` 恒为 `""`，P24） |
+| `Interceptor` | 8 | `Interceptor` | 拦截弹 / 拦截无人机 | 交战发射 | 03 2.5（追加 `TargetPathVersion : int`，发射时 = `t.PathVersion`，A-2-09） |
+| `SupportAsset` | 9 | `SupportAsset` | 外部支援（战斗机编队等） | 呼叫支援 | 03 2.6（`State`、`RadiusM` 等，A-2-21） |
+| `Debris` | 10 | `Debris` | 碎片（槽位保留） | 拦截 | 碎片在 `ImpactSystem` 当步结算，**不建持续实体**，存储恒为空（B-T2-16 / P50） |
+| `ChoiceRequest` | 11 | `ChoiceRequest` | 二选一请求 | 触发 | 04 2.2（`Kind, ChoiceKey, OptionCount, DefaultOption, DeadlineTick, SubjectUnitId, SubjectTrackId, StoryEventId`；**去掉子类 `CreatedTick` 行**，直接使用基类 `Entity.CreatedTick`，A-3-01） |
 
 **不是实体**的东西：`Detection`（每步临时缓冲，02）、`Launcher`（`FireUnit` 的组件数组，03）、进入点 / 航点 / 图层 / 部署区（静态数据，直接读 `LevelData`）、已知目标清单（`EnemyIntelState` 的组件，04）。
 
-### 2.4 公共字段
+### 2.4 公共字段与合并字段序
 
-每个实体除 2.2.2 的 `Id / Alive / CreatedTick / RemovedTick` 外：
+每个实体除 2.2.2 的 `Id / Alive / CreatedTick / RemovedTick` 外，由存储统一写入哈希的头部字段与跨规格共用的核心字段如下：
 
 | 字段块 | 适用类型 | 字段 | C# 类型 | 单位 | 初值 | 写 | 读 |
 |---|---|---|---|---|---|---|---|
-| 定义引用 | 除 `ChoiceRequest`、`Debris` 外全部 | `DefId` | `string` | — | 创建时给定 | 创建者 | 全部 |
+| 定义引用 | 除 `ChoiceRequest`、`Debris` 外全部 | `DefId` | `string` | — | 创建时给定（`Track` 恒为 `""`，P24） | 创建者 | 全部 |
 | 空间 | 除 `ChoiceRequest` 外全部 | `Pos` | `Vec2` | m | 创建时给定 | 移动 / 部署相关系统 | 全部 |
 | 空间 | 同上 | `AltM` | `double` | m（AGL） | 地面实体 0 | 01（敌方）、03（拦截弹 / 支援） | 全部 |
-| 我方单位 `PlayerUnitCommon` | `FireUnit` `SensorUnit` `EwUnit` `DeceptionUnit` | `DeployState` | `UnitDeployState` | — | `Deployed`（部署方案中的单位） | 04 | 全部 |
-| 同上 | 同上 | `Exposure` | `double` | 0–100 | `SimConfig.CarryIn` 给定，否则 0 | 02（ExposureSystem） | 02、04 |
-| 同上 | 同上 | `GridNodeId` | `int` | 实体 ID | 0（不接电网） | 03 | 02、03 |
-| 同上 | 同上 | `Powered` | `bool` | — | `true` | 03（电网） | 02、03 |
-| 敌方目标 | `Threat` | `Kind` | `ThreatKind`（`Munition = 0, Platform = 1`） | — | 创建时 | 01 | 全部 |
+| 敌方目标（全字段哈希序见下注，P23） | `Threat` | `Kind` | `ThreatKind`（`Munition = 0, Platform = 1`） | — | 创建时 | 01 | 全部 |
 | 同上 | `Threat` | `Tag` | `TargetTag?` | — | 来自定义（`null` = 无标签、不可拦截） | 01 | 02、03 |
-| 同上 | `Threat` | `VelMps` | `Vec2` | m/s（水平） | 01 | 01 | 02、03 |
-| 同上 | `Threat` | `VertSpeedMps` | `double` | m/s（向上为正） | 01 | 01 | 03 |
-| 航迹 | `Track` | `Quality` | `TrackQuality` | — | 02 | 02 | 03、04 |
-| 同上 | `Track` | `ThreatId` | `int` | 实体 ID（真值关联；界面不得显示） | 02 | 02 | 03 |
+| 同上 | `Threat` | `VelMps` | `Vec2` | m/s（水平） | `(0,0)` | 01 | 02、03 |
+| 同上 | `Threat` | `VertSpeedMps` | `double` | m/s，`d(AltM)/dt`（向上为正） | `0` | 01 | 03 |
+| 航迹（全字段见 02 2.5，P24） | `Track` | `ThreatId` | `int` | 实体 ID（真值关联，误报 = 0；界面不得显示） | 02 | 02（4） | 03、02（6） |
+| 同上 | `Track` | `Quality` | `TrackQuality` | — | 创建时的融合质量 | 02（4） | 03、04、02（6）、06 |
+| 同上 | `Track` | `Tag` | `TargetTag?` | — | 02 3.3.6（统一用 `Tag`，不用 `PerceivedTag`，A-2-01） | 02（4） | 03、06 |
+
+- **`Threat` 全字段与哈希顺序**（P23、A-2-04、A-2-06、A-2-07、A-3-08）：
+  1. **01 2.2 段（32 项）**：`Kind`, `Tag`, `VelMps`, `VertSpeedMps`, `Phase`, `WaveId`, `EntryId`, `ParentThreatId`, `SpawnAtSec`, `TargetKind`, `TargetPos`, `TargetStructureId`, `TargetUnitId`（唯一写者 = 01，A-2-04）, `HomingUnitId`（写者 = 02 第 6 步，读者 = 01 第 2 步，A-2-06）, `ProfileReady`, `Profile`, `Path`, `PathVersion`, `PathEnd`, `AnchorSec`, `AnchorArcM`, `PathArcM`, `SpeedMps`, `TerminalSpeedMps`, `TerminalStartArcM`, `StartAltM`, `EndAltM`, `LastUpdateSec`, `ArrivedAtSec`, `TurnArcM`, `Releases`（元素 `PendingRelease` 的 `AtArcM`）, `IngressPath`（弧长字段后缀统一为 `ArcM`，A-3-08；`PathCumM`、`PathLengthM` 不哈希）；
+  2. **02 2.6 段（11 项）**：`EwNav`, `EwExtraOffsetM`（落点额外偏移唯一来源，A-2-07 / B-T3-08）, `AccuracyTierDrop`（只来自国家级欺骗，B-T3-08）, `EwPull`, `EwDivertPos`, `NationalSpoof`, `LinkCutState`, `LinkCutAtTick`, `ArmInitialDistM`, `ArmHitProbMult`, **`EwEverCovered`**（`bool`，初值 `false`，第 5 步任一 `NavJam` / `NavSpoof` 单位覆盖即置 `true`，A-2-07）；
+  3. **03 2.4 段（4 项）**：`MaxTrackQuality`, `ShotsTaken`, `HeldMask`, `DecoyDrained`。
+
+**我方单位公共字段 `PlayerUnitCommon` 合并表**（适用 `FireUnit`、`SensorUnit`、`EwUnit`、`DeceptionUnit`；`entity.WriteHash(h)` 先按序 1–14 写本表，再写 2.3 所列的子类专有字段；标"—"的不参与哈希，A 1.4）：
+
+| 序 | 字段 | C# 类型 | 初值 | 写（Step 序号） | 读 | 来源 |
+|---|---|---|---|---|---|---|
+| 1 | `DeployState` | `UnitDeployState` | `Deployed` | 0 | 全部 | 00 / 04 |
+| 2 | `DeployPhaseEndTick` | `int` | `-1` | 0 | 0、快照 | 04 |
+| 3 | `Relocation` | `RelocationOrder?` | `null` | 0 | 0、快照 | 04 |
+| 4 | `Exposure` | `double` | `CarryIn` 或 `0.0` | Create 第 8 步、11 | 02、04、03 | 00 / 02 |
+| 5 | `ExposurePeak` | `double` | = 初始 `Exposure` | Create 第 8 步、11 | 03（结算，A-3-10）、04、快照 | 02 |
+| 6 | `GridNodeId` | `int` | `0` | 10（`Initialize`） | 02、03 | 00 / 03 |
+| 7 | `Powered` | `bool` | `true` | 10 | 02、03 | 00 / 03 |
+| 8 | `Emitter` | `EmitterControl?` | 辐射源 = 新实例（02 2.2），否则 `null` | 3（`Initialize`）、0、6 | 3、5、6、7、11、04、快照 | 02 |
+| 9 | `NewPositionPenalty` | `bool` | `Placement?.FirstNightAtNewPosition ?? false` | 3（`Initialize`）、11 | 3、5、7、快照 | 02（A-2-13 / B-T2-06） |
+| 10 | `PendingRelocationAltId` | `string?` | `null` | 6、0 | 0 | 02 / 04 |
+| 11 | `EquipmentEwIds` | `List<string>` | `Placement?.Settings.EquipmentEwIds` 副本，无则空 | 3（`Initialize`） | 11、10 | 02 |
+| 12 | `DamageEfficiencyMult` | `double` | `CarryIn` 或 `1.0` | Create 第 8 步、10 | 7、02、快照 | 03 |
+| 13 | `SuspendedUntilSec` | `double` | `0.0` | 10 | 3、5、6、7（A-2-12）、快照 | 03 |
+| 14 | `LightDamaged` | `bool` | `CarryIn` 或 `false` | Create 第 8 步、10 | 05、快照 | 03 |
+| — | `Placement` | `PlacedUnit?` | 部署条目；运行时 / 自动创建 = `null` | Create 第 7 步 | 全部 | 02（**不哈希**） |
+| — | `RosterId` | `int` | `Placement?.RosterId ?? 0` | Create 第 7 步 | Create 第 8 步、03（`BuildResult`）、05 | 05（**不哈希**） |
 
 ```csharp
-public enum UnitDeployState { Deployed = 0, Packing = 1, Packed = 2, Moving = 3, Deploying = 4 }   // 状态机细节 → 04
+public enum UnitDeployState { Deployed = 0, Packing = 1, Packed = 2, Moving = 3, Deploying = 4 }   // 状态机细节 → 04 2.1（B-T1-02）
 ```
 
-我方单位被摧毁 = `Remove`（不设"已摧毁"状态），同时发出 `PlayerUnitDestroyed`；战果由 03 的 `ScoringState` 记录。
+我方单位被摧毁 = `Remove`（不设"已摧毁"状态），同时发出 `PlayerUnitDestroyed`（含 `Vec2 Pos`，A-2-05）；被毁前一刻的 `UnitCarryOut` 快照由 03 系统 10 在 `Remove` 前记入 `ScoringState.DestroyedUnitSnapshots`（A-2-20）。
 
 ### 2.5 `SimState`
 
@@ -954,16 +977,17 @@ public sealed class SimState
     public EntityStore<Debris> Debris;
     public EntityStore<ChoiceRequest> Choices;
 
-    // ---- 单例组件（各规格定义字段；声明顺序 = 哈希顺序，见 3.7.2）----
-    public WaveState Waves;                // 01：波次进度、AllWavesSpawned
-    public SensingState Sensing;           // 02：本步 Detection 缓冲（不参与哈希）、扇区辐射覆盖等
-    public EwState Ew;                     // 02
-    public CommandState Commands;          // 04：指挥点
-    public EnemyIntelState EnemyIntel;     // 04：已知目标清单
-    public SupportState Support;           // 03：额度、冷却
-    public GridState Grid;                 // 03
-    public CivilState Civil;               // 03：空袭警报
-    public ScoringState Scoring;           // 03：结算累加器
+    // ---- 单例组件（各规格定义字段；声明顺序 = 哈希顺序 1–10，见 3.7.2，P27–P29）----
+    public WaveState Waves;                // 1 → 01 2.3：波次进度、Injections（含 GroupIndices，A-2-10）、AllWavesSpawned
+    public SensingState Sensing;           // 2 → 02 2.7：本步 Detection 缓冲（不哈希）、延迟探测、已发预警
+    public EwState Ew;                     // 3 → 02 2.8：城区导航干扰累计时长
+    public CommandState Commands;          // 4 → 04 2.4：指挥点、已触发剧情、剧情二选一结果
+    public EnemyIntelState EnemyIntel;     // 5 → 04 2.3：已知目标清单、推迟波次、绕行站点与网格（网格与增量计数不哈希，C-T1-06）
+    public SupportState Support;           // 6 → 03 2.8：剩余架次、待处理呼叫
+    public GridState Grid;                 // 7 → 03 2.8：电网崩溃状态
+    public CivilState Civil;               // 8 → 03 2.8：空袭警报、避难比例、响应度
+    public ScoringState Scoring;           // 9 → 03 2.8：结算累加器（含 UnitHits、DestroyedUnitSnapshots、KillsByEnemy、ThreatsEwDowned、ThreatsEverEwCovered，A-2-20 / A-4-04）
+    public EngagementState Engagement;     // 10 → 03 2.8：弹药池剩余、已记录的保留原因（P27、P28）
 
     // ---- 查找表（只查找，不遍历，不参与哈希）----
     public IReadOnlyDictionary<string, int> StructureIdByDefId;
@@ -1008,22 +1032,75 @@ public sealed record SimConfig
 {
     public int NightIndex { get; init; } = 1;                  // 从 1 开始
     public DeploymentPlan Deployment { get; init; } = DeploymentPlan.Empty;
-    public CarryIn CarryIn { get; init; } = CarryIn.Empty;     // 跨夜 / 跨关带入的数据 → 05（字段）、04、02
-    public bool EndWhenClear { get; init; } = true;            // 待决问题 Q2
+    public CarryIn CarryIn { get; init; } = CarryIn.Empty;     // 跨夜 / 跨关带入的数据（下表，P34）
+    public bool EndWhenClear { get; init; } = true;            // B-T2-08（原 Q2）
+    public bool AutoChoicePrompts { get; init; } = true;       // 04：叙事 / 普通 true，硬核 false（B-T2-11 / P31；参与回放配置）
     public int? DurationTicksOverride { get; init; }           // 仅测试：覆盖夜晚长度
     public bool CheckInvariants { get; init; } = false;        // 每步执行第 6 节断言（测试 / 调试打开）
-    [JsonIgnore] public Func<string, ulong, IRandom>? RandomOverride { get; init; }   // 仅测试：按子流名替换随机源；回放中禁止
+    [JsonIgnore] public Func<string, ulong, IRandom>? RandomOverride { get; init; }   // 仅测试：按子流名替换随机源；写回放时非 null 抛异常
+    [JsonIgnore] public IEnemyAiHooks? EnemyAiHooksOverride { get; init; }            // 仅测试（01 / 04）：写回放时非 null 抛异常（P31）
+    [JsonIgnore] public bool CaptureDebug { get; init; } = false;                     // 06：只决定 Snapshot.Debug 是否构建，不参与哈希、不影响任何系统（P31）
 }
 
-public sealed record DeploymentPlan(IReadOnlyList<PlacedUnit> Units) { public static readonly DeploymentPlan Empty; }
+public sealed record DeploymentPlan(IReadOnlyList<PlacedUnit> Units) { public static readonly DeploymentPlan Empty = new([]); }
 public sealed record PlacedUnit
 {
     public string UnitDefId { get; init; }          // units/*.json 中的 ID；类别由 GameCatalog.GetPlayerUnitCategory 决定
     public Vec2 Pos { get; init; }
     public string? AlternatePositionId { get; init; }
-    public UnitSettings Settings { get; init; }     // 辐射策略 / 触发规则（→ 02）、交战规则（→ 03）
+    public UnitSettings Settings { get; init; } = new();        // 辐射策略 / 触发规则（02 1.11）+ 交战规则（03 2.3）（P33）
+    public bool FirstNightAtNewPosition { get; init; }          // 02 / 05：新阵地首夜惩罚来源（P32 / B-T2-06）
+    public int RosterId { get; init; }                          // 05：战役花名册编号；0 = 非战役单位（P32）
 }
-public sealed record CarryIn { public static readonly CarryIn Empty; /* 字段 → 05 / 04 / 02 */ }
+
+public sealed record UnitSettings                   // 全部字段可空；JSON 单位为内部单位（世界秒 / 米）（P33）
+{
+    // ---- 02 1.11 ----
+    public string? EmissionPolicyId { get; init; }
+    public double? DutyOnSec { get; init; }
+    public double? DutyOffSec { get; init; }
+    public ArmResponse? OnArmIncoming { get; init; }
+    public AfterFiringAction? AfterFiring { get; init; }
+    public bool? NeighborTakeover { get; init; }
+    public Vec2? LurePoint { get; init; }
+    public IReadOnlyList<NightAid>? NightAids { get; init; }
+    public IReadOnlyList<string>? EquipmentEwIds { get; init; }
+    // ---- 03 2.3 ----
+    public UnitEngagementSettings? Engagement { get; init; }
+}
+
+// ---- CarryIn（05 2.4.1 全集 + 04 KnownTargetCarry，P34 / A-2-18）----
+public sealed record CarryIn
+{
+    public static readonly CarryIn Empty = new();
+    public IReadOnlyList<UnitCarryIn> Units { get; init; } = [];              // RosterId 升序
+    public IReadOnlyList<StructureCarryIn> Structures { get; init; } = [];    // StructureId 序数升序
+    public IReadOnlyList<PoolEntry>? AmmoPool { get; init; }                  // WeaponId 序数升序；非 null 时代替 Meta.AmmoQuota（A-2-14）
+    public IReadOnlyList<PoolEntry> PerLevelUsed { get; init; } = [];
+    public double? AlertResponsiveness { get; init; }
+    public IReadOnlyList<KnownTargetCarry>? KnownTargets { get; init; }       // 04 定义列表类型（A-2-18）
+    public int CommandPointsBonus { get; init; }                              // 04 / 05 统一字段名（缺省 0，A-2-18）
+    public int FighterSortiesDelta { get; init; }                             // 03 读取（A-2-22）
+    public IReadOnlyList<string> ActiveSupports { get; init; } = [];          // 如 adjacent_sector_coverage（B-T2-89 / A-2-22）
+    public IReadOnlyList<string> Doctrines { get; init; } = [];
+    public IReadOnlyList<DossierCarryIn> Dossier { get; init; } = [];         // EnemyDefId 序数升序（A-2-22）
+    public AdaptationCarryIn? Adaptation { get; init; }                       // null = 全部关闭（A-2-22）
+    public AutoResolveCarryIn? AutoResolve { get; init; }                     // 03 / 02 读取（B-T3-07 / A-2-22）
+    public IReadOnlyList<ResearchEffectCarryIn> ResearchEffects { get; init; } = [];
+}
+public sealed record UnitCarryIn(
+    int RosterId, double Exposure, IReadOnlyList<WeaponCarryIn> Weapons,
+    bool LightDamaged, double DamageEfficiencyMult, int CrewConsecutiveNights, bool AceCrew,
+    int? DeceptionNightsLeft, bool SeenThrough);
+public sealed record WeaponCarryIn(string WeaponId, IReadOnlyList<int> LauncherRounds);
+public sealed record StructureCarryIn(string StructureId, int Hp, double LossHp);
+public sealed record PoolEntry(string WeaponId, int Rounds);
+public sealed record KnownTargetCarry(string UnitDefId, Vec2 Pos, double Exposure, int RosterId = 0, bool Priority = false);  // 04 定义；RosterId 供 05 维护（A-2-18），Priority 供暴露 100 次夜优先打击（B-T3-05）
+public sealed record DossierCarryIn(string EnemyDefId, double DiscriminationAdd, double ClassifyTimeMult);
+public sealed record AdaptationCarryIn(double UavAltitudeAddM, bool ForceEvasiveUav,
+    IReadOnlyList<Vec2> PriorityPositions, IReadOnlyList<string> ActiveTriggers);
+public sealed record AutoResolveCarryIn(double InterceptProbMult, double ExposureGainMult);
+public sealed record ResearchEffectCarryIn(string EffectId, double Value);
 
 public sealed class SimContext
 {
@@ -1035,6 +1112,10 @@ public sealed class SimContext
     public double StepSec { get; }
     public IRandom Rng { get; }                    // 本系统的子流（3.1.4）；EventLog 为 null
     public EventSink Events { get; }               // Emit + 读本步 / 上一步事件
+    public TerrainModel Terrain { get; }           // 01 地形与视线模型（P30）
+    public IEnemyAiHooks EnemyAiHooks { get; }     // 01 接口 / 04 实现（P30）
+    public SpatialGrid ThreatGrid { get; }         // 3.3.1：系统 2 后重建的敌方目标空间索引（C-T1-08）
+    public SpatialGrid TrackGrid { get; }          // 3.3.1：系统 4 后重建的航迹空间索引（C-T1-08）
 }
 
 public interface ISimSystem
@@ -1046,7 +1127,7 @@ public interface ISimSystem
     void Execute(SimContext ctx);                  // 每步调用一次
 }
 
-public interface ICommandHandler                   // 由拥有该命令的系统实现（4.3 表"处理者"列）
+public interface ICommandHandler                   // 由拥有该命令的系统或阶段 0 组件 CommandStage 实现（4.3 表"处理者"列，P39）
 {
     IReadOnlyList<SimCommandType> Handles { get; }
     CommandRejectReason? Validate(SimContext ctx, SimCommand cmd);   // null = 接受
@@ -1068,18 +1149,35 @@ public sealed class SimSnapshot
     public IReadOnlyList<SensorUnitView> Sensors { get; }
     public IReadOnlyList<EwUnitView> EwUnits { get; }
     public IReadOnlyList<DeceptionUnitView> DeceptionUnits { get; }
-    public IReadOnlyList<ThreatView> Threats { get; }        // 真值：仅调试 / 复盘；正常界面只显示 Tracks（待决问题 Q12）
+    public IReadOnlyList<ThreatView> Threats { get; }        // 真值：仅调试 / 复盘；正常界面只显示 Tracks（B-T2-21，原 Q12）
     public IReadOnlyList<TrackView> Tracks { get; }
     public IReadOnlyList<InterceptorView> Interceptors { get; }
     public IReadOnlyList<SupportAssetView> SupportAssets { get; }
     public IReadOnlyList<DebrisView> Debris { get; }
     public IReadOnlyList<ChoiceRequestView> Choices { get; }
-    public GlobalView Global { get; }                        // 指挥点（04）、警报状态（03）、波次进度（01）等
+    public GlobalView Global { get; }                        // 见下（P45）
+    public DebugView? Debug { get; }                         // Config.CaptureDebug == false 时为 null（06 8.2 A，P44）
 }
-// 每个视图至少包含：int Id, string DefId（若有）, Vec2 Pos, double AltM（若有）
+
+public sealed class DebugView
+{
+    public IReadOnlyList<DetectionDebugView> Detections { get; init; } = [];
+}
+public readonly record struct DetectionDebugView(
+    int SourceId, DetectionSource Source, int ThreatId, int PhantomKey, TrackQuality Quality);
 ```
 
-快照是**深拷贝**（视图为值类型，数组新建），之后对 `SimState` 的修改不影响已取得的快照。
+- 每个实体视图至少包含：`int Id`、`string DefId`（若有）、`Vec2 Pos`、`double AltM`（若有）。
+- **四类我方单位视图**（`FireUnitView` / `SensorUnitView` / `EwUnitView` / `DeceptionUnitView`）公共追加（P46）：
+  - 04：`UnitDeployState DeployState`、`int DeployPhaseEndTick`、`Vec2? RelocationDest`（`= Relocation?.Dest`）；
+  - 02：`bool EmitterOn`（`= Emitter?.On ?? false`）、`string? PolicyId`（`= Emitter?.PolicyId`）、`FireControlMode FcMode`（`= Emitter?.FcMode ?? FireControlMode.Off`）、`double Exposure`、`double ExposurePeak`、`bool NewPositionPenalty`；
+  - 03：`double DamageEfficiencyMult`、`double SuspendedUntilSec`、`bool LightDamaged`；
+  - 其余专有视图字段见 03 2.2（`FireUnitView`）与 02 2.9（`TrackView` 等）；`ThreatView` 按 01 2.4；`ChoiceRequestView` 按 04 2.5（`CreatedTick` 取自基类 `Entity.CreatedTick`）。
+- **`GlobalView` 合并字段**（P45）：
+  - 01：`int PendingSpawnCount`、`int SpawnedThreatCount`、`bool AllWavesSpawned`；
+  - 03：`bool AlertOn`、`double ShelteredFrac`、`double Responsiveness`、`int SortiesRemaining`、`bool GridCollapsed`、`double WeightedLossFrac`；
+  - 04：`int CommandPoints`、`int CommandPointsInitial`、`IReadOnlyList<KnownTargetView> EnemyKnownTargets`（仅调试 / 复盘显示）、`int HeldWaveCount`。
+- 快照是**深拷贝**（视图为值类型，数组新建），之后对 `SimState` 的修改不影响已取得的快照。
 
 ---
 
@@ -1183,7 +1281,7 @@ public static ulong ChildSeed(ulong parentSeed, string name)
 }
 public IRandom Derive(string name) => new SimRandom(ChildSeed(Seed, name));   // 只依赖 Seed，不读写 _state
 
-public static ulong NightSeed(ulong runSeed, string levelId, int nightIndex)
+public static ulong NightSeed(ulong runSeed, string levelId, int nightIndex) // 第三参数在战役中传 nightSeq（flow.nights[] 1-based 下标），单夜运行传 NightIndex（P43，B-T2-07）
 {
     ulong x = runSeed ^ Fnv1a64($"night:{levelId}:{nightIndex.ToString(CultureInfo.InvariantCulture)}");
     return SplitMix64Next(ref x);
@@ -1196,61 +1294,67 @@ public static ulong NightSeed(ulong runSeed, string levelId, int nightIndex)
 - `Chance` 与 `Range` 无论参数如何都消耗固定次数，保证调整概率数值不改变后续随机序列的对齐。
 - `NextInt` 的拒绝采样可能多消耗 `NextUInt32`（概率 `threshold / 2³²`）。
 
-#### 3.1.4 子流名单
+#### 3.1.4 子流名单（P32–P34、A-1.7）
 
 根流：`root = new SimRandom(seed)`（`seed` 为 `SimWorld.Create` 参数）。子流：`root.Derive(<子流名>)`。`RandomStreams` 在 `Create` 中按下表顺序创建全部子流（顺序不影响结果，只影响哈希中的写入顺序）。
 
 | 序 | 子流名 | 使用者（唯一） | 规格 | 用途举例 |
 |---|---|---|---|---|
-| 0 | `setup` | `SimWorld.Create` 及各系统 `Initialize` | 00 | 开局需要的随机（如有） |
-| 1 | `command` | 阶段 0（命令应用、二选一超时、剧情事件） | 04 | 预留 |
-| 2 | `spawn` | 1 `WaveSpawnSystem` | 01 | 组内间隔抖动、`weighted_random` 选目标 |
-| 3 | `movement` | 2 `EnemyMovementSystem` | 01 | `altitudeM` 范围内取高度、航线扰动 |
-| 4 | `sensor` | 3 `SensorSystem` | 02 | 探测概率、误报 |
-| 5 | `fusion` | 4 `TrackFusionSystem` | 02 | 诱饵甄别 |
-| 6 | `ew` | 5 `ElectronicWarfareSystem` | 02 | 诱导成功（`pullChance`）、链路中断结果 |
-| 7 | `emission` | 6 `EmissionSystem` | 02 | 反辐射导弹规避判定 |
-| 8 | `engagement` | 7 `EngagementSystem` | 03 | 同优先级目标的随机打破（如有） |
-| 9 | `intercept` | 8 `InterceptorSystem` | 03 | 拦截判定掷骰 |
-| 10 | `support` | 9 `ExternalSupportSystem` | 03 | 大空袭夜拒绝概率、战斗机击落 |
-| 11 | `impact` | 10 `ImpactSystem` | 03 | 精度档落点偏移、建筑损毁数、碎片 |
-| 12 | `exposure` | 11 `ExposureSystem` | 02 | 预留 |
-| 13 | `enemy_ai` | 12 `EnemyIntelSystem` | 04 | 已知目标选择 |
-| 14 | `scoring` | 13 `ScoringSystem` | 03 | 预留（应为 0 消耗） |
-| 15 | `civil` | 空袭警报相关代码（宿主系统见待决问题 Q5） | 03 | 民众响应 |
+| 0 | `setup` | `SimWorld.Create` 及各系统 `Initialize` | 00 | 开局需要的随机（本版本 0 消耗，预留） |
+| 1 | `command` | 阶段 0（命令应用、二选一超时、剧情事件） | 04 | 预留（本版本 0 消耗） |
+| 2 | `spawn` | 1 `WaveSpawnSystem` | 01 | 组目标选择（`weighted_random` / 回退）、挂载选择（`NextInt`）、04 钩子 `SelectKnownTarget` / `SelectAirDefenseTarget` 的加权选择（宿主为系统 1） |
+| 3 | `movement` | 2 `EnemyMovementSystem` | 01 | `altitudeM` 区间掷骰（每个目标初始化一次） |
+| 4 | `sensor` | 3 `SensorSystem` | 02 | 误报（每个有误报能力的工作中探测单位每步 1 次 `Chance` + 位置；探测本身确定性） |
+| 5 | `fusion` | 4 `TrackFusionSystem` | 02 | 诱饵甄别（精确航迹首次出现每诱饵 1 次 `Chance`） |
+| 6 | `ew` | 5 `ElectronicWarfareSystem` | 02 | 导航干扰 / 诱导 / 国家级欺骗 / 链路中断判定与结果 |
+| 7 | `emission` | 6 `EmissionSystem` | 02 | 预留（本版本 0 消耗；诱骗偏转在系统 10 使用 `impact`） |
+| 8 | `engagement` | 7 `EngagementSystem` | 03 | 预留（本版本确定性优先级，0 消耗） |
+| 9 | `intercept` | 8 `InterceptorSystem` | 03 | 拦截弹与身管射击命中判定 |
+| 10 | `support` | 9 `ExternalSupportSystem` | 03 | 大空袭夜战斗机支援拒绝概率 |
+| 11 | `impact` | 10 `ImpactSystem` | 03 | 落点偏移、民用损毁数、部件选择、反辐射导弹失锁（欺骗诱偏 + 关机规避） |
+| 12 | `exposure` | 11 `ExposureSystem` | 02 | 假发射车被识破判定（每步对暴露度达到阈值的假单位 1 次 `Chance`） |
+| 13 | `enemy_ai` | 12 `EnemyIntelSystem` | 04 | 预留（本版本 0 消耗；选目标在系统 1 内走 `spawn`） |
+| 14 | `scoring` | 13 `ScoringSystem` | 03 | 预留（0 消耗） |
+| 15 | `civil` | 空袭警报相关代码（宿主为系统 13 `ScoringSystem`） | 03 | 预留（本版本警报公式确定性，0 消耗） |
 | 16 | `environment` | 天气 / 昼夜（WS01-026） | 01/02 | 预留 |
 | 17 | `crew` | 班组（WS01-025） | 03 | 预留 |
 
 规则：
 
-1. **一个系统只能使用 `ctx.Rng`（自己的子流）**。宿主在某系统内的子功能（如碎片在 `ImpactSystem` 内、欺骗单位效果在 `SensorSystem` / `EmissionSystem` 内）使用宿主的子流，除非上表单列。
+1. **一个系统只能使用 `ctx.Rng`（自己的子流）**。宿主在某系统内的子功能（如碎片在 `ImpactSystem` 内、欺骗单位效果在 `SensorSystem` / `ImpactSystem` 内、敌方 AI 选目标钩子在 `WaveSpawnSystem` 内）使用宿主的子流，除非上表单列。
 2. 新增子流：在表末追加一行，并在 3.7.2 中追加（只影响哈希写入，不影响已有子流的序列）。
 3. **按实体派生的子流**（`ctx.Rng.Derive($"e{id}")`）只能在实体创建时派生一次并保存在实体字段中（参与哈希）；不得每步重新派生（每次派生都会从头开始，产生重复序列）。默认不使用。
 4. `EventLog`（14）不使用随机数，`StreamName = null`。
 5. **测试钩子**：`SimConfig.RandomOverride != null` 时，`RandomStreams` 对每个子流调用 `RandomOverride(name, childSeed)`，返回 `null` 则使用正常 `SimRandom`。测试工具 `ScriptedRandom`（`sim.tests/TestKit`）按给定序列返回 `NextDouble` / `NextUInt32`，序列耗尽时抛异常。回放文件不允许携带覆盖。
 
-#### 3.1.5 种子来源
+#### 3.1.5 种子来源（P43、A-5-01、B-T2-07、C-T1-10）
 
-- `SimWorld.Create(level, config, seed)` 的 `seed` 由调用方提供；**推荐**调用方使用 `SimRandom.NightSeed(runSeed, level.Id, config.NightIndex)`（WBS 01.A："种子来自关卡 + 夜晚序号"）。
+- `SimWorld.Create(level, config, seed)` 的 `seed` 由调用方提供；调用方使用 `SimRandom.NightSeed(runSeed, level.Id, nightSeq)`（WBS 01.A："种子来自关卡 + 夜晚序号"）。其中第三参数 `nightSeq` 由调用方决定：**战役模式**传入该夜在 `flow.nights[]` 中的 1-based 下标（保证插播夜 `nightIndex == 0` 多次出现或同关重打时各夜种子唯一）；**非战役单夜运行**直接传入 `config.NightIndex`（P43，B-T2-07，原 Q11）。
+- **命名空间隔离（A-5-01）**：`night:` 前缀专用于 `NightSeed`；战役层（05）通过 `SimRandom.ChildSeed(runSeed, name)` 派生的战役子种子名字一律以 `campaign:` 开头（如 `campaign:card:{seq}`、`campaign:intel:{seq}`），保证两个命名空间互不碰撞。
 - `runSeed`（`ulong`）是一局战役的随机种子，由战役层（05）在新战役开始时生成并写入存档；生成方式不在模拟层（模拟层不得调用任何熵源）。
-- 无画面工具（`tools/simrun`）的 `--seed N` 直接作为 `seed` 传入（不经过 `NightSeed`），便于复现。
+- 无画面工具（`tools/simrun`，命令行规范见 [`07_tools.md` 第 1 节](07_tools.md)）的 `--seed N` 直接作为 `seed` 传入（不经过 `NightSeed`），便于复现（C-T1-10）。
 
 ### 3.2 `SimWorld.Create(LevelData, SimConfig, seed)`
 
 按顺序执行；任何一步失败都抛异常，不返回半初始化的世界。
 
-1. **参数校验**：`level`、`config` 非 `null`，否则 `ArgumentNullException`。`config.RandomOverride` 可为 `null`。
-2. **夜晚数据**：`night = level.Waves.Nights` 中 `Night == config.NightIndex` 的唯一一项；找不到 → `SimSetupException`，消息使用 `E_NIGHT_NOT_FOUND` 格式（`[E_NIGHT_NOT_FOUND] levels/<id>/waves.json $.nights: waves.json 中没有第 {n} 夜`）。
+1. **参数校验**：`level`、`config` 非 `null`，否则 `ArgumentNullException`。`config.RandomOverride`、`config.EnemyAiHooksOverride` 可为 `null`。
+2. **夜晚数据与时期校验**：`night = level.Waves.Nights` 中 `Night == config.NightIndex` 的唯一一项；找不到 → `SimSetupException`，消息使用 `E_NIGHT_NOT_FOUND` 格式（`[E_NIGHT_NOT_FOUND] levels/<id>/waves.json $.nights: waves.json 中没有第 {n} 夜`）。随后校验 `LevelData` 的加载时期与该夜一致：`DateOnly expectedDate = night.Date ?? level.Meta.DateFrom; if (level.Date != expectedDate)` → 抛 `SimSetupException`（`[E_NIGHT_DATE_MISMATCH] levels/<id>/waves.json $.nights[{i}].date: LevelData 以日期 {level.Date} 加载，但第 {n} 夜要求日期 {expectedDate}；请用 LoadLevel(source, id, nightIndex: {n}) 加载`，B-T2-17，原 Q1）。
 3. **时钟**：`StepSec = level.Catalog.Conventions.WorldStepSec`；`DurationTicks = config.DurationTicksOverride ?? SimTime.SecToTicksCeil(night.DurationSec, StepSec)`；`DurationTicks < 1` → `SimSetupException`。
-4. **状态**：新建 `SimState`：`Tick = 0`，`Ids.NextId = 1`，`NextEventSeq = 1`，`EventStreamHash = 0xCBF29CE484222325`，`EndRequest = null`，全部存储为空。
+3a. **地形、AI 钩子与空间网格（P35、C-T1-08）**：构造 `Terrain = new TerrainModel(level.Heightmap, level.Catalog.Rules.Terrain)`（02 3.1）；选择 `EnemyAiHooks = config.EnemyAiHooksOverride ?? new EnemyAiHooks()`（04 3.4）；初始化空间索引 `ThreatGrid` 与 `TrackGrid`（3.3.1）。
+4. **状态**：新建 `SimState`：`Tick = 0`，`Ids.NextId = 1`，`NextEventSeq = 1`，`EventStreamHash = 0xCBF29CE484222325`，`EndRequest = null`，全部实体存储与 10 个单例组件为空 / 初值。
 5. **随机**：`root = new SimRandom(seed)`；按 3.1.4 表顺序创建全部子流（考虑 `RandomOverride`）。
 6. **静态实体**（ID 分配顺序固定）：
    1. 电网节点：按 `level.Grid.Nodes` 数据顺序 `Add`，填 `DefId`、`Pos`；同时填 `GridNodeIdByDefId`。
    2. 保护目标：按 `level.Structures` 数据顺序 `Add`，填 `DefId`、`Pos`、`GridNodeId`（按查找表解析，无则 0）；填 `StructureIdByDefId`。其余字段初值由 03 规定。
-7. **部署方案**：先调用 `DeploymentValidator.Validate(level, config.Deployment)`（规则 → 04：单位存在、数量不超过 `availableUnits`、位置合法……），有错误则抛 `SimSetupException`（列出全部错误）。然后按 `config.Deployment.Units` 顺序为每个 `PlacedUnit` 在对应存储中 `Add`：`DeployState = Deployed`，`Pos` = 给定位置，`AltM = 0`，`Exposure = 0`，`Powered = true`，`GridNodeId = 0`，其余字段由所属规格初始化。
-8. **带入数据**：应用 `config.CarryIn`（→ 05 / 04 / 02 规定；可能修改上一步实体的字段，如暴露度、弹药）。
+7. **部署方案（P36、A-4-05）**：先调用 `DeploymentValidator.Validate(level, config.Deployment)`（规则 → 04 3.1.1：单位存在、数量不超过 `availableUnits`、位置合法……），有错误则抛 `SimSetupException`（列出全部错误）。然后按 `config.Deployment.Units` 顺序为每个 `PlacedUnit` 在对应存储中 `Add`：填 `Placement = placed`、`RosterId = placed.RosterId`、`DeployState = Deployed`、`Pos = placed.Pos`、`AltM = 0`、`Exposure = 0`、`ExposurePeak = 0`、`NewPositionPenalty = placed.FirstNightAtNewPosition`（02 3.6.3）、`Powered = true`、`GridNodeId = 0`、`DamageEfficiencyMult = 1.0`。对 `FireUnit`，创建后立即调用 `FireUnitFactory.Init(fu, def, rules)`（03 3.1.1：按 `def.Weapons` 顺序建立 `fu.Weapons` 列表，`Launchers` 置空，**不在此时扣池装填**——弹药池与发射架在步骤 9 的 `EngagementSystem.Initialize` 中统一建立，A-4-05）；其余类型专有字段初值由所属规格初始化。
+8. **带入数据（P37、A-4-05、A-2-22）**：应用 `config.CarryIn`（`CarryIn == null` 时视为默认 `new CarryIn()`）：
+   - 若 `CarryIn.ActiveSupports.Count > 0` 或 `CarryIn.Adaptation != null` 且对应 M3+ 特性尚未实现，抛 `SimSetupException`（`[E_NOT_IMPLEMENTED] CarryIn 包含尚未实现的 M3+ 字段`，A-2-22）。
+   - 对 `CarryIn.Units` 中每项 `u`：在四类我方单位存储中按 `RosterId == u.RosterId`（`u.RosterId != 0`）查找唯一实体，拷贝标量字段：`Exposure = u.Exposure`、`ExposurePeak = u.Exposure`、`DamageEfficiencyMult = u.DamageEfficiencyMult`、`LightDamaged = u.LightDamaged`、`CrewConsecutiveNights = u.CrewConsecutiveNights`、`AceCrew = u.AceCrew`；若为 `DeceptionUnit` 则置 `SeenThrough = u.SeenThrough`。
+   - 其余 `CarryIn` 字段（`AmmoPool` 与 `UnitCarryIn.Weapons[].LauncherRounds`、`Structures`、`KnownTargets`、`AlertResponsiveness`、`DeceptionUnit.NightsAtCurrentPos`、`ActiveSupports`、`Adaptation`）不在此步改写实体，由各系统在步骤 9 `Initialize`（及步骤 9a `CommandStage.Initialize`）中从 `ctx.Config.CarryIn` 读取并初始化各自组件与发射架（其中 03 `EngagementSystem.Initialize` 在 `u.Weapons != null` 时直接按 `LauncherRounds` 构建各发射架、不从 `AmmoPool` 重复扣减，A-4-05）。
 9. **系统**：按 3.3 表实例化 14 个系统，按 `Order` 升序调用 `Initialize(ctx)`（`ctx.Tick = 0`，`ctx.Rng` = 子流 `setup`）。`Initialize` 可以创建实体（ID 接着分配）。
-10. **命令处理者注册**：收集所有实现 `ICommandHandler` 的系统，建立 `SimCommandType → handler` 表；同一类型有两个处理者 → `InvalidOperationException`；4.3 表中的每个命令类型都必须有处理者（实现阶段未完成的系统用"一律拒绝 `NotImplemented`"的占位处理者）。
+9a. **阶段 0 组件初始化（P38、A-2-18）**：调用 `CommandStage.Initialize(ctx)`（04 3.2/3.3，`ctx.Rng = setup`）：执行剧情波次引用开局校验（04 1.3.3），并初始化 `State.Command.CommandPoints = Math.Clamp(level.Meta.CommandPointsPerNight + (config.CarryIn?.CommandPointsBonus ?? 0), 0, level.Catalog.Rules.Economy.CommandPointsPerNight.Max)` 及 `CommandPointsInitial = State.Command.CommandPoints`。
+10. **命令处理者注册（P39）**：收集 14 个系统**以及阶段 0 组件 `CommandStage`** 中所有 `ICommandHandler` 实现，建立 `SimCommandType → handler` 表；同一类型有两个处理者 → `InvalidOperationException`；4.3 表中的每个命令类型都必须有处理者（实现阶段未完成的系统用"一律拒绝 `NotImplemented`"的占位处理者）。
 11. **开场事件**：发出 `NightStarted { NightIndex, DurationTicks, Seed }`（`Tick = 0`，`Seq = 1`），并立即执行一次 EventLog 的封存逻辑（3.4.2 的步骤 1–3），使其进入事件流哈希并可被 `DrainEvents` 取到。
 12. 世界就绪：`Tick = 0`，`IsFinished = false`；`Snapshot` 可读，反映开场状态。
 
@@ -1273,6 +1377,15 @@ public static ulong NightSeed(ulong runSeed, string levelId, int nightIndex)
 | 13 | `ScoringSystem` | `scoring` | 交换比、损失、信任度变化 | 03 |
 | 14 | `EventLog` | — | 输出本步事件 | 00 |
 
+#### 3.3.1 空间索引与性能预算（C-T1-08、C-T1-16、C-T2-02）
+
+- **`SpatialGrid`**：二维均匀网格加速结构（`ThreatGrid` 与 `TrackGrid`，挂在 `SimContext` 上，**不参与状态哈希**）。
+  - 网格划分：覆盖 `[0, Map.WidthM] × [0, Map.HeightM]`，单元边长 `CellSizeM = Math.Max(5000.0, Math.Max(Map.WidthM, Map.HeightM) / 64.0)`（50 km 地图为 5000 m，10×10 格；300 km 地图同样为 5000 m，60×60 格）；越界坐标钳制到边界格。
+  - 重建时机：`ThreatGrid` 在系统 2（`EnemyMovementSystem`）结束后由框架重建（写入全部 `Alive` 的 `Threat`）；`TrackGrid` 在系统 4（`TrackFusionSystem`）结束后由框架重建（写入全部 `Alive` 的 `Track`）。系统 8 / 10 中目标死亡仅置 `Alive = false`；`QueryCircle` 自动跳过 `!Alive` 实体。
+  - 查询契约：`QueryCircle(Vec2 center, double radiusM)` 枚举圆外接矩形覆盖格内的候选实体，用精确平方距离 `(dx*dx + dy*dy <= radiusM*radiusM)` 过滤后，**按实体 `Id` 升序返回**——与直接遍历 `EntityStore` 全表过滤的返回集合和顺序**逐位完全一致**。
+- **空闲步早退（C-T1-16）**：当某一步满足 `Threats.CountAlive == 0 && Tracks.CountAlive == 0 && Interceptors.CountAlive == 0 && Debris.CountAlive == 0` 且本步无到期波次 / 剧情动作 / 移动中单位时，各系统在完成 O(1) 全局检查与必要的每步固定计数 / 随机推进后直接返回，不分配临时集合。
+- **单步性能预算（C-T2-02）**：在同屏 50 `Threat` × 15 我方单位 × 20 `Interceptor` 典型高压负载（Release 构建）下，单步 `Step()` 耗时目标：均值 `< 2 ms`（对应 60× 快进 60 Step/s 下 CPU 占用 `< 12%`）、p99 `< 4 ms`、最坏单步 `< 50 ms`；完全空闲步耗时 `≤ 20 µs`。
+
 ### 3.4 `Step()` 框架
 
 ```csharp
@@ -1285,10 +1398,15 @@ public void Step()
 
     // 2. 阶段 0：命令（不属于 01.B 的 14 个系统，是框架的一部分）
     ApplyDueCommands();                 // 3.4.1
-    CommandStageHooks();                // 04：二选一超时处理、剧情事件触发（待决问题 Q5、Q15）
+    CommandStageHooks();                // 04：严格按 DeploymentStage.Run(ctx) → ChoiceStage.Run(ctx) → StoryStage.Run(ctx) 顺序执行（P40，B-T2-15，原 Q5/Q15）
 
-    // 3. 系统 1–13（严格按 Order）
-    for (int k = 0; k < 13; k++) systems[k].Execute(ContextFor(systems[k]));
+    // 3. 系统 1–13（严格按 Order；系统 2 后重建 ThreatGrid，系统 4 后重建 TrackGrid）
+    for (int k = 0; k < 13; k++)
+    {
+        systems[k].Execute(ContextFor(systems[k]));
+        if (k == 1) RebuildThreatGrid();
+        else if (k == 3) RebuildTrackGrid();
+    }
 
     // 4. 结束判定（3.5）：可能发出 NightEnded、生成 Result
     CheckNightEnd();
@@ -1324,7 +1442,7 @@ public SimCommand Enqueue(SimCommand command)
   2. `r == null` → `h.Apply(ctx, cmd)`，发出 `CommandApplied { CommandSeq, CommandType }`。
   3. 否则发出 `CommandRejected { CommandSeq, CommandType, Reason = r }`，状态不变。
   4. 后一条命令的 `Validate` 看到前一条命令 `Apply` 之后的状态。
-- 指挥点的扣除在处理者内完成（规则 → 04），不在框架中。
+- **指挥点校验与扣除规则（A-2-17）**：凡消耗指挥点（`cost > 0`）的命令，其处理者在 `Validate` 的**最后一步**（全部业务前置条件通过后）调用 `if (!CommandPointRules.CanSpend(ctx, cost)) return CommandRejectReason.NoCommandPoints;`（04 3.2.1）；在 `Apply` 的**第一步**调用 `CommandPointRules.Spend(ctx, cost)`。免费命令（`cost == 0`）不调用。
 - 命令队列与命令日志**不属于 `SimState`**、不参与状态哈希（它们是输入）。
 - `_nextCommandSeq` 与事件 `Seq` 是两个独立计数器。
 
@@ -1344,7 +1462,7 @@ public sealed class EventSink
   1. 对 `CurrentStep` 中每个事件按 `Seq` 顺序更新 `State.EventStreamHash`（3.7.3）；
   2. 追加到输出缓冲 `_outbox`；
   3. `PreviousStep = CurrentStep`，`CurrentStep = 新空列表`。
-- `DrainEvents()`：返回 `_outbox` 的副本（按 `Seq` 升序，可能跨多步），然后清空 `_outbox`。从不调用则一直累积（无上限，见待决问题 Q13）。
+- `DrainEvents()`：返回 `_outbox` 的副本（按 `Seq` 升序，可能跨多步），然后清空 `_outbox`。从不调用则一直累积（无上限，单夜典型百级事件 ≈ 数十 KB；每步消费的客户端可在每步末调用 `DrainEvents()`，B-T3-06，原 Q13）。
 - `DrainEvents()` 与 `Snapshot` 都**不改变** `SimState`（不影响哈希）。
 
 ### 3.5 夜晚结束与 `NightResult`
@@ -1360,10 +1478,15 @@ elif Config.EndWhenClear and AllClear():
     end(Survived, AllClear)
 ```
 
-- `AllClear()` = `State.Waves.AllWavesSpawned`（01 维护：本夜所有波次与剧情追加波次都已生成完毕）**且** `Threats.CountAlive() == 0` **且** `Interceptors.CountAlive() == 0`。（是否启用见待决问题 Q2。）
+- `AllClear()` 同时满足以下 5 项条件（P41、A-4-03、B-T2-08，原 Q2）：
+  1. **波次队列清空**：`State.Waves.Pending.Count == 0 && State.Waves.Injections.Count == 0`（直接判底层队列，**不得读取**可能滞后半步的 `State.Waves.AllWavesSpawned` 缓存，A-4-03）；
+  2. **场上无仍可造成伤害的敌方目标**：`State.Threats` 中不存在满足 `t.Kind == ThreatKind.Munition || (t.Kind == ThreatKind.Platform && t.Releases.Any(r => !r.Done))` 的存活实体（已投完弹返航的纯平台、以及无剩余投放项的侦察/佯攻平台不阻塞清场，B-T2-08）；
+  3. **场上无飞行中拦截弹**：`State.Interceptors.CountAlive == 0`；
+  4. **无待释放的推迟波次**：`State.EnemyIntel.HeldWaves.Count == 0`（04）；
+  5. **无待触发的剧情生成**：`!StoryRules.HasPendingScheduledSpawn(ctx)`（04 3.3.3）。
 - 多个 `EndRequest` 同步设置时，**先设置者胜出**（`EndRequest` 非 null 后不再覆盖）。
 - `end(outcome, reason)`：
-  1. `Result = ScoringSystem.BuildResult(ctx, outcome, reason)`（字段 → 03）；框架填写公共字段（下）。
+  1. `Result = ScoringSystem.BuildResult(ctx, outcome, reason)`（字段 → 03 2.9 / 04 2.4 / 05 2.4.2）；框架填写公共字段（下）。
   2. 发出 `NightEnded { Outcome, Reason, EndTick = Tick }`。
   3. `IsFinished = true`。之后 `Step()`、`Enqueue()` 抛 `InvalidOperationException`；`DrainEvents()`、`Snapshot`、`ComputeStateHash()` 仍可用。
   4. 压缩后计算 `FinalStateHash` 写入 `Result`。
@@ -1375,27 +1498,81 @@ public enum NightEndReason { DurationElapsed = 0, AllClear = 1, DefeatCondition 
 public sealed record NightResult
 {
     // ---- 00 填写 ----
-    public string LevelId { get; init; }
+    public string LevelId { get; init; } = "";
     public int NightIndex { get; init; }
-    public string Seed { get; init; }                 // "0x" + 16 位大写十六进制
-    public string DataHash { get; init; }
+    public string Seed { get; init; } = "";                 // "0x" + 16 位大写十六进制
+    public string DataHash { get; init; } = "";
     public NightOutcome Outcome { get; init; }
     public NightEndReason EndReason { get; init; }
     public int EndTick { get; init; }
     public double EndTimeSec { get; init; }
-    public string FinalStateHash { get; init; }       // "0x" + 16 位大写十六进制
-    // ---- 03 定义并填写：损失、弹药消耗、交换比、城区上空拦截比例、暴露度汇总 ----
-    public LossesSummary Losses { get; init; }
-    public AmmoSummary Ammo { get; init; }
-    public ExchangeSummary Exchange { get; init; }
-    public DebrisSummary Debris { get; init; }
-    public ExposureSummary Exposure { get; init; }
-    // ---- 05 / 04 定义：跨夜 / 跨关带出的数据（已知目标清单、暴露度、库存、损毁、信任度变化）----
-    public CarryOut CarryOut { get; init; }
+    public string FinalStateHash { get; init; } = "";       // "0x" + 16 位大写十六进制
+    // ---- 03 定义并填写（03 2.9）：损失、弹药消耗、交换比、碎片、暴露度、民情与信任、支援汇总 ----
+    public LossesSummary Losses { get; init; } = new();
+    public AmmoSummary Ammo { get; init; } = new();
+    public ExchangeSummary Exchange { get; init; } = new();
+    public DebrisSummary Debris { get; init; } = new();
+    public ExposureSummary Exposure { get; init; } = new();
+    public CivilSummary Civil { get; init; } = new();
+    public SupportSummary Support { get; init; } = new();
+    // ---- 04 定义并填写（04 2.4）：指挥与剧情汇总 ----
+    public CommandSummary Commands { get; init; } = new();
+    // ---- 05 / 04 / 02 合并定义：跨夜 / 跨关带出的数据 ----
+    public CarryOut CarryOut { get; init; } = new();
+}
+
+// 04 指挥汇总（P42）
+public sealed record CommandSummary
+{
+    public int CommandPointsInitial { get; init; }
+    public int CommandPointsSpent { get; init; }
+    public int CommandPointsRemaining { get; init; }
+    public int RelocationsCompleted { get; init; }
+    public int ChoicesTriggered { get; init; }
+    public int ChoicesTimedOut { get; init; }
+}
+
+// CarryOut 完整合并定义（05 2.4.2 + 04 StoryChoiceResults + 02 UrbanNavJamTriggered，P42 / B-T2-36）
+public sealed record CarryOut
+{
+    public IReadOnlyList<UnitCarryOut> Units { get; init; } = [];
+    public IReadOnlyDictionary<string, int> AmmoPoolRemaining { get; init; } = new Dictionary<string, int>();
+    public IReadOnlyList<StructureCarryOut> Structures { get; init; } = [];
+    public IReadOnlyList<KnownTargetRecord> KnownTargets { get; init; } = [];
+    public double AlertResponsiveness { get; init; }
+    public int TrustDelta { get; init; }
+    public int MoraleDelta { get; init; }
+    public IReadOnlyDictionary<string, string> StoryChoiceResults { get; init; } = new Dictionary<string, string>(); // choiceId → 选中的 optionId（04）
+    public bool UrbanNavJamTriggered { get; init; }         // 本夜是否曾在城区开启导航干扰（02 B-T2-36，供 03/05 统计）
+}
+
+public sealed record UnitCarryOut
+{
+    public int RosterId { get; init; }
+    public string DefId { get; init; } = "";
+    public Vec2 FinalPos { get; init; }
+    public bool Destroyed { get; init; }
+    public bool LightDamaged { get; init; }
+    public double RepairDaysNeeded { get; init; }
+    public double Exposure { get; init; }
+    public double ExposurePeak { get; init; }
+    public int CrewConsecutiveNights { get; init; }
+    public bool AceCrew { get; init; }
+    public int KillsTonight { get; init; }
+    public bool SeenThrough { get; init; }
+    public int NightsAtCurrentPos { get; init; }
+    public IReadOnlyList<WeaponCarryIn> Weapons { get; init; } = []; // 各武器架上剩余弹药，跨夜原样带入
+}
+
+public sealed record StructureCarryOut
+{
+    public string DefId { get; init; } = "";
+    public int Hp { get; init; }
+    public bool Destroyed { get; init; }
 }
 ```
 
-`NightResult` 必须可被 `System.Text.Json` 序列化 / 反序列化往返（WS01-023 验收）。
+`NightResult` 必须可被 `System.Text.Json` 序列化 / 反序列化往返（WS01-023 验收），统一使用以下 `JsonSerializerOptions`（P42）：`PropertyNamingPolicy = JsonNamingPolicy.CamelCase`、`Converters = { new JsonStringEnumConverter() }`、`NumberHandling = JsonNumberHandling.Strict`（禁止 `NaN` / `Infinity`）。
 
 ### 3.6 快照生成
 
@@ -1428,20 +1605,21 @@ FNV‑1a 64（常数同 3.1.1），对以下规范字节流计算。全部为**�
 1. 头：`Write("NWSH")`，`Write(1)`（格式版本），`Write(State.Tick)`，`Write(State.Ids.NextId)`，`Write(State.NextEventSeq)`，`Write(State.EventStreamHash)`。
 2. `EndRequest`：`Write(bool 非 null)`，非 null 时写 `Outcome`、`Reason`、`Detail`。
 3. 随机子流：按 3.1.4 表顺序，每个写 `Write(State)`、`Write(Inc)`（`RandomOverride` 的替身写 `Write(0UL)`、`Write(0UL)`）。
-4. 实体存储：按 `EntityKind` 值升序。每个存储：`Write((int)Kind)`，`Write(CountAlive)`，然后对每个 Alive 实体按 ID 升序：`Write(Id)`、`Write(CreatedTick)`、`Write(DefId)`（无此字段的类型写 `null`）、`Write(Pos)`、`Write(AltM)`（无空间字段的类型不写这两项）、再调用 `entity.WriteHash(h)` 写类型专有字段——**顺序 = 所属规格第 2 节状态表中的行顺序**；表中标"不参与哈希"的派生缓存不写。
-5. 单例组件：按下表顺序，各自调用 `WriteHash(h)`（字段顺序 = 所属规格状态表顺序）：
+4. 实体存储：按 `EntityKind` 值升序。每个存储：`Write((int)Kind)`，`Write(CountAlive)`，然后对每个 Alive 实体按 ID 升序：`Write(Id)`、`Write(CreatedTick)`、`Write(DefId)`（无此字段的类型写 `null`）、`Write(Pos)`、`Write(AltM)`（无空间字段的类型不写这两项）、再调用 `entity.WriteHash(h)` 写类型专有字段——**顺序 = 2.2.2 及所属规格第 2 节状态表中的行顺序**（其中四类我方单位先按 2.3.2 顺序写 `PlayerUnitCommon` 的 1–14 项，再写子类专有字段，P24）；表中标"不参与哈希"的派生缓存不写。
+5. 单例组件：按下表顺序，各自调用 `WriteHash(h)`（字段顺序 = 所属规格状态表顺序，P28、P29）：
 
-| 序 | 组件 | 规格 |
+| 序 | 组件 | 规格与章节 |
 |---|---|---|
-| 1 | `WaveState` | 01 |
-| 2 | `SensingState` | 02 |
-| 3 | `EwState` | 02 |
-| 4 | `CommandState` | 04 |
-| 5 | `EnemyIntelState` | 04 |
-| 6 | `SupportState` | 03 |
-| 7 | `GridState` | 03 |
-| 8 | `CivilState` | 03 |
-| 9 | `ScoringState` | 03 |
+| 1 | `WaveState` | 01 §2.3 |
+| 2 | `SensingState` | 02 §2.6 |
+| 3 | `EwState` | 02 §2.7 |
+| 4 | `CommandState` | 04 §2.2 |
+| 5 | `EnemyIntelState` | 04 §2.3 |
+| 6 | `SupportState` | 03 §2.5 |
+| 7 | `GridState` | 03 §2.6 |
+| 8 | `CivilState` | 03 §2.7 |
+| 9 | `ScoringState` | 03 §2.8 |
+| 10 | `EngagementState` | 03 §2.4 |
 
 组件内部的集合必须是有序容器（`List`、按键排序后的数组、`SortedDictionary`）；写入时按其固定顺序遍历。
 
@@ -1486,6 +1664,7 @@ FNV‑1a 64（常数同 3.1.1），对以下规范字节流计算。全部为**�
 
 - `seed`、哈希用十六进制字符串（JSON number 无法精确表示 64 位整数）。
 - `config` 与 `commands` 用 `System.Text.Json` 序列化，属性名 camelCase；命令多态用 `[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]` + 每个命令类型的 `[JsonDerivedType(typeof(X), "X")]`（判别值 = 4.3 表中的命令名）。enum 序列化为字符串名（`JsonStringEnumConverter`）。
+- 写出回放文件时，若 `config.RandomOverride != null` 或 `config.EnemyAiHooksOverride != null`，抛 `InvalidOperationException`（测试替身不可序列化到回放文件，P31）。
 - `commands` = 原世界 `_commandLog` 的全部条目（含被拒绝的），按 `seq` 升序，`effectiveTick` 为规范化后的值。
 - `simVersion`、`runtime` 仅供参考，不参与校验；`runtime` 不同时回放工具打印警告（同平台保证，WBS 01.A）。
 - `checkpoints`：每 `checkpointInterval` 步记录一次状态哈希（`tick % interval == 0`），用于定位分歧点；`checkpointInterval = 0` 表示不记录。
@@ -1497,7 +1676,7 @@ FNV‑1a 64（常数同 3.1.1），对以下规范字节流计算。全部为**�
 #### 3.9.3 回放流程（`ReplayRunner`）
 
 1. 读文件，校验 `format`、`version`。
-2. `level = DataLoader.LoadLevel(source, levelId)`；`level.DataHash != dataHash` → 抛 `ReplayDataMismatchException`（除非调用方传 `force: true`，此时只警告）。
+2. `level = DataLoader.LoadLevel(source, levelId, nightIndex)`；`level.DataHash != dataHash` → 抛 `ReplayDataMismatchException`（除非调用方传 `force: true`，此时只警告）。
 3. `world = SimWorld.Create(level, config, seed)`。
 4. 按 `seq` 顺序对每条命令调用 `world.Enqueue(cmd)`（此时 `Tick = 0`，所有 `effectiveTick ≥ 1`，规范化不改变它；新分配的 `Seq` 与记录一致——不一致即抛异常）。
 5. 循环 `Step()` 直到 `IsFinished`；在每个检查点比较哈希，第一个不一致的检查点 → 报告 `ReplayDivergedException(tick, expected, actual)`。
