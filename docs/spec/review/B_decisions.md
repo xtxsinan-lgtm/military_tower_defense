@@ -145,3 +145,98 @@
 - 推荐：**A**，并把数值表 §3.5 的系数改称"**目标平均系数**（平衡目标）"；D3 必须验证在典型夜晚中各策略的实测比例落在表值 ±0.15 内，偏离时调整 `dutyCycleDefaultOn/Off`、`decoyLeadGameSec` 等参数，而不是改为相乘。Q7（静默 −0.5 只在本步无任何正向来源时生效）按 02 默认。
 - D3 验证：**可以且必须**（本条的推荐以验证结果为前提）。
 - 批准后改动：02 §3（暴露累积）、Q6；数值表 §3.5 表头"暴露系数"→"目标平均暴露系数"并加注；`data/rules/emission.json` `_source` 注明系数为平衡目标；`tools/balance`（WS06）增加该统计；GDD 不改。
+
+---
+
+## 2. T2 设计细节 / 数值默认值（批量批准）
+
+### 2.1 跨规格冲突与"与上位文档矛盾"的裁决（共 16 条，均已并入 2.2 大表）
+
+> 这些条目的推荐值**不同于**至少一份规格的原建议，批准大表即同时批准这里的裁决。
+
+#### B-T2-01 系统反应时间：02 与 03 的建议冲突
+- 位置：02 §8.1 Q5（"`reactionGameSec` 近程 0.05、中程 0.1、远程 0.2，挂在 `air_defense.json` 单位上"）；03 §8.1 Q-E2（"导弹 / 火箭 0.2、高炮 0.1、拦截无人机 0.5，挂在**武器**上"）、Q-E5；02 §8.3"`reactionGameSec` 两边共用"。
+- 问题：同一个参数，两份规格的挂载层级（单位 vs 武器）和数值都不同；近程导弹按 02 是 3 s、按 03 是 12 s。
+- 建议：挂在**武器**上（`weapons[].reactionGameSec`，可选），缺省值按 `interceptClass` 写入 `rules/engagement.json`：`gun` / `gun_radar` / `manpads` 0.05，`shorad` 0.1，`medium` 0.15，`s300` / `samp_t` / `pac2` / `pac3` / `s200` 0.2，`jet_interceptor_drone` 0.3，`interceptor_drone` 0.5。02 的"火控只在最后 X 秒开机"取该单位所有导弹武器 `reactionGameSec` 的最大值。射击间隔按 03 Q-E2。
+- 分级：T2（需 D3 验证"高炮圈约 3 次射击"的量级仍成立）。
+
+#### B-T2-02 地球曲率：01 计入、02 说不模拟
+- 位置：01 §8.1 Q14（"计入：`earthRadiusM 6371000`、`refractionK 4/3`"）；02 §8.1 Q1（"不模拟地球曲率（地平线效果由倍率概括）"）。
+- 问题：02 的低空倍率 `lowAltitudeRangeMult` 本意是概括地平线；01 若在视线中再计曲率，低空目标被惩罚两次。
+- 建议：视线**计入**曲率（01 Q14，GDD 8.1"地形和地平线形成低空盲区"由几何直接产生，界面盲区图也能显示出来）；02 的 `lowAltitudeRangeMult` 改释为"设备低空能力（杂波、波束）"，数值暂不变，由 D3 检查"10 m 天线对 50 m 目标"的综合探测距离是否落在数值表 §1.3 的量级内，偏小则上调倍率。
+- 分级：T2。
+
+#### B-T2-03 天线高度缺省值出现在两个文件
+- 位置：01 §8.1 Q3（`rules/terrain.json.defaultAntennaHeightM = 10`）；02 §8.1 Q32（`rules/tracks.json.detection.sensorHeightM = 10`）、Q5（`fireControlRadar.antennaHeightM`）。
+- 建议：只保留 `rules/terrain.json.defaultAntennaHeightM = 10`；02 删除 `detection.sensorHeightM`，单位级 `antennaHeightM`（`sensors.json`、`fireControlRadar`）保留；`tethered_balloon = 300`。
+- 分级：T2（数值相同，位置统一属 T1，但涉及 data 新字段，一并批准）。
+
+#### B-T2-04 国家级导航欺骗的作用半径
+- 位置：02 §8.1 Q13（新增 `radiusKm = 30`）；03 §8.1 Q-S5（取 `area_nav_jammer.radiusKm`，data 为 20 km）。
+- 建议：`support.json national_gnss_spoof.radiusKm = 30`（国家级应大于单站；数值表 §1.4 导航欺骗站上限 30 km 同量级）；中心点由 `CallSupport.TargetPos` 给出。
+- 分级：T2。
+
+#### B-T2-05 断电对探测 / 电子战单位的影响
+- 位置：02 §8.1 Q31（主动辐射源探测距离 ×0.5，不强制关机）；03 §8.1 Q-G2（"探测 ×0.5、电子战停机"）、Q-G3（探测、电子战单位接入 1 格内最近节点）。
+- 问题：电子战断电 02 未定义、03 建议停机；GDD 8.5 只说"雷达断电后效能下降"。
+- 建议：主动探测 / 火控雷达距离 ×0.5（02）；电子战单位效果概率 ×0.5（与"效能下降"同口径，不做二元停机）；被动传感器（声学、观察哨、无线电侦测）不受电网影响、不接入电网；火力单元与欺骗单位不接入（03 Q-G3）。
+- 分级：T2。
+
+#### B-T2-06 新阵地首夜 −30% 的作用范围与字段
+- 位置：02 §8.1 Q23；03 §8.2 R-CI `NewPositionFirstNight`；04 §8.3 B-02e；05 §8.2 Q-F6、§8.4 B3、B6；数值表 §1.5、§3.3；GDD 11.3。
+- 建议：效果作用于火力单元拦截概率（03）以及探测 / 火控距离和电子战效果概率（02），统一 ×0.7（`positions.json newUnsurveyed.firstNightEfficiencyMult`）；关卡中途到达的增援放在未勘察位置也算新阵地（05 Q-F6）；字段统一为"`PlacedUnit.FirstNightAtNewPosition`（05 填）→ `PlayerUnitCommon.NewPositionPenalty`（02 夜内维护）"，03 只读后者。
+- 分级：T2（字段统一部分为 T1）。
+
+#### B-T2-07 夜晚种子：00、05、06 三种写法
+- 位置：00 §8 Q10（`NightSeed(runSeed, levelId, nightIndex)`）；05 §8.3 R-00-3（`flow 下标 + 1`，"不一定等于 `NightIndex`"）、§8.2 Q-F5（重试不换种子）；06 §8.1 Q10（灰盒 `NightSeed(1, levelId, nightIndex)`）。
+- 建议：战役模式用 05 的 `flow 下标 + 1`（结构 E 有自动结算夜，与 `NightIndex` 不同），00 3.1.5 改写为"第三参数由调用方给出，战役取 flow 序号、非战役取 `NightIndex`"；重试不换种子；灰盒 `runSeed = 1`。
+- 分级：T2（Q-F5 重试是否换种子是玩法细节）。
+
+#### B-T2-08 `AllClear` 提前结束与悬停平台
+- 位置：00 §8 Q2；01 §8.1 Q5（"无挂载平台悬停到夜末……有这类平台存活时 `AllClear` 不会触发"）、§8.3 B12；04 §8.2 C；06 §8.1 Q4。
+- 问题：按 01 默认，任何一架 Orlan / A‑50 存活就会让每夜都跑满时长，`EndWhenClear` 名存实亡。
+- 建议：`EndWhenClear = true`；`AllClear` 只统计"仍可造成伤害"的目标（弹药，以及仍有挂载的平台），无挂载平台悬停不阻止 `AllClear`；同时满足 04 追加的"无挂起波次、无待触发剧情生成"。06 的自动快进仍只看玩家可见信息（06 Q4）。
+- 分级：T2。
+
+#### B-T2-09 无火控单位的"自主捕获"与夜间光学
+- 位置：02 §8.1 Q4（`selfAcquisitionRangeKm` = 最大射程，"不受低空、夜间修正"）、Q26；03 §8.1 Q-E11；GDD 8.8"夜间：观察哨 ×0.3（探照灯 / 热像可抵消）；火力组依赖探照灯"；数值表 §3.3"模糊航迹：高炮 / 火力组 ×0.5"。
+- 问题：按 02 默认，火力组在射程内总有精确航迹，GDD 8.8 的夜间规则与"模糊 ×0.5"在射程内都失效，第 5 关"探照灯"解锁也就没有意义。
+- 建议：光学 / 目视瞄准的单位（`gun`、`manpads`、火力组；`gun_radar` 除外）自主捕获距离 × 夜间倍率（与观察哨同 `nightRangeMult = 0.3`，按 02 Q26 天气倍率再乘），有探照灯 / 热像 `NightAids` 时不打折；数据给这些武器标 `selfAcquisition: "optical"`。
+- 分级：T2（需 D3 检查火力组夜间效率不至于归零）。
+
+#### B-T2-10 城市资源商店的拦截无人机（GDD 内部时间矛盾）
+- 位置：05 §8.1 `cityResource.shop`"拦截无人机班组 3（2025-01 前）"；GDD 9.2"拦截无人机（2025 前）"；GDD 12.3 拦截无人机第 14 关（2025.03）才首次可用。
+- 问题：商店条目在解锁前就已下架，永远买不到。
+- 建议：商店拦截无人机自第 14 关起可买，`until = 2025-10`（之后转为配额 / 生产供给）；GDD 9.2 改为"拦截无人机（2025 年下半年转入国家配额前）"。
+- 分级：T2（需人确认史实口径）。
+
+#### B-T2-11 硬核模式是否完全关闭二选一
+- 位置：04 §8.1 Q-C6（硬核 `AutoChoicePrompts = false`）；GDD 14"硬核：提示更少"。
+- 建议：按 04 默认（硬核不弹出自动二选一，剧情二选一保留），GDD 14 措辞改为"无自动二选一提示"。
+- 分级：T2。
+
+#### B-T2-12 第 17 关虚构名称（pending #3）
+- 位置：pending_decisions.md 第 3 条（建议"利沃夫州航空修理厂（虚构）"）；GDD 17.4"生产设施虚构：不对应真实工厂的位置和名称"、19.1（2026.10.15）"第 17 关航空修理厂改用虚构名称和虚构位置"。
+- 问题："利沃夫州航空修理厂"与真实存在的利沃夫国营航空修理厂几乎同名，加"（虚构）"也不满足 GDD 17.4。
+- 建议：改用不含真实地名的名称，例如"第 3 航空技术保障厂（虚构）"；第 12 关"西部某空军基地"保持（GDD 19.1 已定）。
+- 分级：T2（由人选名）。
+
+#### B-T2-13 拦截无人机打 Geran‑3（pending #1）
+- 位置：pending_decisions.md 第 1 条；data `air_defense.json interceptor_drone targetsFrom JET_UAV from 2026-09`；数值表 §3.3 `interceptor_drone` JET_UAV"35%※（2026.09 起）"；GDD（v1.3 已改为"命中率很低但不为 0"）。
+- 建议：按 pending 建议：`targetsFrom JET_UAV` 改为 2025‑11，概率 2025‑11 起 0.10、2026‑09 起 0.35（periodValue）；数值表 §3.3 同步。
+- 分级：T2。
+
+#### B-T2-14 Orlan 升档数值重复且语义需定
+- 位置：03 §8.1 Q-D6；02 §8.1 Q21；data `accuracy.spotterTierBoost = 1` 与 `platforms[].whileAlive.enemyAccuracyTierBoost`；数值表 §2.3"存活期间敌方精度档 +1"与 §3.1"Orlan 标记目标时"。
+- 建议：全图生效（数值表 §2.3 口径）；升档数只读 `accuracy.spotterTierBoost`，删除平台上的数值字段，改为 `behavior: spotter` 标记；数值表 §3.1 措辞改为"Orlan 存活期间"。
+- 分级：T2。
+
+#### B-T2-15 "阶段 0"补充到 WBS 01.B 系统顺序之前
+- 位置：00 §8 Q5、Q15；04 §8.2 B（`DeploymentStage → ChoiceStage → StoryStage`）；AGENTS.md §4"`SimWorld.Step()` 中各系统的执行顺序固定……不得随意调整"。
+- 建议：批准"阶段 0（命令应用、二选一超时、剧情事件）"作为 01.B 第 1 步之前的补充，不改变 1–14 的顺序；WBS 01.B 补一行说明。
+- 分级：T2（触及 AGENTS 硬约束的文档，须人批准）。
+
+#### B-T2-16 碎片不做实体
+- 位置：00 §8 Q16；03 §8.3 B15；GDD 16.4 性能目标"600 无人机 + 90 导弹 + 拦截弹 + 碎片"。
+- 建议：碎片在 `ImpactSystem` 当步结算，不做持续实体（`Debris` 存储保持空）；GDD 16.4 的实体估算不变（只是更宽裕）。
+- 分级：T2。
