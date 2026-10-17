@@ -1,7 +1,7 @@
 # 01 波次生成、敌方移动、地形与视线
 
-> 覆盖 `SimWorld.Step()` 的第 1 步 `WaveSpawnSystem`、第 2 步 `EnemyMovementSystem`，以及供其他系统调用的地形服务 `TerrainModel`（高程采样、视线）和敌方运动学接口 `ThreatKinematics`（解析位置预测，供 03 的解析拦截使用）。
-> 术语、类型、子流、事件 / 命令名称以 [00_core.md](00_core.md) 为准；本文件新增的名字列在第 8.2 节"需登记到 00_core"。
+> 覆盖 `SimWorld.Step()` 的第 1 步 `WaveSpawnSystem`、第 2 步 `EnemyMovementSystem`，以及供其他系统调用的地形服务 `TerrainModel`（高程采样、视线、多山脊遮挡包络）和敌方运动学接口 `ThreatKinematics`（解析位置预测，供 03 的解析拦截使用）。
+> 术语、类型、子流、事件 / 命令名称以 [00_core.md](00_core.md) 为准；本文件登记到 `00_core.md` 的名字与规则已全部并入 `00_core.md`（见第 8.2 节登记清单）。
 
 ---
 
@@ -11,15 +11,15 @@
 
 | 主题 | 本文件章节 | 对应 WBS |
 |---|---|---|
-| 波次时间表、组内间隔、注入波次（剧情 `spawn_wave`） | 3.1 | WS01-005（生成部分）、WS01-019 的接口 |
+| 波次时间表、组内间隔、注入波次（剧情 `spawn_wave` 与 04 压制波放行） | 3.1 | WS01-005（生成部分）、WS01-019 的接口 |
 | 进入点、航线（`direct` / `waypointsM` / `template`）、目标选择（`structure` / `weighted_random` / `known_targets` / `air_defense` / `decoy_flight`） | 3.1.4 – 3.1.7 | 同上 |
 | 平台（`platforms.json`）生成、挂载选择、投放时机（`releaseRangeKm`、`standoffFrom`）、返航；不进入地图的波次源（`strategic_bomber`） | 3.1.8、3.2.6 | WS01-005 |
 | 航点跟随、高度剖面（12 种 `altitudeBand`）、末段下降、俯冲加速、弹道 / 准弹道 / 末端机动、滑翔、无制导投弹 | 3.2 | WS01-005 |
-| 到达目标（`ThreatArrived`）、离开地图（`ThreatExited`）、悬停、改航 / 返航接口、反辐射导弹归航接口 | 3.2.5、3.2.8 | WS01-005 |
-| 解析位置预测 `ThreatKinematics.Predict` / `Legs` | 3.2.9 | WS01-005（供 WS01-010） |
-| 高程采样（双线性、像素中心、地图外）、视线（采样步长、地球曲率）、缓存与性能 | 3.3 | WS01-006 |
+| 到达目标（`ThreatArrived`）、离开地图（`ThreatExited`）、悬停、改航 / 返航 / 悬停接口、反辐射导弹归航接口 | 3.2.5、3.2.8 | WS01-005 |
+| 解析位置预测 `ThreatKinematics.Predict` / `Legs` / `MaxSpeed3DMps` | 3.2.9 | WS01-005（供 WS01-010） |
+| 高程采样（双线性、像素中心、地图外）、视线（采样步长、地球曲率）、多山脊遮挡包络 `HorizonProfile`、缓存与性能 | 3.3 | WS01-006 |
 
-**不**在本文件：探测概率与传感器参数（02）、电子战决定是否改航（02，本文件只提供改航接口）、反辐射导弹何时归航（02）、拦截解算与命中（03）、落地伤害（03）、敌方 AI 选择已知目标 / 绕开防空圈的算法（04，本文件只定义调用点和接口）。
+**不**在本文件：探测概率与传感器参数（02）、电子战决定是否改航（02，本文件只提供改航 / 返航 / 悬停接口）、反辐射导弹何时归航（02）、拦截解算与命中（03）、落地伤害（03）、敌方 AI 选择已知目标 / 绕开防空圈 / 压制 / 饱和的算法（04，本文件只定义调用点和接口 `IEnemyAiHooks`）。
 
 ### 0.2 依据
 
@@ -32,8 +32,8 @@
 
 ### 0.3 依赖
 
-- 只依赖 [00_core.md](00_core.md)（实体存储、`SimRandom`、子流 `spawn` / `movement`、事件 100–104、`LevelData`、`Heightmap`、`SimTime`、`Vec2`）。
-- 本文件**向后**提供接口（被 02 / 03 / 04 调用），并**向后**声明 3 个由 04 实现的钩子（3.1.6、3.1.9）；钩子在 04 实现之前使用本文件给出的默认实现。
+- 只依赖 [00_core.md](00_core.md)（实体存储、`SimRandom`、子流 `spawn` / `movement`、事件 100–104、`LevelData`、`Heightmap`、`SimTime`、`Vec2`、`Geo`）。
+- 本文件**向后**提供接口（被 02 / 03 / 04 调用），并**向后**声明由 04 实现的 `IEnemyAiHooks` 钩子（3.1.2、3.1.6、3.1.9）；钩子在 04 未注入自定义实现时使用本文件给出的 `DefaultEnemyAiHooks`。
 
 ### 0.4 天气与昼夜
 
@@ -54,7 +54,7 @@
 | `nights[].weather` / `season` | — | `NightDef.Weather` / `Season` | 不用（0.4） |
 | `waves[].id` | — | `WaveDef.Id` | `WaveStarted.WaveId`、`Threat.WaveId` |
 | `waves[].atGameSec` | 游戏秒 | `WaveDef.AtSec`（×60） | 本波第一个目标的生成时刻（相对夜晚开始，即 `TimeSec`） |
-| `waves[].aiTags` | — | `WaveDef.AiTags`（`AiTag[]?`） | 原样写入 `WaveStarted.AiTags`；**本文件不解释**（见 8.1 Q11） |
+| `waves[].aiTags` | — | `WaveDef.AiTags`（`AiTag[]?`） | 原样写入 `WaveStarted.AiTags`；`suppress`、`saturate`、`bypass` 经 3.1.2 / 3.1.5 / 3.1.9 的 `IEnemyAiHooks` 与 04 配合（A-2-10，见 8.1 Q11） |
 | `groups[].enemy` | — | `WaveGroupDef.EnemyId` | 弹药 ID 或平台 ID（二者 ID 互不重复，00 1.2 第 13 条） |
 | `groups[].count` | 个 | `WaveGroupDef.Count`（`int ≥ 1`） | 本组生成次数（平台为架数） |
 | `groups[].entry` | — | `WaveGroupDef.EntryId` | 进入点 |
@@ -62,19 +62,20 @@
 | `groups[].route` | — | `RouteDef(Kind, TemplateId, Waypoints)` | 3.1.5 |
 | `groups[].target` | — | `TargetSpecDef(StructureId, Mode)` | 3.1.6 |
 
-### 1.2 `enemies/munitions.json` → `MunitionDef`（移动相关字段，全字段由 01 与 03 共同定义）
+### 1.2 `enemies/munitions.json` → `MunitionDef`（移动相关字段，全字段由 01、02、03 共同定义，完整声明见 `00_core.md` 1.6）
 
 | JSON 字段 | 单位 | C# 字段 | 类型 | 本文件用法 |
 |---|---|---|---|---|
 | `id` | — | `Id` | `string` | `Threat.DefId` |
 | `category` | — | `Category` | `MunitionCategory` | 只用于 3.2.2 的 `Carrier` 判定之外的说明；移动规则只看 `AltitudeBand` |
-| `tag` | — | `Tag` | `TargetTag?` | 复制到 `Threat.Tag`；`CM` 用于 3.1.9 绕行钩子 |
+| `tag` | — | `Tag` | `TargetTag?` | 复制到 `Threat.Tag`；用于 3.1.5 / 3.1.9 绕行钩子 |
+| `firstSeen` | 年月 | `FirstSeen` | `YearMonth?` | 不用（00 1.4 形态 A，供 `tools/validate` 与历史模式校验，C-T2-08） |
 | `speedKmh` | km/h | `SpeedMps` | `double?`（÷3.6） | 水平速度；`null` 只允许 `altitudeBand = carrier`（8.2 校验 V2） |
 | `diveFaster` | — | `DiveFaster` | `bool?`（缺省 = false） | 末段速度 × `rules.movement.diveSpeedMult` |
 | `altitudeBand` | — | `AltitudeBand` | `AltitudeBand` | 选择运动剖面（3.2.2） |
 | `altitudeM` | m | `AltitudeM` | `MinMax?` | 巡航 / 起始高度区间；缺省用 `rules.movement.altitudeBandsM[band]` |
-| `releaseRangeKm` | 游戏 km | `ReleaseRangeM` | `double?`（×1000） | 平台投放距离（3.1.8）；`0` = 必须飞到目标正上方；缺省 = 不限（平台一生成就投放） |
-| `storyEventOnly` | — | `StoryEventOnly` | `bool?` | 不用（04 / 校验工具） |
+| `releaseRangeKm` | 游戏 km | `ReleaseRangeM` | `double?`（×1000） | 平台投放距离（3.1.8）；`0` = 必须飞到目标正上方；`null` = 回退使用平台的 `ReleaseRangeM`（若平台也为 `null` 则生成即投放，B-T3-09） |
+| `storyEventOnly` | — | `StoryEventOnly` | `bool?` | 不用（`tools/validate` 校验） |
 
 ```csharp
 public enum MunitionCategory { Decoy = 0, Drone = 1, JetDrone = 2, Loitering = 3, Fpv = 4, CruiseMissile = 5, SupersonicMissile = 6,
@@ -85,25 +86,28 @@ public enum AltitudeBand { VeryLow = 0, Low = 1, LowMid = 2, Mid = 3, MidHigh = 
 
 （整数值 = Schema `enum` 数组顺序，00 1.2 第 8 条。）
 
-### 1.3 `enemies/platforms.json` → `PlatformDef`（全字段，00 中标注"→ 01"）
+### 1.3 `enemies/platforms.json` → `PlatformDef`（全字段，完整声明见 `00_core.md` 1.6）
 
 | JSON 字段 | 单位 | C# 字段 | 类型 | 本文件用法 |
 |---|---|---|---|---|
 | `id` | — | `Id` | `string` | `Threat.DefId` |
 | `nameKey` | — | `NameKey` | `string` | 不用 |
 | `tag` | — | `Tag` | `TargetTag?` | 复制到 `Threat.Tag` |
+| `firstSeen` | 年月 | `FirstSeen` | `YearMonth?` | 不用（00 1.4 形态 A，供 `tools/validate` 与历史模式校验，C-T2-08） |
 | `cruiseSpeedKmh` | km/h | `CruiseSpeedMps` | `double` | 平台水平速度（进入、返航都用它） |
-| `maxSpeedKmh` | km/h | `MaxSpeedMps` | `double?` | **不用**（8.1 Q8） |
+| `maxSpeedKmh` | km/h | `MaxSpeedMps` | `double?` | **不用**（8.1 Q8，B-T2-26） |
 | `altitudeBand` | — | `AltitudeBand` | `AltitudeBand` | 只允许 `VeryLow … High`（8.2 校验 V3） |
 | `hp` | — | `Hp` | `int?` | 不用（03） |
 | `entersMap` | — | `EntersMap` | `bool` | `false` = 不生成平台实体，只生成挂载弹药（3.1.8） |
 | `loadout[].options` | — | `Loadout[i].OptionIds` | `IReadOnlyList<string>` | 每次出击从中选一种（`spawn` 子流） |
-| `loadout[].count` | 枚 | `Loadout[i].Count` | `int?` | 该挂载位投放枚数；`null` → 按 1 枚（8.1 Q7） |
+| `loadout[].count` | 枚 | `Loadout[i].Count` | `int?` | 该挂载位投放枚数；`null` → 按 1 枚（8.1 Q7，B-T2-25） |
 | `otherArmament` | — | `OtherArmament` | `IReadOnlyList<OtherArmament>?` | 不用（未建模为弹药） |
 | `behavior` | — | `Behavior` | `PlatformBehavior` | 3.1.8 |
 | `standoffFrom` | 年月 | `StandoffActive` | `bool`（00 1.4 形态 C） | 只对 `StandoffReleaseAndReturn` 有意义 |
+| ★ `releaseRangeKm` | 游戏 km | `ReleaseRangeM` | `double?`（×1000） | 平台默认防区外投放距离（`≥ 0`，如 `tu22m3` 默认 `60` km，B-T3-09）；挂载弹药的 `ReleaseRangeM` 为 `null` 时使用此值，两者皆为 `null` 时退化为 0 秒停留（生成即投放并离开） |
 | `whileAlive.enemyAccuracyTierBoost` | 档 | `WhileAlive.EnemyAccuracyTierBoost` | `int?` | 不用（03） |
 | `whileAlive.cruiseMissilesAvoidAirDefense` | — | `WhileAlive.CruiseMissilesAvoidAirDefense` | `bool?` | 3.1.9 绕行钩子的开关 |
+| ★ `radioLinked` / `reconQuality` | — | `RadioLinked` / `ReconQuality` | `bool?` / `TrackQuality?` | 不用（02 使用，P02） |
 
 ```csharp
 public sealed record LoadoutEntryDef(IReadOnlyList<string> OptionIds, int? Count);
@@ -115,26 +119,30 @@ public enum PlatformBehavior { FrontlineAttack = 0, MustEnterShorad = 1, LowStri
 public sealed record PlatformDef
 {
     public string Id { get; init; }  public string NameKey { get; init; }  public TargetTag? Tag { get; init; }
+    public YearMonth? FirstSeen { get; init; }
     public double CruiseSpeedMps { get; init; }  public double? MaxSpeedMps { get; init; }
     public AltitudeBand AltitudeBand { get; init; }  public int? Hp { get; init; }  public bool EntersMap { get; init; }
     public IReadOnlyList<LoadoutEntryDef>? Loadout { get; init; }  public IReadOnlyList<OtherArmament>? OtherArmament { get; init; }
     public PlatformBehavior Behavior { get; init; }  public bool StandoffActive { get; init; }
+    public double? ReleaseRangeM { get; init; }                    // releaseRangeKm × 1000（B-T3-09）
     public PlatformWhileAliveDef? WhileAlive { get; init; }
+    public bool? RadioLinked { get; init; }  public TrackQuality? ReconQuality { get; init; }   // 02（P02）
 }
 ```
 
-### 1.4 其他关卡数据
+### 1.4 其他关卡数据与跨夜带入说明
 
 | 来源 | 字段 | 用法 |
 |---|---|---|
 | `level.json` `map.widthM` / `heightM` | `MapInfoDef.WidthM` / `HeightM` | 地图矩形 `[0, WidthM] × [0, HeightM]`：诱饵飞出点（3.1.7） |
 | `level.json` `map.heightmap` | `HeightmapInfoDef`、`Heightmap` | 地形（3.3） |
 | `map/structures.json` | `StructureDef.Pos`、`Weight` | 目标点、`weighted_random` 的权重 |
-| `events.json` | `StoryActionDef { Type = SpawnWave, WaveId }` | 被引用的波次不进入自动时间表（3.1.2） |
+| `events.json` | `StoryActionDef { Type = SpawnWave, WaveId }` | 被引用的波次不进入自动时间表（3.1.1、3.1.9 `IsStoryOnlyWave`，A-2-28） |
+| `CarryIn.Adaptation` | `IReadOnlyList<EnemyAdaptationCarry>?` | M1/M2 不实现，`SimWorld.Create` 第 8 步非空且 `Count > 0` 时抛 `E_NOT_IMPLEMENTED`（00 3.2，A-2-22） |
 
-### 1.5 新增规则文件 `rules/movement.json`（`kind: "movement"`）→ `MovementRulesDef`
+### 1.5 新增规则文件 `rules/movement.json`（`kind: "movement"`，顺序 21）→ `MovementRulesDef`
 
-> 数值表没有给出"高度带 → 米"和弹道 / 俯冲几何，需要人确认建议值（8.1 Q1、Q2）。测试一律使用第 7 节的手写数值。
+> 建议默认值已由 B-T2-02 / B-T2-22 确认（8.1 Q1、Q2）。测试一律使用第 7 节的手写数值。
 
 | JSON 字段 | 单位 | C# 字段 | 类型 | 约束 | 含义 |
 |---|---|---|---|---|---|
@@ -147,16 +155,17 @@ public sealed record PlatformDef
 
 `altitudeBandsM` 的键是 `AltitudeBand` 的 JSON 名（snake_case），加载后为 enum 键；字典只查找、不遍历（00 6.2）。
 
-### 1.6 新增规则文件 `rules/terrain.json`（`kind: "terrain"`）→ `TerrainRulesDef`
+### 1.6 新增规则文件 `rules/terrain.json`（`kind: "terrain"`，顺序 22）→ `TerrainRulesDef`
 
 | JSON 字段 | 单位 | C# 字段 | 类型 | 约束 | 含义 |
 |---|---|---|---|---|---|
-| `losSampleStepPx` | 像素 | `LosSampleStepPx` | `double` | `> 0` | 视线采样步长（以高程图像素为单位，跟随地图分辨率） |
-| `earthRadiusM` | m | `EarthRadiusM` | `double?` | `null` 或 `> 0` | 地球半径；`null` = 不计地球曲率 |
-| `refractionK` | — | `RefractionK` | `double` | `> 0` | 有效地球半径系数（大气折射）；有效半径 `ReffM = RefractionK × EarthRadiusM` |
-| `defaultAntennaHeightM` | m（AGL） | `DefaultAntennaHeightM` | `double` | `≥ 0` | 定义中没有天线高度的传感器 / 火控雷达使用的天线离地高度（02 使用，见 8.1 Q3） |
+| `losSampleStepPx` | 像素 | `LosSampleStepPx` | `double` | `> 0` | 视线采样步长（以高程图像素为单位，跟随地图分辨率，建议 `0.5`） |
+| `earthRadiusM` | m | `EarthRadiusM` | `double?` | `null` 或 `> 0` | 地球半径（建议 `6371000`）；`null` = 不计地球曲率 |
+| `refractionK` | — | `RefractionK` | `double` | `> 0` | 有效地球半径系数（大气折射，建议 `1.3333333333333333`）；有效半径 `ReffM = RefractionK × EarthRadiusM` |
+| `defaultAntennaHeightM` | m（AGL） | `DefaultAntennaHeightM` | `double` | `≥ 0` | 传感器 / 火控雷达的天线离地高度（建议 `10`，02 / 04 使用，8.1 Q3 / B-T2-03） |
+| `horizonAzimuthBins` | 桶数 | `HorizonAzimuthBins` | `int` | `> 0`（JSON 省略时默认 `720`） | 预计算多山脊地平线遮挡包络 `HorizonProfile` 的方位角分桶数（建议 `720` = 每 `0.5°` 一桶，B-T2-31 / C-T2-01） |
 
-`RulesSet` 追加 `MovementRulesDef Movement`、`TerrainRulesDef Terrain`（8.2）。
+`RulesSet` 包含 `MovementRulesDef Movement`（顺序 21）、`TerrainRulesDef Terrain`（顺序 22）（已在 `00_core.md` 1.1、1.6 登记，P11）。
 
 ---
 
@@ -175,7 +184,7 @@ public enum ThreatExitReason { EgressComplete = 0, DecoyPathEnd = 1 }
 
 ### 2.2 `Threat`（`EntityKind.Threat`）
 
-公共字段 `Id / Alive / CreatedTick / RemovedTick / DefId / Pos / AltM` 见 00 2.2、2.4。下表为 `Threat.WriteHash` 的**写入顺序**（00 3.7.2）。"快照"列 = 是否进入 `ThreatView`。
+公共字段 `Id / Alive / CreatedTick / RemovedTick / DefId / Pos / AltM` 见 00 2.2、2.4。下表为 `Threat.WriteHash` 中 01 负责的前 32 个字段的**写入顺序**（00 2.4、3.7.2；后接 02 的 4 个字段与 03 的 3 个字段）。弧长字段统一以 `…ArcM` 结尾（A-3-08）。"快照"列 = 是否进入 `ThreatView`。
 
 | # | 字段 | C# 类型 | 单位 | 初值 | 写 | 读 | 快照 |
 |---|---|---|---|---|---|---|---|
@@ -191,24 +200,24 @@ public enum ThreatExitReason { EgressComplete = 0, DecoyPathEnd = 1 }
 | 10 | `TargetKind` | `ThreatTargetKind` | — | 3.1.6 | 01 | 03、04 | — |
 | 11 | `TargetPos` | `Vec2` | m | 目标点（= 路径中"到达"的那一点；诱饵为假目标点） | 01 | 03、04 | — |
 | 12 | `TargetStructureId` | `int` | 实体 ID | `0` | 01 | 03 | — |
-| 13 | `TargetUnitId` | `int` | 实体 ID | `0` | 01 | 03、04 | — |
-| 14 | `HomingUnitId` | `int` | 实体 ID | `0` | **02**（反辐射归航） | 01 | — |
+| 13 | `TargetUnitId` | `int` | 实体 ID | `0` | **01 唯一写入**（3.1.3、3.2.6、3.2.8，A-2-04） | 02、03、04 | — |
+| 14 | `HomingUnitId` | `int` | 实体 ID | `0` | **02**（第 6 步 `EmissionSystem` 维护，A-2-06） | 01（第 2 步 `ApplyHoming`） | — |
 | 15 | `ProfileReady` | `bool` | — | 由 01 生成：`false`；平台投放：`true` | 01 | 01 | — |
 | 16 | `Profile` | `MotionProfile` | — | 3.2.2 | 01 | 01、03 | — |
 | 17 | `Path` | `List<Vec2>` | m | 3.1.5 / 3.1.8；`Count ≥ 1` | 01 | 01、03 | — |
-| 18 | `PathVersion` | `int` | — | `1`；每次改写 `Path` 加一 | 01 | 03（检测预测失效） | — |
+| 18 | `PathVersion` | `int` | — | `1`；每次改写 `Path` 加一 | 01 | 03（在飞拦截弹比对 `TargetPathVersion`，不一致按 `TargetLost` 自毁，A-2-09） | — |
 | 19 | `PathEnd` | `PathEndAction` | — | 3.1 | 01 | 01、03 | — |
 | 20 | `AnchorSec` | `double` | 世界秒 | `SpawnAtSec` | 01 | 01 | — |
-| 21 | `AnchorS` | `double` | m（沿路径弧长） | `0` | 01 | 01 | — |
-| 22 | `PathS` | `double` | m | `0` | 01 | 02、03 | — |
+| 21 | `AnchorArcM` | `double` | m（沿路径弧长） | `0` | 01 | 01 | — |
+| 22 | `PathArcM` | `double` | m（沿路径弧长） | `0` | 01 | 02、03 | — |
 | 23 | `SpeedMps` | `double` | m/s | 3.2.2 | 01 | 03 | — |
 | 24 | `TerminalSpeedMps` | `double` | m/s | 3.2.2 | 01 | 03 | — |
-| 25 | `TerminalStartS` | `double` | m | 3.2.2（记作 `sD`） | 01 | 01 | — |
+| 25 | `TerminalStartArcM` | `double` | m（沿路径弧长） | 3.2.2（记作 `sD`） | 01 | 01 | — |
 | 26 | `StartAltM` | `double` | m（AGL） | 3.2.2（记作 `A0`） | 01 | 01 | — |
 | 27 | `EndAltM` | `double` | m（AGL） | 3.2.2（记作 `AEnd`） | 01 | 01 | — |
 | 28 | `LastUpdateSec` | `double` | 世界秒 | `SpawnAtSec` | 01 | 03 | — |
 | 29 | `ArrivedAtSec` | `double` | 世界秒 | `-1`；到达时 = 精确到达时刻 | 01 | 03 | — |
-| 30 | `TurnS` | `double` | m | `-1`；有挂载的平台 = 返航起点弧长 | 01 | 01 | — |
+| 30 | `TurnArcM` | `double` | m（沿路径弧长） | `-1`；有挂载的平台 = 返航起点弧长 | 01 | 01 | — |
 | 31 | `Releases` | `List<PendingRelease>` | — | 空；有挂载的平台见 3.1.8 | 01 | 01 | — |
 | 32 | `IngressPath` | `List<Vec2>` | m | 空；平台 = 进场折线 `I`（3.1.8），用于构造子弹药路径 | 01 | 01 | — |
 | — | `PathCumM` | `double[]` | m | 由 `Path` 派生：`PathCumM[0] = 0`，`PathCumM[i] = PathCumM[i−1] + |Path[i] − Path[i−1]|` | 01 | 01、03 | 不参与哈希 |
@@ -220,9 +229,9 @@ public sealed class PendingRelease            // 平台的一次投放（一个�
     public int LoadoutIndex;                  // PlatformDef.Loadout 下标
     public string MunitionId;                 // 已选定的弹药 ID
     public int Count;                         // 枚数（Count ?? 1）
-    public double AtS;                        // 投放点弧长（m）
+    public double AtArcM;                     // 投放点弧长（m，A-3-08）
     public bool Done;                         // 已投放或已取消
-    // 哈希顺序：LoadoutIndex, MunitionId, Count, AtS, Done
+    // 哈希顺序：LoadoutIndex, MunitionId, Count, AtArcM, Done
 }
 ```
 
@@ -237,7 +246,7 @@ public sealed class PendingRelease            // 平台的一次投放（一个�
 |---|---|---|---|---|---|
 | 1 | `Pending` | `List<PendingSpawn>` | `Initialize` 建立（3.1.2） | 01 | 01 |
 | 2 | `NextSpawnSeq` | `long` | `1` | 01 | 01 |
-| 3 | `Injections` | `List<WaveInjection>` | 空 | **04**（阶段 0 剧情事件 / 敌方 AI）追加；01 消费后清空 | 01 |
+| 3 | `Injections` | `List<WaveInjection>` | 空 | **04**（阶段 0 剧情事件 / 第 12 步压制波放行）追加；01 消费后清空 | 01 |
 | 4 | `SpawnedThreatCount` | `int` | `0` | 01（每产生一个 `ThreatSpawned` 或 `MunitionReleased` 加一） | 快照 |
 | 5 | `AllWavesSpawned` | `bool` | `Initialize` 末尾计算 | 01 | 00（`AllClear`） |
 
@@ -245,10 +254,11 @@ public sealed class PendingRelease            // 平台的一次投放（一个�
 public sealed record PendingSpawn(long Seq, int WaveIndex, int GroupIndex, int Ordinal,
                                   double SpawnAtSec, int SpawnTick, bool StartsWave, bool Injected);
     // 哈希顺序 = 参数顺序。Pending 始终按 (SpawnTick, SpawnAtSec, Seq) 升序（Seq 唯一 ⇒ 全序）
-public sealed record WaveInjection(string WaveId, double StartAtSec);   // 哈希：WaveId, StartAtSec
+public sealed record WaveInjection(string WaveId, double StartAtSec, IReadOnlyList<int>? GroupIndices = null);
+    // 哈希顺序：WaveId, StartAtSec, GroupIndices（null 写 false；否则写 true、Count、逐项 int，A-2-10）
 ```
 
-`AllWavesSpawned = (Pending.Count == 0) && (Injections.Count == 0)`，每次 `WaveSpawnSystem.Execute` 末尾重算。
+`AllWavesSpawned = (Pending.Count == 0) && (Injections.Count == 0)`，每次 `WaveSpawnSystem.Execute` 末尾重算。注意：`AllWavesSpawned` 只反映 01 的待生成队列与注入队列是否已空；`00_core.md` 3.5 的 `AllClear` 在此基础上还会同时检查 `State.EnemyIntel.HeldWaves.Count == 0` 与 `!StoryRules.HasPendingScheduledSpawn(ctx)`（A-4-02）。
 
 ### 2.4 快照
 
@@ -271,17 +281,32 @@ public sealed class TerrainModel
     public double MaxElevationM { get; }       // 高程数组的实际最大值（构造时遍历一次）
     public double LosStepM { get; }            // = LosSampleStepPx × MetersPerPixel
     public double? ReffM { get; }              // = RefractionK × EarthRadiusM；EarthRadiusM 为 null 时为 null
+    public int HorizonAzimuthBins { get; }     // = rules.HorizonAzimuthBins（默认 720）
     public double ElevationAt(double x, double y);
     public double ElevationAt(Vec2 p);
     public bool HasLineOfSight(Vec2 a, double aMslM, Vec2 b, double bMslM);
     public bool HasLineOfSightAgl(Vec2 a, double aAglM, Vec2 b, double bAglM);   // = HasLineOfSight(a, ElevationAt(a) + aAglM, b, ElevationAt(b) + bAglM)
     public double CurvatureDropM(double s, double d);                              // 3.3.3
+    public HorizonProfile BuildHorizonProfile(Vec2 observer, double observerAglM, double maxRangeM, int? azimuthBins = null);   // 3.3.4（B-T2-31 / C-T2-01）
     internal bool HasLineOfSightReference(Vec2 a, double aMslM, Vec2 b, double bMslM);   // 参考实现（测试对照）
+}
+
+public sealed class HorizonProfile             // 单个观察者的多山脊累积最大遮挡斜率包络（B-T2-31 / C-T2-01）
+{
+    public Vec2 ObserverPos { get; }
+    public double ObserverMslM { get; }
+    public double MaxRangeM { get; }
+    public int AzimuthBins { get; }
+    public double StepM { get; }
+    public int RadialSteps { get; }
+    public bool HasLineOfSight(Vec2 target, double targetMslM);
+    public bool HasLineOfSightAgl(Vec2 target, double targetAglM);
 }
 ```
 
-- `SimWorld.Create` 在 00 3.2 第 3 步之后、第 4 步之前构造一次：`terrain = new TerrainModel(level.Heightmap, level.Catalog.Rules.Terrain)`；`SimContext.Terrain` 返回它（8.2）。
-- `TerrainModel` 直接引用 `Heightmap` 的高程数组，**不复制**（大地图 4000 × 4000 像素 = 128 MB）。要求 `Heightmap` 内部以 `double[]` 存储并提供 `internal double[] ElevationArray`（8.2）。
+- `SimWorld.Create` 在 00 3.2 第 3 步之后、第 4 步之前构造一次：`terrain = new TerrainModel(level.Heightmap, level.Catalog.Rules.Terrain)`；`SimContext.Terrain` 返回它（P30）。
+- `TerrainModel` 直接引用 `Heightmap` 的高程数组，**不复制**（大地图 4000 × 4000 像素 = 128 MB）。`Heightmap` 内部以 `double[]` 存储并提供 `internal double[] ElevationArray`（P14）。
+- 调用约定（A-2-26）：`HasLineOfSight` 参数为海拔（MSL），`HasLineOfSightAgl` 参数为离地高度（AGL）；02、04 按各自手头已有的高度形式选择调用或使用 `BuildHorizonProfile` 预计算包络（3.3.4）。
 
 ---
 
