@@ -326,37 +326,64 @@ for wi in 0 .. night.Waves.Count−1:                     # 数据顺序
 if 有错误: throw SimSetupException（列出全部错误）
 for wi in 0 .. night.Waves.Count−1:
     w = night.Waves[wi]
-    if w.Id ∈ storyOnly: continue                       # 只能由剧情注入（8.1 Q10）
-    ExpandWave(wi, baseSec = w.AtSec, injected = false)
+    if w.Id ∈ storyOnly: continue                       # 只能由剧情注入（8.1 Q10 / B-T2-28）
+    ExpandWave(wi, baseSec = w.AtSec, injected = false, groupIndices = null)
 State.Waves.AllWavesSpawned = (Pending.Count == 0 && Injections.Count == 0)
 ```
 
-#### 3.1.2 `ExpandWave(wi, baseSec, injected)`
+共享只读查询（供 02 `NationalWarningSystem` 复用，避免重复扫描 `events.json`，A-2-28）：
+
+```csharp
+namespace Nightwatch.Sim.Movement;
+public static class WaveSpawnRules
+{
+    public static bool IsStoryOnlyWave(LevelData level, string waveId);
+}
+```
+
+`IsStoryOnlyWave` 返回 `true` 当且仅当 `level.StoryEvents.Events` 中存在 `a.Type == StoryActionType.SpawnWave && a.WaveId == waveId`（序数比较）。
+
+#### 3.1.2 `ExpandWave(wi, baseSec, injected, IReadOnlyList<int>? groupIndices = null)`（A-2-10）
 
 ```
 w = night.Waves[wi]
-for gi in 0 .. w.Groups.Count−1:
+if groupIndices == null:                                      # 时间表展开或剧情整波注入
+    gList = [ gi in 0 .. w.Groups.Count−1 | !ctx.EnemyAiHooks.DeferGroup(level, night, wi, gi) ]
+else:                                                         # 04 压制波推迟组的放行（只展开指定组，升序）
+    gList = groupIndices
+if gList 为空: return
+
+satTimes = (w.AiTags 含 AiTag.Saturate)
+           ? ctx.EnemyAiHooks.SaturationSpawnTimes(state, level, night, wi, gList, baseSec)
+           : null
+itemIdx = 0
+firstExpanded = true
+for gi in gList:
     g = w.Groups[gi]
     spacing = g.SpacingSec ?? 0.0
     for k in 0 .. g.Count−1:
-        t    = baseSec + k * spacing                          # 乘法，不累加（避免误差累积）
+        t    = (satTimes != null) ? satTimes[itemIdx] : (baseSec + k * spacing)   # 默认用乘法，不累加（避免误差累积）
+        itemIdx += 1
         tick = Math.Max(1, SimTime.SecToTicksCeil(t, StepSec))
         at   = Math.Min(t, tick * StepSec)                    # 容差吸收：保证 at ≤ tick·StepSec
+        starts = (groupIndices == null) && firstExpanded      # 仅整波展开的第一个实际展开项发 WaveStarted
+        firstExpanded = false
         Pending.Add(new PendingSpawn(NextSpawnSeq++, wi, gi, k, at, tick,
-                                     StartsWave: gi == 0 && k == 0, Injected: injected))
+                                     StartsWave: starts, Injected: injected))
 Pending 按 (SpawnTick, SpawnAtSec, Seq) 稳定排序
 ```
 
 - 组内**没有随机抖动**、同组目标**没有横向散开**（数据没有对应参数）。同组目标沿同一条路径、按时间间隔先后飞行。
 - `t ≤ 0` 的生成（`atGameSec = 0`）在第 1 步处理（`tick = 1`），运动学上仍从 `SpawnAtSec = t` 开始推进（第 1 步结束时已飞 `1 − t` 秒）。
+- `DefaultEnemyAiHooks` 下 `DeferGroup` 恒返回 `false`、`SaturationSpawnTimes` 恒返回 `null`，此时 `ExpandWave` 退化为展开全部组、按 `baseSec + k * spacing` 计算生成时刻，`StartsWave = (gi == 0 && k == 0)`。
 
 #### 3.1.3 `Execute(ctx)`
 
 ```
-# 1. 消费注入（04 在阶段 0 或上一步写入）
+# 1. 消费注入（04 在阶段 0 剧情事件或上一步第 12 步压制波放行写入）
 for inj in State.Waves.Injections (列表顺序):
     wi = night.Waves 中 Id == inj.WaveId 的下标（序数比较）；找不到 → throw InvalidOperationException（04 负责只注入存在的波次）
-    ExpandWave(wi, baseSec = Math.Max(inj.StartAtSec, ctx.TimeSec), injected = true)
+    ExpandWave(wi, baseSec = Math.Max(inj.StartAtSec, ctx.TimeSec), injected = true, groupIndices = inj.GroupIndices)
 State.Waves.Injections.Clear()
 
 # 2. 处理到期的生成
@@ -375,17 +402,20 @@ entry = waves.EntryPoints 中 Id == g.EntryId 的一项
 if e.StartsWave: Emit WaveStarted { WaveId = w.Id, AiTags = w.AiTags, Injected = e.Injected }，AtSec = EvAt(e.SpawnAtSec)
 
 if g.EnemyId 是弹药 m:
-    target = ResolveTarget(g.Target, entry.Pos)                       # 3.1.6，可能消耗 spawn 子流
+    req = new TargetRequest(m.Id, ThreatKind.Munition, w.Id, e.WaveIndex, e.GroupIndex, e.Ordinal, entry.Pos)
+    target = ResolveTarget(g.Target, req)                              # 3.1.6，可能消耗 spawn 子流
     CreateWaveMunition(m, entry, g, w, target, e.SpawnAtSec, parentId = 0)
 elif g.EnemyId 是平台 p:
     picks = ChooseLoadout(p)                                           # 3.1.8：每个挂载位一次 NextInt
     if p.EntersMap:
-        target = ResolveTarget(g.Target, entry.Pos)
+        req = new TargetRequest(p.Id, ThreatKind.Platform, w.Id, e.WaveIndex, e.GroupIndex, e.Ordinal, entry.Pos)
+        target = ResolveTarget(g.Target, req)
         CreatePlatform(p, entry, g, w, target, picks, e.SpawnAtSec)
     else:                                                              # 不进入地图的波次源（strategic_bomber）
         for (j, munitionId, count) in picks（挂载位顺序）:
             for c in 0 .. count−1:
-                target = ResolveTarget(g.Target, entry.Pos)            # 每枚弹药各自选目标
+                req = new TargetRequest(munitionId, ThreatKind.Munition, w.Id, e.WaveIndex, e.GroupIndex, c, entry.Pos)
+                target = ResolveTarget(g.Target, req)                  # 每枚弹药各自选目标
                 CreateWaveMunition(munitions[munitionId], entry, g, w, target, e.SpawnAtSec, parentId = 0)
 ```
 
@@ -394,11 +424,11 @@ elif g.EnemyId 是平台 p:
 `CreateWaveMunition(m, entry, g, w, target, at, parentId)`：
 
 ```
-(path, endAction) = BuildMunitionPath(m, entry.Pos, g.Route, target)   # 3.1.5、3.1.7
+(path, endAction) = BuildMunitionPath(m, entry.Pos, g.Route, target, w)   # 3.1.5、3.1.7
 th = new Threat { Kind = Munition, DefId = m.Id, Tag = m.Tag, Pos = entry.Pos, AltM = 0,
                   Phase = Ingress, WaveId = w.Id, EntryId = entry.Id, ParentThreatId = parentId,
-                  SpawnAtSec = at, AnchorSec = at, AnchorS = 0, PathS = 0, LastUpdateSec = at,
-                  ArrivedAtSec = −1, TurnS = −1, ProfileReady = false, PathEnd = endAction,
+                  SpawnAtSec = at, AnchorSec = at, AnchorArcM = 0, PathArcM = 0, LastUpdateSec = at,
+                  ArrivedAtSec = −1, TurnArcM = −1, ProfileReady = false, PathEnd = endAction,
                   TargetKind / TargetPos / TargetStructureId / TargetUnitId = target 的对应值 }
 ThreatPath.SetPath(th, path)
 State.Threats.Add(th)
@@ -412,23 +442,25 @@ State.Waves.SpawnedThreatCount += 1
 
 所有目标都在进入点 `entry.Pos` 生成（可以在地图外；模拟不裁剪坐标，00 0.4.4）。生成时**不判断**进入点是否在地图内。
 
-#### 3.1.5 航线 → 路径 `BuildMunitionPath`
+#### 3.1.5 航线 → 路径 `BuildMunitionPath(m, entryPos, route, target, w)`
 
-记 `E = entry.Pos`，`T = target.Pos`，`W = g.Route.Waypoints`。
+记 `E = entryPos`，`T = target.Pos`，`W = route.Waypoints`。
 
 | 情况（按顺序判断） | 路径 | `PathEnd` |
 |---|---|---|
 | `target.Kind == AimPoint`（诱饵，3.1.7） | 见 3.1.7 | `Exit` |
-| `m.AltitudeBand ∈ {Ballistic, QuasiBallistic, TerminalManeuver, Glide}` | `[E, T]`（**忽略** `waypointsM`；8.1 Q6） | `Arrive` |
+| `m.AltitudeBand ∈ {Ballistic, QuasiBallistic, TerminalManeuver, Glide}` | `[E, T]`（**忽略** `waypointsM`；8.1 Q6 / B-T2-24） | `Arrive` |
 | `Route.Kind == Direct` | `[E, T]` | `Arrive` |
 | `Route.Kind == Waypoints` | `[E, W[0], …, W[n−1], T]` | `Arrive` |
 | `Route.Kind == Template` | 不会出现（`Initialize` 已拒绝；WS02-004 实现后由模板解析器给出中间航点，再按 `Waypoints` 处理） | — |
 
-之后：若 `m.Tag == CM` 且 `AvoidanceActive(state)`（3.1.9），`path = AirDefenseAvoidance.Adjust(state, level, path)`（04 钩子）。
+之后（绕行钩子，A-2-10）：设 `bypassTags = level.Catalog.Rules.EnemyAi?.Bypass.Tags`（若小型测试夹具未加载 `EnemyAi`，默认视为 `[TargetTag.Cm]`），`a50Active = EnemyAiQueries.AvoidanceActive(state, level.Catalog)`，`bypassTagged = (w != null && w.AiTags 含 AiTag.Bypass)`。若 `endAction == PathEndAction.Arrive`、`m.AltitudeBand ∉ {Ballistic, QuasiBallistic, TerminalManeuver, Glide, Carrier}`、`m.Tag != null` 且 `m.Tag.Value ∈ bypassTags`，并且 `(bypassTagged || a50Active)`，则调用：
+
+`path = ctx.EnemyAiHooks.AdjustAvoidance(state, level, new AvoidanceRequest(m.Id, m.Tag.Value, w?.Id ?? "", a50Active, bypassTagged), path)`。
 
 相邻重复点（`Path[i] == Path[i+1]`，逐位相等）**保留**，形成长度为 0 的段，运动学按 3.2.3 规则处理。
 
-#### 3.1.6 目标选择 `ResolveTarget(spec, entryPos)` → `TargetChoice`
+#### 3.1.6 目标选择 `ResolveTarget(spec, req)` → `TargetChoice`
 
 ```csharp
 public readonly record struct TargetChoice(ThreatTargetKind Kind, Vec2 Pos, int StructureId, int UnitId);
@@ -437,15 +469,15 @@ public readonly record struct TargetChoice(ThreatTargetKind Kind, Vec2 Pos, int 
 | `spec` | 算法 | 随机消耗（`spawn` 子流） |
 |---|---|---|
 | `StructureId = s` | `id = State.StructureIdByDefId[s]`；`Kind = Structure, Pos = 该结构的 Pos, StructureId = id`。**即使该保护目标已被摧毁也照常打**（敌方不知道） | 0 |
-| `Mode = WeightedRandom` | `WeightedStructure()`（下） | 1 次 `NextDouble` |
-| `Mode = KnownTargets` | `c = EnemyTargeting.SelectKnownTarget(state, level, ctx.Rng)`（04 钩子）；`c == null` → `WeightedStructure()` | 钩子自定 + 回退时 1 次 |
-| `Mode = AirDefense` | `c = EnemyTargeting.SelectAirDefenseTarget(state, level, ctx.Rng)`（04 钩子）；`c == null` → `WeightedStructure()` | 同上 |
+| `Mode = WeightedRandom` | 先调 `over = ctx.EnemyAiHooks.SelectWeightedRandomOverride(state, level, req, ctx.Rng)`（04 用于暴露度 100 且后续无 `known_targets` 组时将 25% 弹药改打暴露单位，B-T3-05；默认返回 `null` 且不消耗随机数）；`over != null` → 返回 `over.Value`；否则 `WeightedStructure()`（下） | 未覆盖时 1 次 `NextDouble` |
+| `Mode = KnownTargets` | `c = ctx.EnemyAiHooks.SelectKnownTarget(state, level, req, ctx.Rng)`（04 钩子）；`c == null` → `WeightedStructure()` | 钩子自定 + 回退时 1 次 |
+| `Mode = AirDefense` | `c = ctx.EnemyAiHooks.SelectAirDefenseTarget(state, level, req, ctx.Rng)`（04 钩子）；`c == null` → `WeightedStructure()` | 同上 |
 | `Mode = DecoyFlight` | `w = WeightedStructure()`；返回 `w with { Kind = AimPoint, StructureId = 0 }` | 1 次 |
 
 `WeightedStructure()`：
 
 ```
-cands = State.Structures 中 Alive 的实体，按 ID 升序，且 StructureRules.IsDestroyed(s) == false（03 提供的只读判定；8.3 边界 B1）
+cands = State.Structures 中 Alive 且 s.Hp > 0 的实体，按 ID 升序（A-2-29：直接读 s.Hp > 0，不依赖 03 辅助函数）
 if cands 为空: cands = State.Structures 中全部 Alive 实体（按 ID 升序）
 total = Σ def(c).Weight（按 ID 升序从左到右累加）
 r = ctx.Rng.NextDouble() * total                               # 无论 cands 是否为空都恰好消耗一次（cands 为空时 total = 0）
@@ -457,7 +489,7 @@ return cands 的最后一个                                          # 浮点�
 
 **无目标** `NoTarget()`（关卡没有保护目标，或全部权重为 0）：返回 `TargetChoice(AimPoint, Pos = (WidthM / 2, HeightM / 2), 0, 0)`；调用方因 `Kind == AimPoint` 把该目标按诱饵处理（3.1.7，穿过地图中心后飞出）。
 
-04 钩子的默认实现（04 实现前）：`SelectKnownTarget` 与 `SelectAirDefenseTarget` 都返回 `null`，不消耗随机数。04 实现的约定见 3.1.9。
+04 钩子的默认实现 `DefaultEnemyAiHooks`：`SelectKnownTarget`、`SelectAirDefenseTarget`、`SelectWeightedRandomOverride` 均返回 `null`（不消耗随机数）。04 实现的约定见 3.1.9。
 
 #### 3.1.7 诱饵（`decoy_flight`）：只飞航线、不攻击
 
@@ -501,77 +533,101 @@ I = 进场折线：Route.Kind == Waypoints ? [E] + W + [T] : [E, T]      # 平�
 if AvoidanceActive 且 p.Tag == CM: 不适用（平台没有 CM 标签）
 cumI = I 的累计弧长；LI = cumI[^1]
 if picks 为空:
-    path = I; PathEnd = Hold; TurnS = −1; Releases = []
+    path = I; PathEnd = Hold; TurnArcM = −1; Releases = []
 else:
     for (j, mid, cnt) in picks:
         m = munitions[mid]
-        R = (p.Behavior == StandoffReleaseAndReturn && !p.StandoffActive) ? 0.0 : (m.ReleaseRangeM ?? +∞)
+        R = (p.Behavior == StandoffReleaseAndReturn && !p.StandoffActive) ? 0.0 : (m.ReleaseRangeM ?? p.ReleaseRangeM ?? +∞)
         sj = ReleaseS(I, cumI, T, R)
-        Releases.Add(new PendingRelease { LoadoutIndex = j, MunitionId = mid, Count = cnt, AtS = sj, Done = false })
-    Releases 按 (AtS, LoadoutIndex) 升序
-    sTurn = Releases 中最大的 AtS
+        Releases.Add(new PendingRelease { LoadoutIndex = j, MunitionId = mid, Count = cnt, AtArcM = sj, Done = false })
+    Releases 按 (AtArcM, LoadoutIndex) 升序
+    sTurn = Releases 中最大的 AtArcM
     out   = TruncateAt(I, cumI, sTurn)                       # I 从起点到弧长 sTurn 的部分（末点 = PosOnPolyline(I, sTurn)）
     path  = out + Reverse(out) 去掉重复的折返点               # 原路返回进入点
-    PathEnd = Exit; TurnS = sTurn
+    PathEnd = Exit; TurnArcM = sTurn
 th = new Threat { Kind = Platform, DefId = p.Id, Tag = p.Tag, Pos = E, AltM = 0, Phase = Ingress, WaveId, EntryId,
-                  ParentThreatId = 0, SpawnAtSec = at, AnchorSec = at, AnchorS = 0, LastUpdateSec = at,
-                  ArrivedAtSec = −1, ProfileReady = false, target 各字段, TurnS, Releases, PathEnd, IngressPath = I }
+                  ParentThreatId = 0, SpawnAtSec = at, AnchorSec = at, AnchorArcM = 0, PathArcM = 0, LastUpdateSec = at,
+                  ArrivedAtSec = −1, ProfileReady = false, target 各字段, TurnArcM, Releases, PathEnd, IngressPath = I }
 ThreatPath.SetPath(th, path); State.Threats.Add(th)
 Emit ThreatSpawned { ThreatId, DefId, Kind = Platform, EntryId, WaveId }，AtSec = EvAt(at)；SpawnedThreatCount += 1
 ```
 
-`ReleaseS(I, cum, T, R)`：沿折线第一次进入以 `T` 为圆心、`R` 为半径的圆（含边界）时的弧长。
+`ReleaseS(I, cum, T, R)`：沿折线第一次进入以 `T` 为圆心、`R` 为半径的圆（含边界）时的弧长，统一复用 `00_core.md` 0.4.6 的 `Geo.FirstEntryIntoCircle`（A-3-09、P48）：
 
 ```
 if R == +∞: return 0
 for i in 0 .. I.Count−2:
-    P0 = I[i]; w = P0 − T
-    c = w.Dot(w) − R*R
-    if c <= 0: return cum[i]                         # 段起点已在圈内
-    d = I[i+1] − P0; a = d.Dot(d)
-    if a <= 0: continue
-    b = 2.0 * d.Dot(w)
-    disc = b*b − 4.0*a*c
-    if disc < 0: continue
-    u = (−b − Math.Sqrt(disc)) / (2.0*a)
-    if 0 <= u && u <= 1: return cum[i] + u * (cum[i+1] − cum[i])
-return cum[^1]                                       # 折线终点 = T，必在圈内（兜底）
+    P0 = I[i]; d = I[i+1] − P0
+    u  = Geo.FirstEntryIntoCircle(P0, d, T, R)           # 返回 [0, +∞) 内最小非负根；P0 已在圆内（含边界）返回 0
+    if u != null && u.Value <= 1.0:
+        return cum[i] + u.Value * (cum[i+1] − cum[i])
+return cum[^1]                                           # 折线终点 = T，必在圈内（兜底）
 ```
 
-投放与返航规则汇总（R 为投放距离）：
+投放与返航规则汇总（R 为投放距离，B-T3-09）：
 
 | 行为 / 条件 | R | 投放后 |
 |---|---|---|
-| `StandoffReleaseAndReturn` 且 `StandoffActive` | `ReleaseRangeM ?? ∞` | 原路返航，回到进入点后离开 |
+| `StandoffReleaseAndReturn` 且 `StandoffActive` | `m.ReleaseRangeM ?? p.ReleaseRangeM ?? ∞` | 原路返航，回到进入点后离开 |
 | `StandoffReleaseAndReturn` 且 `!StandoffActive` | `0`（飞到目标正上方投弹） | 同上 |
-| 其他行为（`LowStrike`、`MustEnterShorad`、`LaunchFromMapEdge`、`GlobalAlertOnTakeoff`、`HuntFightersAndRadars`、`ArmedRecon`、`FrontlineAttack`……） | `ReleaseRangeM ?? ∞` | 同上 |
-| 没有挂载（`loadout` 缺省或为空：`spotter`、`awacs`、直升机……） | — | 走完进场路径后**悬停**在终点（`Holding`），直到夜晚结束或被击落（8.1 Q5） |
+| 其他行为（`LowStrike`、`MustEnterShorad`、`LaunchFromMapEdge`、`GlobalAlertOnTakeoff`、`HuntFightersAndRadars`、`ArmedRecon`、`FrontlineAttack`……） | `m.ReleaseRangeM ?? p.ReleaseRangeM ?? ∞` | 同上 |
+| 没有挂载（`loadout` 缺省或为空：`spotter`、`awacs`、直升机……） | — | 走完进场路径后**悬停**在终点（`Holding`），直到夜晚结束或被击落（8.1 Q5 / B-T2-23） |
 
-- `ReleaseRangeM == null` ⇒ R = ∞ ⇒ 平台**一生成就投放**（如 Tu‑22M3 的 Kh‑22、MiG‑31K 的匕首、Su‑24M 的 Kh‑59）。此时 `sTurn = 0`，路径长度为 0，平台在同一步内生成、投放、离开（8.1 Q4）。
-- `ReleaseRangeM == 0`（无制导炸弹）⇒ 投放点 = 目标点。
+- **平台投放距离回退（B-T3-09 / Q4）**：当挂载弹药 `m.ReleaseRangeM == null` 时，使用平台自身的 `p.ReleaseRangeM`（例如 `tu22m3` 配置 `releaseRangeKm: 60`，进入防区边缘后需向目标飞行至距目标 60 km 处才投放 Kh‑22，留出 S‑300 / Patriot 的远程猎杀窗口；若平台在到达 `AtArcM` 之前被击落删除，未投放的挂载弹药不会生成）。若 `m.ReleaseRangeM` 与 `p.ReleaseRangeM` 均为 `null`，则 `R = ∞` ⇒ `sTurn = 0`，退化为 0 秒停留（平台在同一步内生成、投放、离开）。
+- `R == 0`（无制导炸弹，或 `standoffFrom` 未生效的轰炸机）⇒ 投放点 = 目标点。
 - 不进入地图的波次源（`EntersMap == false`）：不创建平台实体；挂载弹药在进入点生成，沿**本组航线**飞向各自的目标，发 `ThreatSpawned`（`ParentThreatId = 0`），不发 `MunitionReleased`。
 - 平台的 `behavior` 中与移动无关的含义（`global_alert_on_takeoff` 的全图警报、`hunt_fighters_and_radars` 的猎杀、`awacs` / `spotter` 的存活效果）不在本文件：02 / 03 / 04 读取 `ThreatSpawned` 与 `PlatformDef` 自行处理。
 
-#### 3.1.9 04 钩子（接口，经 `SimContext.EnemyAiHooks` 取得）
+#### 3.1.9 04 钩子与敌方 AI 查询接口（经 `SimContext.EnemyAiHooks` 取得，A-2-10、P46、P49）
 
 ```csharp
 namespace Nightwatch.Sim.EnemyAi;
+
+public readonly record struct TargetRequest(
+    string EnemyId, ThreatKind Kind, string WaveId,
+    int WaveIndex, int GroupIndex, int Ordinal, Vec2 EntryPos);
+
+public readonly record struct AvoidanceRequest(
+    string EnemyId, TargetTag Tag, string WaveId, bool A50Active, bool BypassTagged);
+
 public interface IEnemyAiHooks
 {
     // 返回 null = 无可用目标（调用方回退到 weighted_random）。只读 state；随机数只能用传入的 rng（即 spawn 子流）
-    TargetChoice? SelectKnownTarget(SimState state, LevelData level, IRandom rng);
-    TargetChoice? SelectAirDefenseTarget(SimState state, LevelData level, IRandom rng);
+    TargetChoice? SelectKnownTarget(SimState state, LevelData level, TargetRequest req, IRandom rng);
+    TargetChoice? SelectAirDefenseTarget(SimState state, LevelData level, TargetRequest req, IRandom rng);
+    // 暴露度达 100 且后续无 known_targets 组时，将部分 weighted_random 弹药改打暴露单位（B-T3-05）；默认返回 null
+    TargetChoice? SelectWeightedRandomOverride(SimState state, LevelData level, TargetRequest req, IRandom rng) => null;
     // 输入完整路径（首点 = 进入点或投放点，末点 = 目标点），返回修正后的路径：首末点必须保持不变。不得使用随机数；只读 state
-    IReadOnlyList<Vec2> AdjustAvoidance(SimState state, LevelData level, IReadOnlyList<Vec2> path);
+    IReadOnlyList<Vec2> AdjustAvoidance(SimState state, LevelData level, AvoidanceRequest req, IReadOnlyList<Vec2> path);
+    // 纯数据函数（可在 Initialize 中调用）：压制波（suppress）中该组是否推迟到压制成功后再生成
+    bool DeferGroup(LevelData level, NightDef night, int waveIndex, int groupIndex);
+    // 饱和波（saturate）各展开项的生成时刻；返回 null = 使用 01 默认间隔
+    IReadOnlyList<double>? SaturationSpawnTimes(SimState state, LevelData level, NightDef night, int waveIndex,
+                                                IReadOnlyList<int> groupIndices, double baseSec);
 }
-public sealed class DefaultEnemyAiHooks : IEnemyAiHooks { /* 前两个返回 null（不消耗随机数），AdjustAvoidance 原样返回 */ }
+
+public sealed class DefaultEnemyAiHooks : IEnemyAiHooks
+{
+    public TargetChoice? SelectKnownTarget(SimState state, LevelData level, TargetRequest req, IRandom rng) => null;
+    public TargetChoice? SelectAirDefenseTarget(SimState state, LevelData level, TargetRequest req, IRandom rng) => null;
+    public TargetChoice? SelectWeightedRandomOverride(SimState state, LevelData level, TargetRequest req, IRandom rng) => null;
+    public IReadOnlyList<Vec2> AdjustAvoidance(SimState state, LevelData level, AvoidanceRequest req, IReadOnlyList<Vec2> path) => path;
+    public bool DeferGroup(LevelData level, NightDef night, int waveIndex, int groupIndex) => false;
+    public IReadOnlyList<double>? SaturationSpawnTimes(SimState state, LevelData level, NightDef night, int waveIndex,
+                                                       IReadOnlyList<int> groupIndices, double baseSec) => null;
+}
+
+public static class EnemyAiQueries
+{
+    // 存在 Alive 的平台，Phase != Arrived，且 PlatformDef.WhileAlive?.CruiseMissilesAvoidAirDefense == true（P49）
+    public static bool AvoidanceActive(SimState state, GameCatalog catalog);
+}
 ```
 
-- `SimWorld.Create` 选择实现：`config.EnemyAiHooksOverride ?? 04 的正式实现（04 完成前为 DefaultEnemyAiHooks）`，存入世界（不属于 `SimState`，必须无状态）。`SimConfig.EnemyAiHooksOverride` 仅测试使用，`[JsonIgnore]`，回放中禁止（同 `RandomOverride`，8.2）。
-- 本文件伪代码中的 `EnemyTargeting.SelectKnownTarget(...)`、`EnemyTargeting.SelectAirDefenseTarget(...)`、`AirDefenseAvoidance.Adjust(...)` 分别指 `ctx.EnemyAiHooks` 的三个方法。
-- `TargetChoice.Kind == PlayerUnit` 时，`Pos` 是**敌方掌握的位置**（例如已知目标清单中记录的位置），不是单位当前位置；目标单位转移后，弹药仍飞向旧位置（GDD 7.4"猎杀"与 11.3"转移"的意义所在）。
-- `AvoidanceActive(state)` = 存在 `Alive` 的 `Threat`，其 `Kind == Platform`、`Phase != Arrived`，且 `PlatformDef.WhileAlive?.CruiseMissilesAvoidAirDefense == true`。只在**生成 / 投放时**判定一次；A‑50 之后被击落不影响已在飞的导弹。
-- `AiTag.Bypass` 的效果（沿河谷、低空盲区）由数据作者用 `waypointsM` 或模板表达；04 若需要按标签生成航线，在 `Adjust` 之外另行定义（8.1 Q11）。
+- `SimWorld.Create` 选择实现：`config.EnemyAiHooksOverride ?? 04 的 EnemyAiHooks（04 完成前为 DefaultEnemyAiHooks）`，存入世界（不属于 `SimState`，必须无状态）。`SimConfig.EnemyAiHooksOverride` 仅测试使用，`[JsonIgnore]`，回放中禁止（同 `RandomOverride`，P29）。
+- `TargetChoice.Kind == PlayerUnit` 时，`Pos` 是**敌方掌握的位置**（例如已知目标清单中记录的位置），不是单位当前位置；目标单位转移后，弹药仍飞向旧位置（GDD 7.4"猎杀"与 11.3"转移"的意义所在）。当带入记录未匹配到存活单位时 `UnitId = 0`，弹药照常飞向 `Pos` 并由 03 按位置结算落点伤害（04 B-01b）。
+- `EnemyAiQueries.AvoidanceActive(state, catalog)` 只在**生成 / 投放时**判定一次；A‑50 之后被击落不影响已在飞的导弹。
+- 在 `WaveSpawnSystem.Initialize` 中调用 `DeferGroup` 与 `SaturationSpawnTimes` 时，04 的 `EnemyIntelSystem.Initialize`（Order 12）尚未执行，`DeferGroup` 是纯数据函数，`SaturationSpawnTimes` 此时已知清单为空，目标位置估计退化为保护目标权重质心（04 B-01c）。
 
 ### 3.2 `EnemyMovementSystem`（Order 2，子流 `movement`）
 
@@ -583,7 +639,9 @@ for i in 0 .. n−1:                                  # ID 升序；本循环中
     th = State.Threats[i]
     if !th.Alive: continue
     if th.Phase == Arrived: continue                 # 等待 03 删除；不再移动、不再发事件
-    if th.Phase == Holding: th.LastUpdateSec = ctx.TimeSec; continue
+    if th.Phase == Holding:
+        th.VelMps = (0, 0); th.VertSpeedMps = 0; th.LastUpdateSec = ctx.TimeSec
+        continue
     if !th.ProfileReady: InitProfile(th, parentAltM: null, parentSpeedMps: null)
     ApplyHoming(th)                                  # 3.2.8
     Advance(th, ctx.TimeSec)
@@ -595,7 +653,7 @@ for i in 0 .. n−1:                                  # ID 升序；本循环中
 
 `parentAltM` / `parentSpeedMps` 只在平台投放子弹药时给出（= 投放点处平台的高度、平台的 `SpeedMps`），其余情况为 `null`。记 `M = rules.Movement`，`def` = 弹药或平台定义，`L = th.PathLengthM`，`band = def.AltitudeBand`。`Roll(r) = ctx.Rng.Range(r.Min, r.Max)`（恰好 1 次 `NextDouble`，`Min == Max` 也消耗）。
 
-| `band`（弹药） | `Profile` | `A0 = StartAltM` | `sD = TerminalStartS` | `AEnd = EndAltM` | `v1 = SpeedMps` | `v2 = TerminalSpeedMps` |
+| `band`（弹药） | `Profile` | `A0 = StartAltM` | `sD = TerminalStartArcM` | `AEnd = EndAltM` | `v1 = SpeedMps` | `v2 = TerminalSpeedMps` |
 |---|---|---|---|---|---|---|
 | `VeryLow`…`High` | `Linear` | `Roll(def.AltitudeM ?? M.AltitudeBandsM[band])` | `PathEnd == Arrive` ? `Max(0, L − A0 / Math.Tan(M.CruiseDescentAngleRad))` : `L` | `PathEnd == Arrive` ? `0` : `A0` | `def.SpeedMps` | `DiveFaster == true` ? `v1 * M.DiveSpeedMult` : `v1` |
 | `HighDive` | `Linear` | `Roll(def.AltitudeM ?? M.AltitudeBandsM[HighDive])` | 同上，但用 `M.HighDiveAngleRad` | 同上 | 同上 | 同上 |
@@ -611,15 +669,15 @@ for i in 0 .. n−1:                                  # ID 升序；本循环中
 
 - `PathEnd != Arrive` 的弹药（诱饵 `Exit`）不下降：`sD = L`，`AEnd = A0`。
 - 巡航剖面的末段：从弧长 `sD` 起以下滑角直线降到地面，`L − sD = A0 / tan(γ)`；路径比这短时从起点就开始下降（`sD = 0`）。
-- 弹道 / 准弹道：把地图内这一段建模为**以进入点为顶点的下降抛物线** `alt(s) = A0 · (1 − (s/L)²)`，落地倾角 `γ` 满足 `tan γ = 2·A0 / L` ⇒ `A0 = L·tan γ / 2`。水平速度恒为 `def.SpeedMps`（数据中的速度按水平速度使用，8.1 Q2）。`terminal_maneuver` 的轨迹与 `quasi_ballistic` 相同，"末端机动"只体现为 03 读取的 `interceptProbMult`（8.1 Q2）。
+- 弹道 / 准弹道：把地图内这一段建模为**以进入点为顶点的下降抛物线** `alt(s) = A0 · (1 − (s/L)²)`，落地倾角 `γ` 满足 `tan γ = 2·A0 / L` ⇒ `A0 = L·tan γ / 2`。水平速度恒为 `def.SpeedMps`（数据中的速度按水平速度使用，8.1 Q2 / B-T2-22）。`terminal_maneuver` 的轨迹与 `quasi_ballistic` 相同，"末端机动"只体现为 03 读取的 `interceptProbMult`（8.1 Q2）。
 - 滑翔：从起始高度沿直线匀速下滑到目标（`sD = 0`），下滑比由几何决定。
 - 无制导炸弹：投放点 = 目标点 ⇒ `L = 0` ⇒ 创建即到达（3.2.5）。
 - `Math.Tan` 在每个目标初始化时调用一次（00 3.8：允许使用，结果不参与阈值判断）。
-- 之后 `th.ProfileReady = true`；`AnchorSec`、`AnchorS` 不变（`SpawnAtSec`、`0`）。
+- 之后 `th.ProfileReady = true`；`AnchorSec`、`AnchorArcM` 不变（`SpawnAtSec`、`0`）。
 
 #### 3.2.3 运动学公式（全部以"锚点 + 解析式"计算，不逐步累加）
 
-记 `ta = AnchorSec`，`sa = AnchorS`，`v1`、`v2`、`sD`、`A0`、`AEnd`、`L` 如上。
+记 `ta = AnchorSec`，`sa = AnchorArcM`，`v1 = SpeedMps`，`v2 = TerminalSpeedMps`，`sD = TerminalStartArcM`，`A0 = StartAltM`，`AEnd = EndAltM`，`L = PathLengthM`。
 
 **弧长随时间** `SAt(t)`（`t ≥ ta`）：
 
@@ -644,7 +702,7 @@ return ta + (sD − sa) / v1 + (x − sD) / v2
 
 **位置** `PosAtS(s)`：`Path.Count == 1` → `Path[0]`。否则二分查找最大的 `i ∈ [0, Count−2]` 使 `PathCumM[i] <= s`；`seg = PathCumM[i+1] − PathCumM[i]`；`seg <= 0` → `Path[i]`；否则 `f = (s − PathCumM[i]) / seg`，`pos = (Path[i].X + (Path[i+1].X − Path[i].X) * f, Path[i].Y + (Path[i+1].Y − Path[i].Y) * f)`。
 
-**方向** `DirAtS(s)`：从上一步的 `i` 开始向后找第一个 `seg > 0` 的段 `k`，返回 `(Path[k+1] − Path[k]) / seg_k`；若 `s >= L` 或找不到，用最后一个 `seg > 0` 的段；全部段长为 0 → `(0,0)`。
+**方向** `DirAtS(s)`（纯函数，不依赖任何前一步状态，C-T1-04）：`Path.Count <= 1` → `(0,0)`。否则先同 `PosAtS(s)` 二分求得最大的 `i ∈ [0, Count−2]` 使 `PathCumM[i] <= Math.Clamp(s, 0.0, L)`；从该段下标 `i` 开始向后找第一个满足 `seg_k = PathCumM[k+1] − PathCumM[k] > 0` 的段 `k ∈ [i, Count−2]`，返回 `(Path[k+1] − Path[k]) / seg_k`；若 `s >= L` 或 `[i, Count−2]` 中找不到，则从后向前找最后一个 `seg_k > 0` 的段 `k ∈ [0, i−1]`；若全部段长均为 0 → `(0,0)`。
 
 **高度** `AltAtS(s)`：
 
@@ -671,18 +729,18 @@ Linear:     s < sD ? 0 : −(A0 − AEnd) / (L − sD) * SpeedAtS(s)
 ```
 sNew = SAt(th, T)
 
-# 1. 平台投放（只有平台有 Releases），按 (AtS, LoadoutIndex) 顺序
+# 1. 平台投放（只有平台有 Releases），按 (AtArcM, LoadoutIndex) 顺序
 for r in th.Releases:
-    if r.Done or r.AtS > sNew: continue
-    tr = TimeAtS(th, r.AtS); r.Done = true
+    if r.Done or r.AtArcM > sNew: continue
+    tr = TimeAtS(th, r.AtArcM); r.Done = true
     for c in 0 .. r.Count−1: ReleaseChild(th, r, tr, T)          # 3.2.6
 
 # 2. 写状态
-th.PathS = sNew
+th.PathArcM = sNew
 th.Pos = PosAtS(sNew); th.AltM = AltAtS(sNew)
 th.VelMps = (sNew >= L) ? (0,0) : DirAtS(sNew) * SpeedAtS(sNew)
 th.VertSpeedMps = VertAtS(sNew)
-if th.TurnS >= 0 and th.Phase == Ingress and sNew >= th.TurnS: th.Phase = Egress
+if th.TurnArcM >= 0 and th.Phase == Ingress and sNew >= th.TurnArcM: th.Phase = Egress
 th.LastUpdateSec = T
 
 # 3. 路径终点
@@ -697,30 +755,33 @@ if sNew >= L:
 ```
 
 - `EvAt` 同 3.1.3。
+- `ThreatArrived` **只由弹药（`Kind == Munition`）发出**；平台的 `PathEnd` 只可能是 `Exit`（有挂载）或 `Hold`（无挂载），永不取 `Arrive`，因此平台绝不产生 `ThreatArrived`（A-2-03）。
 - 由于全部量都由锚点解析计算，`Predict(th, t)`（3.2.9）在路径不变时与实际推进到 `t` 的结果**逐位相同**。
 
 #### 3.2.5 到达与删除
 
 - 到达后 `Phase = Arrived`，目标停在 `Path[^1]`、`AltM = EndAltM`（= 0），不再移动。
 - **由 03 的 `ImpactSystem`（Order 10）在同一步消费 `ThreatArrived` 并 `Remove` 该目标**（落地结算）。在 WS01-011 实现之前，占位 `ImpactSystem` 只做删除。
-- 同一步中较晚的系统（7、8）看到 `Phase == Arrived` 的目标：03 决定是否允许在 `ArrivedAtSec` 之前完成的拦截生效（8.3 边界 B3）。
+- 同一步中较晚的系统（7、8）看到 `Phase == Arrived` 的目标（A-4-03）：
+  - 第 7 步 `FireControlSystem` 不得向 `Phase == Arrived` 的目标新发射拦截弹或高炮；
+  - 第 8 步 `InterceptorResolutionSystem` 允许对早先已发射、且命中时刻 `HitAtSec <= th.ArrivedAtSec` 的在飞拦截弹结算命中（若命中并摧毁目标，第 10 步 `ImpactSystem` 因 `!th.Alive` 自动跳过落地伤害）。
 
 #### 3.2.6 平台投放子弹药 `ReleaseChild(p, r, tr, T)`
 
 ```
 m  = munitions[r.MunitionId]
-ps = r.AtS
-pPos = PosAtS(p, ps); pAlt = AltAtS(p, ps)            # ps ≤ TurnS，位于平台路径的进场段
+ps = r.AtArcM
+pPos = PosAtS(p, ps); pAlt = AltAtS(p, ps)            # ps ≤ TurnArcM，位于平台路径的进场段
 I = p.IngressPath；cumI = I 的累计弧长
 rest = [pPos] + [I[k] | cumI[k] > ps]（按 k 升序；跳过与前一点逐位相等的点）     # I 的末点 = 平台目标点
 path = (m.AltitudeBand ∈ {Ballistic, QuasiBallistic, TerminalManeuver, Glide, Carrier}) ? [pPos, p.TargetPos] : rest
 endAction = Arrive
 if p.TargetKind == AimPoint:                           # 数据中不会出现；为完整性规定
     X = RayExitPoint(p.TargetPos, 末段方向, WidthM, HeightM)；若 X != 末点则追加 X；endAction = Exit
-if m.Tag == CM and AvoidanceActive(state) and endAction == Arrive: path = AirDefenseAvoidance.Adjust(state, level, path)
+按 3.1.5 同一绕行条件（w = 平台所属 WaveDef）：若满足则 path = ctx.EnemyAiHooks.AdjustAvoidance(state, level, req, path)
 c = new Threat { Kind = Munition, DefId = m.Id, Tag = m.Tag, Pos = pPos, AltM = pAlt, Phase = Ingress,
                  WaveId = p.WaveId, EntryId = p.EntryId, ParentThreatId = p.Id, SpawnAtSec = tr,
-                 AnchorSec = tr, AnchorS = 0, PathS = 0, LastUpdateSec = tr, ArrivedAtSec = −1, TurnS = −1,
+                 AnchorSec = tr, AnchorArcM = 0, PathArcM = 0, LastUpdateSec = tr, ArrivedAtSec = −1, TurnArcM = −1,
                  TargetKind / TargetPos / TargetStructureId / TargetUnitId = 平台的对应值, PathEnd = endAction }
 ThreatPath.SetPath(c, path); State.Threats.Add(c)
 InitProfile(c, parentAltM: pAlt, parentSpeedMps: p.SpeedMps)
@@ -738,11 +799,11 @@ Advance(c, T)                                   # 立即推进到本步时刻；
 | 时刻 | `Phase` |
 |---|---|
 | 生成 | `Ingress` |
-| `PathS >= TurnS`（有挂载） | `Egress` |
+| `PathArcM >= TurnArcM`（有挂载） | `Egress` |
 | 走完返航路径 | 发 `ThreatExited { EgressComplete }` 并删除 |
 | 无挂载、走完进场路径 | `Holding` |
 
-#### 3.2.8 改航 / 返航 / 归航接口（`Nightwatch.Sim.Movement.ThreatRouting`，供 02 / 03 / 04 调用）
+#### 3.2.8 改航 / 返航 / 悬停 / 归航接口（`Nightwatch.Sim.Movement.ThreatRouting`，供 02 / 03 / 04 调用）
 
 ```csharp
 public static class ThreatRouting
@@ -751,30 +812,48 @@ public static class ThreatRouting
     public static bool Retarget(SimContext ctx, Threat th, Vec2 newTargetPos);
     // 立即返航（平台或弹药）：飞回进入点后离开。返回 false = 不适用（Phase == Arrived）
     public static bool BeginEgress(SimContext ctx, Threat th);
+    // 原地悬停（电子战链路中断 Hover 等，A-2-27）。返回 false = 不适用（Phase == Arrived）
+    public static bool Hover(SimContext ctx, Threat th);
 }
 ```
 
-两者都只在 `th.LastUpdateSec == ctx.TimeSec`（本步第 2 步之后）调用，否则抛 `InvalidOperationException`。设 `t0 = ctx.TimeSec`，`cur = th.Pos`，`alt = th.AltM`。
+三者都只在 `th.LastUpdateSec == ctx.TimeSec`（本步第 2 步之后）调用，否则抛 `InvalidOperationException`。设 `t0 = ctx.TimeSec`，`cur = th.Pos`，`alt = th.AltM`。
 
 `Retarget`：
 
 ```
+if th.Kind != Munition or th.Phase != Ingress: return false
 ThreatPath.SetPath(th, [cur, newTargetPos]); th.PathEnd = Arrive
 th.TargetPos = newTargetPos; th.TargetKind = 原值（不改）; TargetStructureId / TargetUnitId 不改
-th.AnchorSec = t0; th.AnchorS = 0; th.PathS = 0
+th.AnchorSec = t0; th.AnchorArcM = 0; th.PathArcM = 0
 th.StartAltM = alt
-按 3.2.2 同一行的规则、用新的 L 与 A0 = alt 重算 sD、AEnd（Parabolic：A0 = alt，即以当前点为新抛物线顶点）；v1、v2 不变
+按 3.2.2 同一行的规则、用新的 L 与 A0 = alt 重算 sD（TerminalStartArcM）、AEnd（Parabolic：A0 = alt，即以当前点为新抛物线顶点）；v1、v2 不变
+return true
 ```
 
 `BeginEgress`：
 
 ```
+if th.Phase == Arrived: return false
 dest = 进入点 Pos（waves.EntryPoints 中 Id == th.EntryId；th.EntryId 为 null 时 dest = cur）
 所有 Releases 中 Done == false 的项置 Done = true（取消投放，挂载随平台返回）
-ThreatPath.SetPath(th, [cur, dest]); th.PathEnd = Exit; th.Phase = Egress; th.TurnS = 0
-th.AnchorSec = t0; th.AnchorS = 0; th.PathS = 0
-th.StartAltM = alt; th.EndAltM = alt; th.TerminalStartS = PathLengthM; th.Profile = Linear
+ThreatPath.SetPath(th, [cur, dest]); th.PathEnd = Exit; th.Phase = Egress; th.TurnArcM = 0
+th.AnchorSec = t0; th.AnchorArcM = 0; th.PathArcM = 0
+th.StartAltM = alt; th.EndAltM = alt; th.TerminalStartArcM = PathLengthM; th.Profile = Linear
 v1 不变；v2 = v1
+return true
+```
+
+`Hover`（A-2-27）：
+
+```
+if th.Phase == Arrived: return false
+所有 Releases 中 Done == false 的项置 Done = true
+ThreatPath.SetPath(th, [cur, cur]); th.PathEnd = Hold; th.Phase = Holding; th.TurnArcM = −1
+th.AnchorSec = t0; th.AnchorArcM = 0; th.PathArcM = 0
+th.StartAltM = alt; th.EndAltM = alt; th.TerminalStartArcM = 0; th.Profile = Linear
+th.VelMps = (0, 0); th.VertSpeedMps = 0
+return true
 ```
 
 `ApplyHoming(th)`（`EnemyMovementSystem` 内部，在 `Advance` 之前）：
@@ -787,14 +866,14 @@ if u.Pos == th.Path[^1]（逐位相等）: return
 以 t0 = th.LastUpdateSec 执行与 Retarget 相同的改写（cur / alt 用 SAt(t0) 处的值，即当前 Pos / AltM），并令 th.TargetUnitId = u.Id、th.TargetKind = PlayerUnit
 ```
 
-- 02 负责设置 / 清除 `HomingUnitId`（例如反辐射导弹只在目标雷达开机时归航，关机后清零 → 飞向最后记录的位置）。
-- `PathVersion` 的增加通知 03：之前基于旧路径算出的拦截点可能失效（03 自行决定处理方式，8.3 边界 B2）。
+- 02 在第 6 步 `EmissionSystem` 负责设置 / 清除 `HomingUnitId`（反辐射导弹只在目标雷达开机时归航，关机后清零 → 飞向最后记录的位置，A-2-06）。`Threat.TargetUnitId` 由本文件在 `ApplyHoming` 中同步更新（A-2-04）。
+- `PathVersion` 的增加（`Retarget`、`BeginEgress`、`Hover`、`ApplyHoming` 均调用 `ThreatPath.SetPath`）使 03 早先针对该目标发射、在飞的 `Interceptor`（其 `TargetPathVersion != th.PathVersion`）在 `InterceptorResolutionSystem` 中按 `TargetLost` 自毁并补射（A-2-09）。
 
 #### 3.2.9 解析位置预测（供 03 解析拦截）
 
 ```csharp
 namespace Nightwatch.Sim.Movement;
-public readonly record struct ThreatPose(Vec2 Pos, double AltM, Vec2 VelMps, double VertSpeedMps, double PathS, bool AtPathEnd);
+public readonly record struct ThreatPose(Vec2 Pos, double AltM, Vec2 VelMps, double VertSpeedMps, double PathArcM, bool AtPathEnd);
 public readonly record struct MotionLeg(double StartSec, double EndSec, Vec2 StartPos, Vec2 VelMps,
                                         double StartAltM, double VertSpeedMps, double VertAccelMps2);
 public static class ThreatKinematics
@@ -802,6 +881,7 @@ public static class ThreatKinematics
     public static ThreatPose Predict(Threat th, double atSec);
     public static IReadOnlyList<MotionLeg> Legs(Threat th, double fromSec);
     public static double? PredictArrivalSec(Threat th);        // PathEnd == Arrive 且未到达 → TimeAtS(L)；否则 null（已到达返回 ArrivedAtSec）
+    public static double MaxSpeed3DMps(Threat th);             // 目标在当前路径上的三维速度上界（m/s，C-T1-03）
     public static double SAt(Threat th, double atSec);
     public static double TimeAtS(Threat th, double s);
     public static Vec2 PosAtS(Threat th, double s);
@@ -812,8 +892,9 @@ public static class ThreatKinematics
 `Predict(th, t)`：
 
 - `t < th.LastUpdateSec − 1e-9` → `ArgumentOutOfRangeException`（只预测未来）。
-- `Phase == Arrived` 或 `Holding` → 返回当前 `Pos / AltM`，速度为 0，`AtPathEnd = true`。
-- 否则 `s = SAt(t)`，按 3.2.3 求 `Pos / AltM / VelMps / VertSpeedMps`；`AtPathEnd = (s >= L)`；`s >= L` 且 `PathEnd == Arrive` 时 `AltM = EndAltM`。
+- `Phase == Arrived` 或 `Holding` → 返回当前 `(Pos, AltM, (0,0), 0, PathArcM, AtPathEnd: true)`。
+- 否则 `s = SAt(t)`，按 3.2.3 求 `Pos / AltM / VelMps / VertSpeedMps`；`PathArcM = s`；`AtPathEnd = (s >= L)`；`s >= L` 且 `PathEnd == Arrive` 时 `AltM = EndAltM`。
+- **`AtPathEnd` 语义说明（A-2-02）**：`AtPathEnd` 表示"已到达路径几何终点（`s >= L`）或已处于 `Arrived / Holding`"。对于 `PathEnd == Hold` 的悬停目标（如到达航点后悬停的 Orlan，或被 `ThreatRouting.Hover` 悬停的无人机），`AtPathEnd` 也为 `true`，但该目标仍在空中可被拦截；因此 03 `InterceptSolver` 在判断"目标已落地、跳过后续采样"时，必须检查 `p.AtPathEnd && th.PathEnd == PathEndAction.Arrive`。
 
 预测**只基于当前路径**：不包括未来的改航、归航更新、返航指令（`PathVersion` 变化即失效）。平台的返航段已在路径中，所以平台的预测在投放后仍然准确。
 
@@ -832,6 +913,21 @@ Phase == Arrived / Holding：返回单段 (from, +∞)，速度 0
 ```
 
 段内：`pos(t) = StartPos + VelMps × (t − StartSec)`，`alt(t) = StartAltM + VertSpeedMps × τ + 0.5 × VertAccelMps2 × τ²`（`τ = t − StartSec`）。与 `Predict` 的差异只来自浮点舍入（测试容差 1e-6 m）。
+
+`MaxSpeed3DMps(th)`（供 03 弹药 `maxTargetSpeedKmh` 资格判断与交战规则使用，C-T1-03）：
+
+```
+if th.Phase == Arrived or th.Phase == Holding or th.PathLengthM <= 0.0:
+    return 0.0
+vHorizMax = Math.Max(th.SpeedMps, th.TerminalSpeedMps)
+if th.Profile == MotionProfile.Parabolic:
+    maxSlope = 2.0 * th.StartAltM / th.PathLengthM                                           # s = L 处 |d(alt)/ds| 最大
+else:
+    maxSlope = (th.PathLengthM > th.TerminalStartArcM)
+               ? Math.Abs(th.StartAltM − th.EndAltM) / (th.PathLengthM − th.TerminalStartArcM)
+               : 0.0
+return vHorizMax * Math.Sqrt(1.0 + maxSlope * maxSlope)
+```
 
 ### 3.3 地形与视线（`TerrainModel`）
 
@@ -867,7 +963,7 @@ return top + (bot − top) * ty
 
 #### 3.3.3 视线 `HasLineOfSight(a, aMslM, b, bMslM)`（参考算法 = 定义）
 
-输入为两端点的**海拔**（MSL）。观察者（传感器）海拔 = `ElevationAt(pos) + 天线离地高度`（来源由 02 规定，8.1 Q3）；目标海拔 = `ElevationAt(threat.Pos) + threat.AltM`。
+输入为两端点的**海拔**（MSL）。观察者（传感器）海拔 = `ElevationAt(pos) + 天线离地高度`（来源见 1.6 `DefaultAntennaHeightM`，8.1 Q3 / B-T2-03）；目标海拔 = `ElevationAt(threat.Pos) + threat.AltM`。
 
 ```
 dx = b.X − a.X; dy = b.Y − a.Y
@@ -890,15 +986,65 @@ return true
 - **地球曲率**：计入。把地形抬高 `drop(s) = s·(d − s) / (2·R_eff)`（等价于两端点之间的地球凸起，抛物线近似），`R_eff = RefractionK × EarthRadiusM`。`EarthRadiusM = null` 时不计。理由：GDD 8.1 明确"地形**和地平线**形成低空盲区"；A 线地图可达 400 km（WBS 01.A），150 km 外地平线遮挡数百米以下的目标。
 - **快速接受**的正确性：每个样本 `ray ≥ min(aMsl, bMsl)`，双线性值不超过 4 个像素的最大值（加 1e-6 吸收舍入），`drop ≤ d²/(8R)`；条件成立时不可能有样本被遮挡。
 - 结果与方向无关只在样本点对称时成立；**调用方一律以观察者为 `a`、目标为 `b`**。
-- `HasLineOfSight` 的任何加速实现（见 3.3.4）都必须与 `HasLineOfSightReference` 对任意输入给出相同结果（T-01-47）。
+- `HasLineOfSight` 的任何精确加速实现都必须与 `HasLineOfSightReference` 对任意输入给出相同结果（T-01-56）。
 
-#### 3.3.4 缓存与加速（必须确定性）
+#### 3.3.4 多山脊遮挡包络 `HorizonProfile` 与缓存加速（B-T2-31、C-T2-01）
 
-1. 视线结果是输入的纯函数；**任何缓存都只能以精确输入为键**（`double` 按位比较，或 `(观察者实体 ID, 目标实体 ID, Tick)` 且同一步内输入不变），命中与否不得改变结果。缓存不属于 `SimState`，不参与哈希，可随时清空。
-2. **禁止**：按网格量化坐标作为缓存键、用近似结果代替定义、跨步复用而不校验输入。
-3. 允许的精确加速：
-   - 构造时预计算 `MaxElevationM`（已用于快速接受）。
-   - 分块最大值金字塔：对 `B × B` 像素块存最大高程；沿射线遇到某段采样点全部落在块覆盖范围内、且该段 `min(ray) > 块最大值 + 该段 max(drop) + 1e-6` 时跳过该段采样。块范围要包含双线性用到的相邻像素（向外扩 1 像素）。
+**1. 为什么不能用每方位单一地平线仰角（C-T2-01）**
+
+在双山脊或多山脊地形（近处矮山脊 $R_1$ 斜率 $\sigma_1$、远处高山脊 $R_2$ 斜率 $\sigma_2 > \sigma_1$）下，若每个方位只存一个全局最大仰角 $\sigma_2$，则位于 $R_1$ 与 $R_2$ 之间、斜率满足 $\sigma_1 < \sigma_{\text{target}} < \sigma_2$ 的目标会被误判为被远方 $R_2$ 遮挡；反之若只存第一道山脊 $\sigma_1$，则会漏判 $R_2$ 之后的盲区。
+
+注意到 3.3.3 的遮挡条件：
+
+$$\text{ElevationAt}(p(s)) + \frac{s(d - s)}{2 R_{\text{eff}}} \le a_{\text{Msl}} + (b_{\text{Msl}} - a_{\text{Msl}})\frac{s}{d}$$
+
+两边同除以 $s > 0$ 并移项后，采样点距离 $s$ 与目标距离 $d$ **代数上完全分离**：
+
+$$\underbrace{\frac{\text{ElevationAt}(p(s)) - a_{\text{Msl}}}{s} - \frac{s}{2 R_{\text{eff}}}}_{\sigma(s, E(s))\text{（只依赖采样点 }s\text{）}} \le \underbrace{\frac{b_{\text{Msl}} - a_{\text{Msl}}}{d} - \frac{d}{2 R_{\text{eff}}}}_{\sigma(d, b_{\text{Msl}})\text{（只依赖目标 }d, b_{\text{Msl}}\text{）}}$$
+
+（当 `ReffM == null` 时曲率项 $\frac{r}{2 R_{\text{eff}}}$ 置 0。）因此，沿任意一条从观察者出发的射线，只需存储**沿径向距离 $s_j = j \cdot \text{LosStepM}$ 单调非降的累积最大遮挡斜率包络** `MaxSlope[bin, j]`，即可在 $O(1)$ 时间内精确判定任意距离（含两山脊之间、第二山脊之后）的目标是否被前缀山脊遮挡。
+
+**2. `BuildHorizonProfile(observer, observerAglM, maxRangeM, azimuthBins)` 与 `HorizonProfile.HasLineOfSight` 算法**
+
+```
+# 构造（观察者部署或转移到位展开时调用一次）
+AzimuthBins = azimuthBins ?? HorizonAzimuthBins          # 默认 720（每 0.5° 一桶）
+StepM       = LosStepM
+ObserverPos = observer
+ObserverMslM = ElevationAt(observer) + observerAglM
+RadialSteps = Math.Max(1, (int)Math.Ceiling(maxRangeM / StepM))
+for b in 0 .. AzimuthBins − 1:
+    theta = 2.0 * Math.PI * b / AzimuthBins              # 从 +x（东）逆时针
+    ux = Math.Cos(theta); uy = Math.Sin(theta)
+    MaxSlope[b, 0] = −∞
+    for j in 1 .. RadialSteps:
+        s    = j * StepM
+        elev = ElevationAt(observer.X + ux * s, observer.Y + uy * s)
+        curv = (ReffM == null) ? 0.0 : s / (2.0 * ReffM.Value)
+        slope = (elev − ObserverMslM) / s − curv
+        MaxSlope[b, j] = Math.Max(MaxSlope[b, j − 1], slope)
+
+# O(1) 查询 HorizonProfile.HasLineOfSight(target, targetMslM)
+dx = target.X − ObserverPos.X; dy = target.Y − ObserverPos.Y
+d  = Math.Sqrt(dx * dx + dy * dy)
+if d <= StepM: return true
+ang = Math.Atan2(dy, dx); if ang < 0.0: ang += 2.0 * Math.PI
+b = ((int)Math.Round(ang * AzimuthBins / (2.0 * Math.PI), MidpointRounding.AwayFromZero)) % AzimuthBins
+j = Math.Clamp((int)Math.Ceiling(d / StepM) − 1, 1, RadialSteps)
+curv = (ReffM == null) ? 0.0 : d / (2.0 * ReffM.Value)
+targetSlope = (targetMslM − ObserverMslM) / d − curv
+return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见，与 3.3.3 一致
+```
+
+`HorizonProfile.HasLineOfSightAgl(target, targetAglM)` = `HasLineOfSight(target, terrain.ElevationAt(target) + targetAglM)`。
+
+**3. `TerrainModel.HasLineOfSight` 的精确加速约束**
+
+1. `TerrainModel.HasLineOfSight` 本身是输入的纯函数；对其内部的任何缓存都只能以精确输入为键（`double` 按位比较），命中与否不得改变结果，结果必须与 `HasLineOfSightReference` 完全一致（T-01-56）。
+2. 允许在 `TerrainModel.HasLineOfSight` 内使用的精确加速：
+   - 构造时预计算 `MaxElevationM`（已用于 3.3.3 快速接受）。
+   - 分块最大值金字塔：对 `B × B` 像素块存最大高程；沿射线遇到某段采样点全部落在块覆盖范围内、且该段 `min(ray) > 块最大值 + 该段 max(drop) + 1e-6` 时跳过该段采样。块范围包含双线性相邻像素（向外扩 1 像素）。
+3. 02 的传感器每步探测可按规则使用 `HorizonProfile`（部署与重新展开时调用 `BuildHorizonProfile` 预计算，运行时 $O(1)$ 查表，B-T2-31）；`HorizonProfile` 由地形、规则与观察者位置唯一决定，不属于 `SimState`，不参与哈希。
 4. 不得使用多线程（00 6.2）。
 
 #### 3.3.5 性能上限提示（WS01-028：600 无人机 + 90 导弹 + 拦截弹，单步 < 2 ms）
@@ -907,9 +1053,8 @@ return true
 |---|---|---|
 | `WaveSpawnSystem` | O(本步生成数) | 每次生成 O(路径点数 + 保护目标数) |
 | `EnemyMovementSystem` | O(N)，每个目标常数次运算 + 一次 O(log 路径点数) 二分 | 700 个目标远小于 0.1 ms |
-| `HasLineOfSight` | O(d / LosStepM) 次双线性采样（约 20 次浮点运算 / 样本） | 100 m 像素、0.5 像素步长时 150 km 视线 = 3000 样本 |
-
-视线是主要开销：若 5 部远程雷达 × 700 个目标每步都做全长视线，约 1000 万样本 / 步，远超预算。因此 02 必须（在 02 中规定）：先做距离 / 高度筛选再调用视线；同一步内同一（传感器，目标）只算一次；必要时规定"每 K 步重算一次视线"作为**规则**（写入数据，属于定义的一部分，不是缓存）。本文件保证单次调用的复杂度与确定性，见 8.3 边界 B4。
+| `HasLineOfSight`（精确射线采样） | O(d / LosStepM) 次双线性采样（约 20 次浮点运算 / 样本） | 用于少量精确查询与 04 绕行网格预计算 |
+| `HorizonProfile.HasLineOfSight`（预计算多山脊包络） | **O(1)**（1 次 `Atan2` + 1 次数组查表） | 700 个目标 × 5 部雷达 ≈ 3500 次查表 / 步，远小于 0.1 ms（B-T2-31） |
 
 ---
 
