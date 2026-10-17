@@ -1071,12 +1071,14 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 | 104 | `ThreatExited` | `int ThreatId, string DefId, ThreatExitReason Reason` | `EvAt(离开时刻)` | 2 |
 
 - 每个新 `Threat` 恰好伴随一个 `ThreatSpawned`（由波次生成，含不进入地图的波次源投放的弹药）**或**一个 `MunitionReleased`（由地图上的平台投放），二者不会同时出现。
-- 同一步内事件顺序：`WaveStarted` → 该波的 `ThreatSpawned`（按 `Pending` 顺序）→（第 2 步，按目标 ID 升序处理）`MunitionReleased`（子弹药被立即推进，可能紧接着自己的 `ThreatArrived`）→ 该平台的 `ThreatArrived` / `ThreatExited`。
+- `ThreatArrived` **只由弹药（`Kind == Munition`）发出**；平台的 `PathEnd` 只可能是 `Exit` 或 `Hold`，永不发出 `ThreatArrived`（A-2-03）。
+- 每个 `Threat` 在生命周期内**至多发出一个**本节的终态事件（`ThreatArrived` 或 `ThreatExited` 二选一，绝不同时发出；若在中途被 03 拦截摧毁或被 02 电子战 `Crash` 坠毁，则由 03 / 02 发出各自事件并 `Remove`，不发 `ThreatArrived` / `ThreatExited`，A-4-04）。
+- 同一步内事件顺序：`WaveStarted` → 该波的 `ThreatSpawned`（按 `Pending` 顺序）→（第 2 步，按目标 ID 升序处理）`MunitionReleased`（子弹药被立即推进，可能紧接着自己的 `ThreatArrived`）→ 该平台的 `ThreatExited`。
 - `WriteHash` 中 `IReadOnlyList<AiTag>?` 按 00 3.7.1：`null` 写 `Write(false)`；否则 `Write(true)`、`Write(Count)`、逐项 `Write((int)tag)`。
 
 ### 4.2 命令
 
-本文件的系统不处理任何命令（不实现 `ICommandHandler`）。改航 / 返航 / 归航经 3.2.8 的静态接口由其他系统调用；波次注入经 `WaveState.Injections` 由 04 写入。
+本文件的系统不处理任何命令（不实现 `ICommandHandler`）。改航 / 返航 / 悬停 / 归航经 3.2.8 的静态接口 `ThreatRouting` 由其他系统调用；波次注入（整波或压制波放行的指定组 `GroupIndices`）经 `WaveState.Injections` 由 04 写入（A-2-10）。
 
 ### 4.3 `SimWorld.Create` 时的错误
 
@@ -1086,7 +1088,7 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 [E_NOT_IMPLEMENTED] levels/<levelId>/waves.json $.nights[<i>].waves[<j>].groups[<k>].route.template: 航线模板尚未实现（WS02-004）
 ```
 
-`<i>` 为该夜在 `nights` 数组中的下标，`<j>`、`<k>` 为数据下标。
+`<i>` 为该夜在 `nights` 数组中的下标，`<j>`、`<k>` 为数据下标。（另：`CarryIn.Adaptation` 非空且 `Count > 0` 时由 `SimWorld.Create` 第 8 步抛 `[E_NOT_IMPLEMENTED] carryIn.adaptation: 跨关敌人适应尚未实现（WS05-006）`，00 3.2 / A-2-22。）
 
 ---
 
@@ -1102,10 +1104,10 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 | 6 | `DurationTicks` 之后才到期的波次 | 永不生成；`AllWavesSpawned` 一直为 false（`EndWhenClear` 不会提前结束） |
 | 7 | 剧情注入不存在的波次 ID | `InvalidOperationException`（04 的错误） |
 | 8 | 剧情注入时 `StartAtSec` 早于当前时刻 | 以当前步时刻 `ctx.TimeSec` 为本波起点，不补算过去 |
-| 9 | 同一波次被注入两次 | 生成两批，各自发 `WaveStarted { Injected = true }` |
-| 10 | 被剧情引用的波次 | 不进入自动时间表，只能被注入 |
+| 9 | 同一波次被注入两次 | 生成两批，各自发 `WaveStarted { Injected = true }`（`GroupIndices != null` 的压制波放行不重复发 `WaveStarted`，A-2-10） |
+| 10 | 被剧情引用的波次 | 不进入自动时间表，只能被注入（`WaveSpawnRules.IsStoryOnlyWave`，A-2-28） |
 | 11 | 指定的保护目标已被摧毁 | 照常飞向该点（敌方不知道） |
-| 12 | `weighted_random` 时全部保护目标已被摧毁 | 在全部（含已摧毁）保护目标中按权重选 |
+| 12 | `weighted_random` 时全部保护目标已被摧毁（`s.Hp <= 0`） | 在全部（含已摧毁）保护目标中按权重选（A-2-29） |
 | 13 | 关卡没有保护目标 / 权重和为 0 | 按诱饵处理：穿过地图中心后飞出（3.1.6） |
 | 14 | `known_targets` / `air_defense` 钩子返回 null | 回退 `weighted_random`（再消耗 1 次 `NextDouble`） |
 | 15 | 已知目标单位已转移 | 弹药飞向钩子给出的（旧）位置 |
@@ -1115,16 +1117,16 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 | 19 | 弹道类路径长度 `L = 0` | `A0 = 0`，立即到达 |
 | 20 | 巡航弹药路径短于下降段 `A0 / tan γ` | `sD = 0`：从起点开始线性下降 |
 | 21 | 平台挂载 `count = null` | 按 1 枚 |
-| 22 | 平台挂载弹药 `releaseRangeKm` 缺省 | 生成即投放；平台路径长度 0，同一步内生成、投放、离开（发 3 个事件） |
+| 22 | 平台挂载弹药 `releaseRangeKm` 缺省 | 回退使用平台的 `p.ReleaseRangeM`（B-T3-09）；若平台的 `releaseRangeKm` 也缺省，则生成即投放（路径长度 0，同一步内生成、投放、离开，发 3 个事件） |
 | 23 | 平台进场路径从未进入投放圈 | 不可能（终点 = 目标点，距离 0）；`ReleaseS` 兜底返回 `L` |
-| 24 | 平台多个挂载位投放距离不同 | 分别在各自投放点投放；在最近的投放点（最大 `AtS`）折返 |
-| 25 | 平台在投放前被击落（03 `Remove`） | 未投放的挂载随之消失 |
-| 26 | 平台在投放前被 `BeginEgress` | 未投放项取消（`Done = true`），飞回进入点离开 |
+| 24 | 平台多个挂载位投放距离不同 | 分别在各自投放点投放；在最近的投放点（最大 `AtArcM`）折返 |
+| 25 | 平台在投放前被击落（03 `Remove`） | 未投放的挂载随之消失，永不生成（B-T3-09） |
+| 26 | 平台在投放前被 `BeginEgress` 或 `Hover` | 未投放项取消（`Done = true`），平台返航或原地悬停 |
 | 27 | 无挂载平台 | 走完进场路径后悬停到夜晚结束；`AllClear` 因而不会触发（00 3.5） |
-| 28 | `Retarget` 作用于平台或已到达 / 返航中的弹药 | 返回 false，状态不变 |
-| 29 | 在第 2 步之前（阶段 0 或第 1 步）调用 `Retarget` / `BeginEgress` | `InvalidOperationException` |
+| 28 | `Retarget` 作用于平台或已到达 / 返航 / 悬停中的弹药；`BeginEgress` / `Hover` 作用于已到达目标 | 返回 false，状态不变（A-2-27） |
+| 29 | 在第 2 步之前（阶段 0 或第 1 步）调用 `Retarget` / `BeginEgress` / `Hover` | `InvalidOperationException` |
 | 30 | `HomingUnitId` 指向已被摧毁的单位 | 不改航，继续飞向最后的目标点；`HomingUnitId` 保留（02 可清零） |
-| 31 | `Phase == Arrived` 的目标未被 03 删除 | 不再移动、不再发事件 |
+| 31 | `Phase == Arrived` 的目标在同一步被第 7、8 步访问 | 不再移动、不再发事件；第 7 步不得向其新发射拦截弹，第 8 步仅允许 `HitAtSec <= ArrivedAtSec` 的在飞拦截弹结算命中（A-4-03） |
 | 32 | 子弹药在投放的同一步就到达 | 同一步先发 `MunitionReleased`，再发其 `ThreatArrived` |
 | 33 | A‑50 在导弹生成后被击落 | 已生成导弹的路径不变 |
 | 34 | 坐标在地图外的高程查询 | 钳到边缘像素中心，常值延伸 |
@@ -1138,16 +1140,16 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 
 ## 6. 不变量（`SimConfig.CheckInvariants = true` 时，每步末尾检查）
 
-1. 每个 `Alive` 的 `Threat`：`Path.Count ≥ 1`；`PathCumM` 与 `Path` 一致（重新计算后逐位相等）；`0 ≤ PathS ≤ PathLengthM`；`PathS == SAt(LastUpdateSec)`（逐位）。
+1. 每个 `Alive` 的 `Threat`：`Path.Count ≥ 1`；`PathCumM` 与 `Path` 一致（重新计算后逐位相等）；`0 ≤ PathArcM ≤ PathLengthM`；`PathArcM == SAt(LastUpdateSec)`（逐位）。
 2. `Phase ∈ {Ingress, Egress}` 的目标：`LastUpdateSec == TimeSec`（第 2 步推进了所有在飞目标，包括本步投放的子弹药）。
-3. `AltM ≥ 0`；`SpeedMps > 0`（`PathLengthM > 0` 时）；`TerminalSpeedMps ≥ SpeedMps`；`0 ≤ TerminalStartS ≤ PathLengthM`。
-4. `Phase == Arrived` ⇔ `ArrivedAtSec ≥ 0`；此时 `ArrivedAtSec ≤ TimeSec`、`VelMps == (0,0)`、`Pos == Path[^1]`。
-5. `Phase == Holding` ⇒ `PathEnd == Hold` 且 `PathS == PathLengthM`。
+3. `AltM ≥ 0`；`SpeedMps > 0`（`PathLengthM > 0` 时）；`TerminalSpeedMps ≥ SpeedMps`；`0 ≤ TerminalStartArcM ≤ PathLengthM`。
+4. `Phase == Arrived` ⇔ `ArrivedAtSec ≥ 0`；此时 `Kind == Munition`、`ArrivedAtSec ≤ TimeSec`、`VelMps == (0,0)`、`Pos == Path[^1]`（A-2-03）。
+5. `Phase == Holding` ⇒ `PathEnd == Hold` 且 `PathArcM == PathLengthM` 且 `VelMps == (0,0)` 且 `VertSpeedMps == 0`（A-2-27）。
 6. `ParentThreatId != 0` ⇒ `ParentThreatId < Id`；`Kind == Platform` ⇒ `ParentThreatId == 0`。
-7. `Releases` 按 `(AtS, LoadoutIndex)` 升序；`Kind == Munition` ⇒ `Releases.Count == 0` 且 `TurnS == −1`。
+7. `Releases` 按 `(AtArcM, LoadoutIndex)` 升序；`Kind == Munition` ⇒ `Releases.Count == 0` 且 `TurnArcM == −1`。
 8. `ProfileReady == true`（第 2 步之后所有 `Alive` 目标都已初始化）。
 9. `WaveState.Pending` 按 `(SpawnTick, SpawnAtSec, Seq)` 严格升序；第 1 步之后所有 `SpawnTick > Tick`；`AllWavesSpawned == (Pending.Count == 0 && Injections.Count == 0)`；第 1 步之后 `Injections.Count == 0`。
-10. `SpawnedThreatCount` = 本夜已发出的 `ThreatSpawned` + `MunitionReleased` 事件数。
+10. `SpawnedThreatCount` = 本夜已发出的 `ThreatSpawned` + `MunitionReleased` 事件数；每个 `ThreatId` 至多发出一次 `ThreatArrived` 或 `ThreatExited`（A-4-04）。
 11. 地形：`ElevationAt` 对任意有限输入返回有限值，且落在 `[min(E), MaxElevationM + 1e-6]` 内。
 
 
