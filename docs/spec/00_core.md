@@ -2,6 +2,7 @@
 
 > 本文件是 `docs/spec/` 的地基：其余 6 份规格引用这里定义的**术语、类型、子流名、实体类型、事件 / 命令名称和接口**。
 > 本文件中的名字就是最终代码中的名字；其他规格不得为同一概念另起名字（需要新名字时先补进本文件）。
+> **修订（D2b，2026-10-17）**：已应用 `review/A_interfaces.md` 第 1 节登记补丁 P01–P50、A / B / C 报告中指向 00 的 T1 / T2 条目与 `review/DECISIONS.md`；逐条去向见 `review/APPLY_LOG.md` 的"00_core.md"小节。01–06 的登记内容（实体字段、单例组件、子流用途、事件 / 命令字段、规则文件加载序）**以本文件为准**；各规格第 2 / 4 节细化字段时不得改变本文件给出的名字与顺序。
 
 ---
 
@@ -58,6 +59,7 @@
 | 种子 | `Seed`（`ulong`） | 一夜模拟的根随机种子 |
 | 子流 | stream（`IRandom`） | 由根种子 + 子流名派生的独立随机序列 |
 | 一夜结算 | `NightResult` | 夜晚结束时产出的结算数据 |
+| 阶段 0 | Stage 0（代码：`CommandStage`） | `Step()` 开头、系统 1 之前的命令应用 / 部署计时 / 二选一 / 剧情阶段（3.4，04 3.1）；是对 WBS 01.B 的补充，不改变 1–14 的顺序（B-T2-15） |
 
 #### 0.3.2 我方
 
@@ -92,9 +94,15 @@
 | 空袭警报 | `AirRaidAlert` | GDD 8.6 |
 | 指挥点 | `CommandPoints` | 每夜可用于关键操作的点数 |
 | 二选一请求 | `ChoiceRequest` | 慢放 + 二选一（GDD 5.2），超时按默认 |
-| 碎片 | `Debris` | 城区上空拦截产生的地面伤害（GDD 8.4） |
-| 交换比 | `ExchangeRatio` | 被拦截目标的潜在损失 ÷ 拦截弹价格 |
+| 碎片 | `Debris` | 城区上空拦截产生的地面伤害（GDD 8.4）；在 `ImpactSystem` 当步结算，**不是**持续实体（B-T2-16） |
+| 交换比 | `ExchangeRatio` | 被拦截目标的潜在损失 ÷ 拦截弹价格（潜在损失公式 → 03，B-T3-01） |
 | 部署方案 | `DeploymentPlan` | 夜晚开始前已就位的我方单位与设置（`SimConfig` 的一部分） |
+| 部署条目 | `Placement`（类型 `PlacedUnit`） | 部署方案中的一项；实体字段 `Placement` 保存它（不哈希） |
+| 花名册编号 | `RosterId` | 战役花名册中单位的编号（05）；`CarryIn` / `CarryOut` 按它匹配实体；0 = 非战役单位 |
+| 辐射控制 | `EmitterControl` | 辐射源单位的开关机状态组件（02 2.2） |
+| 精确持有者 | `PreciseHolderIds` | 对某航迹给出"精确"的火力单元集合（02 2.5）；导弹 / 火箭只能对自己持有精确的航迹发射 |
+| 弹药池 | `AmmoPool`（夜内）/ `Depot`（战役层，05） | 关卡配额中尚未分配到发射架的弹药；夜内一律称 `AmmoPool` |
+| 部署档 | `DeployTier` | 单位展开 / 撤收时间的档位（`instant` / `minutes` / `hours_short` / `hours` / `fixed`，04） |
 
 #### 0.3.3 敌方与探测
 
@@ -121,6 +129,10 @@
 | 诱饵甄别 | decoy discrimination | 按航迹质量的概率识别敌方诱饵 |
 | 反辐射导弹 | ARM（`tracksEmittingRadarOnly = true` 的弹药） | 只追踪开机雷达 |
 | 落地 / 命中地面 | impact | 敌方弹药（或碎片）到达地面并结算伤害 |
+| 已知目标带出记录 | `KnownTargetCarry` | 夜末带出、次夜带入的敌方已知目标记录（04 定义类型，05 搬运） |
+| 推迟的波次组 | `HeldWave` | 敌方 AI 压制行为暂缓生成的组（04 2.3） |
+| 覆盖查询 | `CoverageQuery` | 供客户端绘制探测覆盖的只读查询（02 定义；与模拟使用同一可见性函数） |
+| 空间索引 | `ThreatGrid` / `TrackGrid` | 每步重建的派生网格索引，加速"圆内目标 / 航迹"查询（3.3.1）；不参与哈希 |
 
 ### 0.4 单位、坐标与角度约定
 
@@ -134,11 +146,15 @@
 | 高度 | 米，**相对地面**（AGL） | `AltM` | WBS 01.A："高度单独存储（米，相对地面）"；海拔 = 地形高程 + `AltM`（地形采样见 01） |
 | 海拔 | 米 | `ElevationM` / `MslM` | 仅地形与视线计算使用 |
 | 速度 | 米 / 秒 | `Mps` | |
+| 加速度 | 米 / 秒² | `Mps2` | 例：01 `MotionLeg.VertAccelMps2` |
 | 速率（每时间） | 每世界秒 | `PerSec` | |
 | 角度 | 弧度 | `Rad` | 见 0.4.3 |
 | 价格 | 百万美元 | `Musd` | 不换算 |
 | 概率 | 0–1 | 无后缀 | |
+| 比例 / 份额 | 0–1 | `Frac` | `…Pct` 的换算结果（0.4.2）及其他份额量（如 `ShelteredFrac`、`WeightedLossFrac`）；倍率类量用 `…Mult`，不用 `Frac` |
 | 暴露度 | 0–100 | 无后缀 | |
+| 每战役日（战役层） | 每天 | `PerDay` | 不换算；例：`cityResourcePerDay`、05 `dayExposureDecayPerDay`、`structureHpFracPerDay` |
+| 战役日 / 夜计数（战役层） | 天 / 夜（整数） | `Days` / `Nights` | 不换算；例：05 `startDays`、`arrivalDays`、`woundedNights`、`durationNights`。`…Day`（单数）表示"第几天"（如 `returnAfterDay`） |
 
 #### 0.4.2 加载时换算（只在数据加载层完成，系统代码里不出现换算系数）
 
@@ -154,7 +170,8 @@
 | `…PerGameSec` | 每游戏秒 | `v ÷ C.gameSecToWorldSec` | `…PerSec` |
 | `…Musd` | 百万美元 | `v` | `…Musd` |
 | `…Mach`（目前数据中没有） | 马赫 | `v × C.machKmh ÷ 3.6` | `…Mps` |
-| `…Pct`（`gridDamagePct`，见待决问题 Q6） | 百分比 | `v ÷ 100` | `…Frac` |
+| `…Pct`（`gridDamagePct`） | 百分比 | `v ÷ 100` | `…Frac`（B-T1-01；data/README 第 2 节同步补一行） |
+| `…PerDay`、`…Days`、`…Nights`、`…Day`（战役层） | 每天 / 天 / 夜 / 第几天 | `v`（不换算） | 不改名 |
 
 规则：
 
@@ -164,6 +181,12 @@
 4. **公式中的乘除顺序固定**为上表所写（先乘后除，单次运算），保证结果的二进制可复现。例：`180 Kmh → 180 / 3.6 = 50.0`；`2 Mach → 2 × 1200 / 3.6 = 666.6666666666666`（先算 `2 × 1200 = 2400`，再 `÷ 3.6`）。
 5. 数值表的"Mach"在数据中已换算成 `…Kmh`（data/README 第 2 节），原始写法在 `_source`，加载器不读 `_source`。
 6. `conventions.worldStepSec` 必须等于 `1`（WBS 01.A 固定 1 世界秒一步）；否则加载报 `E_RANGE`。
+7. **加载器特例**（现有数据字段名违反后缀约定，02 H1–H3）：
+   - (a) `units/ew.json` 的 `offsetCellsAdd`：`Cells` 不在末尾，仍按 `Cells` 换算（`× C.cellKm × 1000`），C# 名 `OffsetAddM`（B-T3-08 之后仅供界面显示）；
+   - (b) `configurableOnOffGameSec` 是布尔值，不换算，C# 名 `ConfigurableOnOff`；
+   - (c) `sensorExposureLevelRates`、`ewExposureLevelRates`：每个值按每游戏秒 `÷ C.gameSecToWorldSec`，C# 名 `SensorExposureLevelRatesPerSec`、`EwExposureLevelRatesPerSec`。
+
+   三者都应在 data 中改名（`offsetAddCells`、`configurableOnOff`、`sensorExposureLevelRatesPerGameSec`、`ewExposureLevelRatesPerGameSec`，A-3-04 / B-T1-09）；**data 改名完成后删除本条**，加载器回到纯机械规则。
 
 #### 0.4.3 时间 ↔ 步的取整
 
@@ -186,7 +209,7 @@ public static class SimTime
 
 - 二维平面，单位米；**原点在地图西南角**，x 向东、y 向北（WBS 01.A、data/README）。
 - 地图范围 `[0, WidthM] × [0, HeightM]`；地图外的点（进入点、航点）可以为负或超出范围，模拟不裁剪。
-- 类型：`public readonly record struct Vec2(double X, double Y)`，提供 `+ - * /`（标量）、`Dot`、`LengthSquared`、`Length`（`Math.Sqrt`）、`DistanceTo`、`Normalized()`（零向量返回零向量）。不提供三维向量类型；需要三维距离时显式写 `Math.Sqrt(dx*dx + dy*dy + dz*dz)`。
+- 类型：`public readonly record struct Vec2(double X, double Y)`，提供 `+ - * /`（标量）、`Dot`、`LengthSquared`、`Length`（`Math.Sqrt`）、`DistanceTo`、`Normalized()`（零向量返回零向量）。不提供三维向量类型；需要三维距离时显式写 `Math.Sqrt(dx*dx + dy*dy + dz*dz)`。**距离一律写成 `Math.Sqrt(dx*dx + dy*dy[ + dz*dz])`**，不得使用或自写 `hypot` 类函数（与 `Math.Sqrt` 形式可差 1 ulp，C-T1-04；见 6.2）。公共几何函数见 0.4.6。
 - 高程图像素 `(0,0)` 为**西北角**（与世界坐标 y 方向相反）；像素 ↔ 世界坐标的映射与插值由 01 规定。
 
 #### 0.4.5 角度（写死）
@@ -199,6 +222,55 @@ public static class SimTime
 - 数据中若出现角度字段，一律用度并以 `Deg` 结尾，加载时 `× π / 180` 换成弧度、字段名改为 `…Rad`。
 - 内部运算优先用向量，避免不必要的三角函数（见 6.2）。
 
+#### 0.4.6 公共几何函数 `Geo`（全目录唯一实现，P48 / A-2-23 / A-3-09）
+
+```csharp
+namespace Nightwatch.Sim.Core;
+public static class Geo                      // 只在本文件定义；其他规格需要新几何函数时先登记到这里
+{
+    public static double Normalize(double rad);                   // 0.4.5 规范化到 [0, 2π)
+    public static double BearingRad(Vec2 from, Vec2 to);           // 0.4.5
+
+    // 点在多边形内（交叉数法，射线向 +x，半开规则）。多边形不必闭合（首尾自动相连）；
+    // 点恰在边上 / 顶点上的结果由下式唯一决定，不另做特判（各规格测试可依赖 T-00-38 的边界向量）。
+    public static bool PointInPolygon(Vec2 p, IReadOnlyList<Vec2> poly)
+    {
+        bool inside = false;
+        for (int i = 0, j = poly.Count - 1; i < poly.Count; j = i++)
+        {
+            var a = poly[i]; var b = poly[j];
+            if ((a.Y > p.Y) != (b.Y > p.Y) &&
+                p.X < (b.X - a.X) * (p.Y - a.Y) / (b.Y - a.Y) + a.X)
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    // 点在城区：level.Layers.Urban 中任一多边形（任意密度，数据顺序，找到即停）PointInPolygon 为真
+    public static bool InUrban(LevelData level, Vec2 p);
+
+    // 从 p 出发沿向量 d（速度或线段向量）的直线 p + u·d（u ≥ 0），第一次进入以 c 为圆心、半径 r 的圆（含边界）时的参数 u。
+    // 已在圆内（含边界）→ 0；永不进入（含 d 为零向量）→ null。调用方自行判断 u ≤ 1（线段，01）或把 u 当作秒（速度，02）。
+    public static double? FirstEntryIntoCircle(Vec2 p, Vec2 d, Vec2 c, double r)
+    {
+        Vec2 w = p - c;
+        double cc = w.Dot(w) - r * r;
+        if (cc <= 0) return 0.0;
+        double a = d.Dot(d);
+        if (a <= 0) return null;
+        double b = 2.0 * d.Dot(w);
+        double disc = b * b - 4.0 * a * cc;
+        if (disc < 0) return null;
+        double u = (-b - Math.Sqrt(disc)) / (2.0 * a);
+        return u >= 0 ? u : null;
+    }
+}
+```
+
+- 03 3.0 原有的 `Geo.PointInPolygon` 代码移至此处（03 改为引用）；02 3.1 的文字描述、04 3.5.2 的引用一律改为引用本节；"点在边上未定义"的说法作废。
+- 02 `SensingMath.TimeToEnterRadius(p, v, c, r)` 与 01 `ReleaseS` 的内层二次方程改为调用 `FirstEntryIntoCircle`（逐位相同：同一公式、同一运算顺序）。
+- `InUrban` 取代 02 3.1 与 03 3.0 的两份 `InUrban`。
+
 ### 0.5 项目结构
 
 ```
@@ -208,15 +280,20 @@ sim/
 ├─ Core/                      Nightwatch.Sim.Core
 │  ├─ SimRandom.cs  IRandom.cs  SplitMix64.cs  Fnv1a64.cs  StreamNames.cs
 │  ├─ SimWorld.cs  SimState.cs  SimContext.cs  ISimSystem.cs  SimConfig.cs  SimTime.cs
-│  ├─ EntityStore.cs  Entity.cs  EntityKind.cs  IdAllocator.cs  Vec2.cs  Geo.cs
-│  ├─ StateHasher.cs  SimSnapshot.cs  NightResult.cs
+│  ├─ EntityStore.cs  Entity.cs  EntityKind.cs  IdAllocator.cs  Vec2.cs  Geo.cs  SpatialGrid.cs
+│  ├─ StateHasher.cs  SimSnapshot.cs  NightResult.cs  SimJson.cs
 │  ├─ Events/                 Nightwatch.Sim.Core.Events：SimEvent.cs、SimEventType.cs、EventSink.cs、核心事件
 │  └─ Commands/               Nightwatch.Sim.Core.Commands：SimCommand.cs、SimCommandType.cs、CommandQueue.cs、ICommandHandler.cs
 ├─ Data/                      Nightwatch.Sim.Data：DataLoader.cs、IDataSource.cs、JsonCursor.cs、DataLoadException.cs、Png16Decoder.cs、DataHash.cs
 │  └─ Models/                 Nightwatch.Sim.Data.Models：全部 *Def / LevelData 类型（1.6）
 ├─ Systems/                   Nightwatch.Sim.Systems：14 个 ISimSystem 实现（每个一个文件，名字见 3.3）
-├─ Terrain/ Sensing/ Engagement/ Deception/ Infrastructure/ Civil/ Commands/ Crew/ Environment/ Rules/
+├─ Movement/ Terrain/ Sensing/ Engagement/ Deception/ Infrastructure/ Civil/ Commands/ EnemyAi/ Crew/ Environment/ Rules/
 │                             各规格的领域代码（与 WBS 01.D 的输出路径一致；命名空间 = Nightwatch.Sim.<目录名>）
+│                             Movement/、Terrain/：01；EnemyAi/：04（EnemyAiHooks、EnemyBelief、EnemyIntelRules、BypassPlanner）与 01 的 EnemyAiQueries；
+│                             Commands/：04（CommandStage、DeploymentStage、ChoiceStage、StoryStage、CommandPointRules、DeploymentValidator、DeploymentRules、StoryRules）；
+│                             Rules/：跨规格共用的规则取值函数（WeaponParams，见 0.5.1）
+├─ Campaign/ Economy/ Save/ Production/ Research/
+│                             05 战役层（Campaign/Data 含 CampaignDataLoader）；不被 14 个系统引用
 └─ Replay/                    Nightwatch.Sim.Replay：ReplayFile.cs、ReplayRunner.cs
 
 sim.tests/
@@ -261,6 +338,35 @@ sim.tests/
   2. 同一测试扫描 `sim/**/*.cs` 源文件文本：不得出现正则 `^\s*using\s+Godot\b` 或 `\bGodot\.`。
   3. 同一测试解析 `sim/Sim.csproj`（XML）：`PackageReference` 只允许 `Microsoft.CodeAnalysis.BannedApiAnalyzers`，`ProjectReference` 数量为 0。
 - 测试命令：`dotnet test sim.tests`（AGENTS.md 第 5 节）。
+- 规格测试向量的参考计算脚本放在仓库 `tools/spec_calc/<规格编号>/`（C-T1-01）；本文件的脚本见第 8 节之后的"附：参考脚本"。
+
+#### 0.5.1 跨规格公共工具登记（全目录唯一实现）
+
+> 下表中的函数 / 类型被多个规格调用；**只能在"拥有者"处实现一次**，其他规格只调用（3.8"同一公式只写一处"）。签名与语义以拥有者规格为准；新增跨规格工具须先在此登记。
+
+| 工具 | 命名空间 / 位置 | 拥有者（规则说明） | 主要调用者 | 来源 |
+|---|---|---|---|---|
+| `Geo.Normalize` / `BearingRad` / `PointInPolygon` / `InUrban` / `FirstEntryIntoCircle` | `Nightwatch.Sim.Core.Geo` | 00（0.4.6） | 01、02、03、04、06 | P48、A-2-23、A-3-09 |
+| `SimTime.SecToTicksCeil` / `SecToTicksFloor` | `Nightwatch.Sim.Core` | 00（0.4.3） | 全部 | — |
+| `ThreatGrid` / `TrackGrid`（派生空间索引） | `Nightwatch.Sim.Core.SpatialGrid`；经 `SimContext` 取得 | 00（3.3.1） | 02、03、04 | C-T1-08 |
+| `WeaponParams.ReactionSec` / `ShotIntervalSec` / `InterceptorSpeedMps` / `RangeFor` / `LauncherCount` | `Nightwatch.Sim.Rules.WeaponParams`（由 `Nightwatch.Sim.Engagement` 移出） | 03（1.1） | 02（火控开机窗口）、03、04（单位级 `MaxRangeAgainst` 内部调用 `RangeFor`） | A-2-30、A-3-09 |
+| `TerrainModel`（高程、视线） | `Nightwatch.Sim.Terrain`；经 `SimContext.Terrain` 取得 | 01（2.5、3.3） | 02、04、06 | P30 |
+| `ThreatKinematics.Predict` / `MaxSpeed3DMps` | `Nightwatch.Sim.Movement` | 01（3.2.9） | 03、04 | A-2-02、C-T1-03 |
+| `ThreatRouting.Retarget` / `BeginEgress` / `Hover` | `Nightwatch.Sim.Movement` | 01（3.2.8） | 02（电子战后果）、04 | A-2-27 |
+| `EnemyAiQueries.AvoidanceActive(SimState, GameCatalog)` | `Nightwatch.Sim.EnemyAi` | 01 | 04 | A-2-10 |
+| `IEnemyAiHooks` / `DefaultEnemyAiHooks`（接口 01，正式实现 `EnemyAiHooks` 04） | `Nightwatch.Sim.EnemyAi`；经 `SimContext.EnemyAiHooks` 取得 | 01（接口）/ 04（实现） | 01 | P30、A-2-10 |
+| `FireControlQueries.Cued` / `HasFireControlRadar` / `ReactionMult` / `SilentHold` | `Nightwatch.Sim.Sensing` | 02 | 03 | A-2-08 |
+| `EmitterQueries.ListActive` | `Nightwatch.Sim.Sensing` | 02 | 04 | A-2-31 |
+| `EmissionChoiceEffects.ApplyArmChoice(SimState, int unitId, bool silence)` | `Nightwatch.Sim.Sensing` | 02 | 04（`AnswerChoice`） | A-2-11 |
+| `EmissionPolicyRules.CheckAvailable(string unitDefId, EmissionStrategyDef, LevelData)` | `Nightwatch.Sim.Sensing` | 02 | 04（部署校验）、02（命令） | A-2-25 |
+| `CoverageQuery`（覆盖查询，线程安全、不读 `SimState`） | `Nightwatch.Sim.Sensing` | 02 | 06 | A-2-16、C-T1-12 |
+| `CivilRules.SetAlert(ctx, on, cause)` | `Nightwatch.Sim.Civil` | 03（3.7.2） | 03（命令）、04（剧情 `set_alert`） | A-2-31 |
+| `FireUnitFactory.Init` | `Nightwatch.Sim.Engagement` | 03 | 00（`Create` 第 7 步） | P36 |
+| `CommandPointRules.CanSpend` / `Spend` / `Refund` / `CostOf` | `Nightwatch.Sim.Commands` | 04（3.6） | 02、03、04 的命令处理者；03 系统 9（退还） | A-2-17 |
+| `DeploymentValidator.Validate` / `CheckPlacement`；`DeploymentRules.CheckPosition` | `Nightwatch.Sim.Commands` | 04（3.5） | 00（`Create` 第 7 步）、05、06 | A-2-15 |
+| `StoryRules.HasPendingScheduledSpawn(ctx)` | `Nightwatch.Sim.Commands` | 04（3.9） | 00（`AllClear`） | P41 |
+| `EnemyIntelRules.BuildCarryOut` | `Nightwatch.Sim.EnemyAi` | 04（3.2.7） | 03（`BuildResult`） | P42 |
+| `KnownTargetCarryOps.IsScouted` / `OnUnitRemoved` | `Nightwatch.Sim.Campaign` | 05 | 05 | A-2-18 |
 
 ---
 
