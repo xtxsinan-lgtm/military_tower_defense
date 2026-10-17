@@ -388,7 +388,8 @@ public sealed class FileSystemDataSource : IDataSource { public FileSystemDataSo
 public static class DataLoader
 {
     // 读 level.json 得到关卡日期 → 加载全局目录（按该日期解析随时期变化的数值）→ 加载关卡其余文件 → 交叉引用校验
-    public static LevelData LoadLevel(IDataSource source, string levelId);
+    // nightIndex：null = 按整关日期 dateRange.from 解析；给定且 waves.json 中该夜有 date 时按该夜日期解析（1.4，B-T2-17）
+    public static LevelData LoadLevel(IDataSource source, string levelId, int? nightIndex = null);
     // 只加载全局目录（units / enemies / support / rules），供校验工具使用
     public static GameCatalog LoadCatalog(IDataSource source, GameDate date);
 }
@@ -408,6 +409,14 @@ public static class DataLoader
 | 8 | `support/fighters.json` | `fighters` | `FighterDef` | 03 |
 | 9 | `support/support.json` | `support` | `SupportDef` | 03 |
 | 10–20 | `rules/accuracy.json` `damage.json` `intercept.json` `exposure.json` `emission.json` `debris.json` `tracks.json` `ew.json` `positions.json` `support.json` `economy.json` | `kind` 与文件名一致 | 见 1.6 `RulesSet` | 见 1.6 |
+| 21 | `rules/movement.json` | `kind: movement` | `MovementRulesDef` | 01 |
+| 22 | `rules/terrain.json` | `kind: terrain` | `TerrainRulesDef` | 01 |
+| 23 | `rules/engagement.json` | `kind: engagement` | `EngagementRulesDef` | 03 |
+| 24 | `rules/civil.json` | `kind: civil` | `CivilRulesDef` | 03 |
+| 25 | `rules/enemy_ai.json` | `kind: enemy_ai` | `EnemyAiRulesDef` | 04 |
+| 26 | `rules/commands.json` | `kind: commands` | `CommandRulesDef` | 04 |
+
+（21–26 按规格编号、同规格按文中顺序合并编号，A 1.1；`rules.schema.json` 的 `kind` 枚举需追加这 6 个值，见 1.2 第 3 条。新增全局文件只能追加到 26 之后。）
 
 关卡文件（`data/levels/<levelId>/`）：
 
@@ -423,13 +432,15 @@ public static class DataLoader
 | 8 | `map/deploy.json` | `map.schema.json`（`kind: deploy`） | `DeployDef` |
 | 9 | `level.json` 的 `map.heightmap.file`（如 `map/heightmap.png`） | — | `Heightmap` |
 
-`loc/`、`narrative/`、`campaign/`、`schema/` 不由模拟层读取。
+- `loc/`、`narrative/`、`schema/` 不由模拟层读取。
+- `campaign/`、`rules/campaign.json`（`kind: campaign_rules`）、`levels/<id>/flow.json`（`kind: level_flow`）**不由** `DataLoader.LoadLevel` 读取，由 05 的 `CampaignDataLoader`（`sim/Campaign/Data`）读取，**不计入** `LevelData.LoadedFiles` 与 `DataHash`（P02，05 R-00-6）。`CampaignDataLoader` 复用本节的 `JsonCursor`、1.2 的映射规则与 1.3 的错误格式。
+- 日期预读（B-T2-17）：`LoadLevel` 在加载全局目录之前，需要确定解析日期（1.4）。`nightIndex != null` 时，加载器在读完 `level.json` 后**预读** `waves.json` 中 `nights[]` 的 `night` 与 `date` 两个字段以确定日期；`waves.json` 的正式解析与 `LoadedFiles` 记录仍在关卡文件第 2 位（预读不产生错误；`waves.json` 不存在或语法错误时按 `dateRange.from` 解析，错误在正式解析处报告）。
 
 ### 1.2 JSON → C# 映射规则
 
 1. **解析器**：`System.Text.Json` 的 `JsonDocument`（`JsonDocumentOptions { AllowTrailingCommas = false, CommentHandling = JsonCommentHandling.Disallow, MaxDepth = 64 }`），由手写映射代码逐字段读取（`JsonCursor` 辅助类跟踪 JSON 路径）。**不使用** `JsonSerializer` 反序列化数据模型（无法给出精确路径、无法在加载时换算单位）。`JsonSerializer` 只用于 `SimConfig`、命令、`NightResult`、回放文件（3.9）。
 2. **忽略的字段**（任何层级）：`$schema`、`_source`、`provisional`。`provisional` 的键（字段路径）收集进 `LevelData.ProvisionalPaths`（格式 `<文件>#<provisional 的键>`，供工具提示），模拟不读。
-3. **`kind` 字段**：读取并校验等于该文件期望的值，否则 `E_KIND`。
+3. **`kind` 字段**：Schema 要求 `kind` 的文件（`rules/*`、`intel.json` / `events.json`（`level_content`）、`map/*`、05 的 `campaign/*` 与 `flow.json`）读取并校验等于该文件期望的值，否则 `E_KIND`；`level.json`、`waves.json`、`units/*`、`enemies/*`、`support/*` 没有 `kind` 字段，不校验（出现即 `E_UNKNOWN_FIELD`）（P03，A-2-24）。`rules.schema.json` 的 `kind` 枚举须含 `movement`、`terrain`、`engagement`、`civil`、`enemy_ai`、`commands`、`campaign_rules`；`level_flow` 用独立的 `level_flow.schema.json`。
 4. **未知字段** → `E_UNKNOWN_FIELD`（Schema 均为 `additionalProperties: false`，加载器同样严格，以便尽早发现拼写错误）。
 5. **必填字段**以对应 Schema 的 `required` 为准；缺失 → `E_MISSING_FIELD`。
 6. **可选字段缺失** → C# 中为 `null`（值类型用 `T?`，集合用 `null` 而不是空集合）。**加载器不填默认值**；默认值由使用该字段的规格在第 1 节写明，并在系统代码中通过具名常量之外的方式（即读数据或写明"缺省 = 不生效"）处理。
@@ -439,10 +450,19 @@ public static class DataLoader
 10. **坐标**：`pointM` → `Vec2`；`polylineM` / `polygonM` → `IReadOnlyList<Vec2>`；字段名 `positionM` → `Pos`，`pathM` → `Path`，`polygonM` → `Polygon`，`waypointsM` → `Waypoints`。
 11. **`minMax`** → `MinMax`（`readonly record struct MinMax(double Min, double Max)`），按后缀换算两个值；`Min > Max` → `E_RANGE`。
 12. **日期**：`date`（`YYYY-MM-DD`）→ `GameDate`；`yearMonth`（`YYYY-MM`）→ `YearMonth`。格式不符 → `E_FORMAT`。
-13. **ID 唯一性**：同一文件同一数组内 ID 重复 → `E_DUPLICATE_ID`。**单位 ID 在 `units/*.json` 四个文件之间也必须唯一**（部署方案只给单位 ID，需据此判断实体类型）。敌方 ID 在 `munitions` 与 `platforms` 之间必须唯一。
+13. **ID 唯一性**：同一文件同一数组内 ID 重复 → `E_DUPLICATE_ID`。**单位 ID 在 `units/*.json` 四个文件之间也必须唯一**（部署方案只给单位 ID，需据此判断实体类型）。敌方 ID 在 `munitions` 与 `platforms` 之间必须唯一。战斗机武器 ID（`fighters[].weapons[].id`）与防空武器 ID 不得重复（P04）。
 14. **共享武器**：同一 `weapons[].id` 出现在多个单位中时，各处的 JSON 子树必须逐字段相等（忽略键顺序，数值按 `double` 比较），否则 `E_SHARED_WEAPON_MISMATCH`。`GameCatalog.Weapons` 中每个武器 ID 只保留一个 `WeaponDef`。
-15. **交叉引用校验**（加载器负责，全部 → `E_UNKNOWN_REF`）：`availableUnits[].unit` ∈ 单位 ID；`ammoQuota[].weapon` ∈ 武器 ID；`waves` 的 `groups[].enemy` ∈ 敌方 ID、`groups[].entry` ∈ `entryPoints[].id`、`target.structure` ∈ 保护目标 ID；`structures[].gridNode` ∈ 电网节点 ID；`links[].from/to` ∈ 电网节点 ID；`weapons[].interceptClass` ∈ `intercept.classes` 的键；`restrictToEnemies[]` ∈ 敌方 ID；`victory/defeat[].structure` ∈ 保护目标 ID；`events` 中 `ref`、`wave` 指向存在的对象；`intel` 的 `relatedWave` ∈ 波次 ID。其他规格可在本表追加。
+15. **交叉引用校验**（加载器负责，全部 → `E_UNKNOWN_REF`）：`availableUnits[].unit` ∈ 单位 ID；`ammoQuota[].weapon` ∈ 武器 ID；`waves` 的 `groups[].enemy` ∈ 敌方 ID、`groups[].entry` ∈ `entryPoints[].id`、`target.structure` ∈ 保护目标 ID；`structures[].gridNode` ∈ 电网节点 ID；`links[].from/to` ∈ 电网节点 ID；`weapons[].interceptClass` ∈ `intercept.classes` 的键；`restrictToEnemies[]` ∈ 敌方 ID；`victory/defeat[].structure` ∈ 保护目标 ID；`events` 中 `ref`、`wave` 指向存在的对象；`intel` 的 `relatedWave` ∈ 波次 ID。追加（P05）：`platforms[].loadout[].options[]` ∈ 弹药 ID（`敌方单位`）；`ewUnits[].effectiveAgainst[]` / `ineffectiveAgainst[]`、`sensors[].trackQualityUpgrades[].enemies[]` ∈ 敌方 ID（`敌方单位`）；`support[].affectsSameAsEwUnit` ∈ 电子战单位 ID（`单位`）；`support[].fighterRef` ∈ 战斗机 ID（`战斗机`）；`support[].fighterWeaponRef` ∈ 该战斗机的武器 ID（`武器`）；`support[].reinforcementUnit`、`coverageUnits[]` ∈ 防空单位 ID（`单位`）；`fighters[].weapons[].interceptClass` ∈ `intercept.classes`（`拦截类别`）；`emission.defaultStrategy` ∈ `strategies[].id`（`辐射策略`）；`events.json` 的 `unit_destroyed.ref` ∈ 单位 ID（`单位`）、`structure_destroyed.ref` ∈ 保护目标 ID（`保护目标`）、`wave_spawned.ref` / `spawn_wave.wave` ∈ 任一夜的波次 ID（`波次`）。其他规格可在本表追加（括号内为 1.3 的 `{类别}`）。
 16. **所有错误收集后一次性抛出**（不在第一个错误处停止），按"文件读取顺序 → 文件内出现顺序"排列。
+17. **规格追加校验**（索引；正文与错误码在各规格，均在 `LoadLevel` 中执行，按本条顺序、在第 15 条之后进行）（P06）：
+    - 01：V1（`movement` / `terrain` 规则范围）、V2（波次不得直接使用 `carrier` 弹药；非 carrier 弹药速度 > 0）、V3（平台高度带与速度）（01 8.2）；
+    - 02：H5、H7（02 8.2）；`tracks.cueing.uncued.firstShotReactionTimeMult` 与 `intercept.modifiers.noCueSelfSearch.firstShotReactionTimeMult` 相等（A-2-08）；
+    - 03：`damage.bands` 覆盖伤害等级 1–10 且不重叠；`victory` / `defeat` 条件类型限制；`intercept.modifiers.restrictedEngagement` 为限制交战反应倍率的唯一来源（B-T1-11 删除 `support.airspace…reactionTimeMult` 之前，两处必须相等）；
+    - 04：1.1.1 的范围检查、`commandPointCosts` 键规则、`commandPointsPerNight ∈ economy` 范围、`events.json` 动作 / 触发器必填字段（04 1.4）。
+    - 只产生警告、不阻止加载的检查不在加载器中，统一由 `tools/validate` 列出（07 §2，C-T1-11）。
+18. **00 自身的跨文件检查**：
+    - 胜利条件 `survive_game_sec` 的 `gameSec` ≤ `waves.json` 各夜 `durationGameSec` 之和，否则 `E_RANGE`（`取值 {gameSec} 超出范围 各夜时长之和 {和}`）；夜内时长只以 `durationGameSec` 为准，`survive_game_sec` 由关卡层（05）判定（B-T2-19）。
+    - `waves.json` 的 `nights[].date`（可选）必须落在 `level.json` 的 `[dateRange.from, dateRange.to]` 内，否则 `E_RANGE`（B-T2-17）。
 
 ### 1.3 错误信息格式
 
@@ -479,6 +499,8 @@ public sealed record DataError(string Code, string File, string JsonPath, string
 | `E_PERIOD_BEFORE_FIRST` | 关卡日期早于时期数组第一项且无基准值 | `关卡日期 {YYYY-MM-DD} 早于第一个时期 {YYYY-MM}` |
 | `E_PNG_FORMAT` | 高程图格式不支持 | `高程图必须是 16 位灰度、非隔行 PNG：{原因}` |
 | `E_NIGHT_NOT_FOUND` | （`SimWorld.Create` 时）夜晚序号不存在 | `waves.json 中没有第 {n} 夜` |
+| `E_NIGHT_DATE_MISMATCH` | （`SimWorld.Create` 时）`LevelData` 的解析日期不是该夜应使用的日期（1.4） | `第 {n} 夜应按 {YYYY-MM-DD} 解析，LevelData 按 {YYYY-MM-DD} 加载` |
+| `E_NOT_IMPLEMENTED` | （`SimWorld.Create` 时）数据或 `CarryIn` 用到了尚未实现的功能 | `{功能}尚未实现（{任务号}）`（01 4.3 的格式为其实例；P07） |
 
 例（精确字符串，测试会逐字比较）：
 
@@ -488,11 +510,13 @@ public sealed record DataError(string Code, string File, string JsonPath, string
 [E_UNKNOWN_REF] levels/mini/waves.json $.nights[0].waves[0].groups[0].enemy: 引用的 敌方单位 "nope" 不存在
 ```
 
-`E_UNKNOWN_REF` 的 `{类别}` 取值：`单位`、`武器`、`敌方单位`、`进入点`、`保护目标`、`电网节点`、`拦截类别`、`波次`。
+`E_UNKNOWN_REF` 的 `{类别}` 取值：`单位`、`武器`、`敌方单位`、`进入点`、`保护目标`、`电网节点`、`拦截类别`、`波次`、`战斗机`、`辐射策略`（P08）。
+
+`SimSetupException`（`SimWorld.Create` 阶段的错误）的消息使用同一 `[Code] File JsonPath: Detail` 格式；没有对应文件位置时 `File` 写 `levels/<id>/level.json`、`JsonPath` 写 `$`。
 
 ### 1.4 随时期变化的数值（按关卡日期解析）
 
-**关卡日期** `LevelData.Date` = `level.json` 的 `dateRange.from`（`GameDate`）。比较时只取其年月 `Date.ToYearMonth()`。（多夜关卡是否按每夜日期解析见待决问题 Q1。）
+**关卡日期** `LevelData.Date`：`LoadLevel(source, levelId, nightIndex)` 中，若 `nightIndex != null` 且 `waves.json` 中 `night == nightIndex` 的一项给出了可选字段 `date`，则 = 该 `date`；否则 = `level.json` 的 `dateRange.from`（`GameDate`）。比较时只取其年月 `Date.ToYearMonth()`。`LevelData.ResolvedNightIndex` 记录按哪一夜加载（`null` = 整关）。多夜关卡缺省整关使用 `dateRange.from`；需要某夜不同时，由关卡作者给该夜写 `date`（B-T2-17，原待决问题 Q1；`waves.schema.json` 的 `nights[]` 追加可选 `date`）。`SimWorld.Create` 检查日期一致性（3.2 第 2 步）。
 
 解析**在加载时完成**：`LevelData` / `GameCatalog` 中只有解析后的普通值，系统代码看不到时期数组。三种形态：
 
@@ -500,11 +524,12 @@ public sealed record DataError(string Code, string File, string JsonPath, string
 |---|---|---|---|
 | A. `periodValue`（数字，或 `[{from, value}]`） | `rules/intercept.json` 的 `classes.<类>.<标签>` | 数字 → 原值；数组 → 取 `from ≤ 关卡年月` 的**最后一项**的 `value` | `E_PERIOD_BEFORE_FIRST` |
 | B. 时期表（`[{from, …}]`，每项是一组字段） | `rules/ew.json` 的 `effectivenessByPeriod`；`munitions[].accuracyByPeriod` | 同上，取整行 | `ew`：`E_PERIOD_BEFORE_FIRST`；`accuracyByPeriod`：使用基准字段 `accuracy` |
-| C. 生效闸门（单个 `from` / `until`） | `weapons[].targetsFrom[]`；`intercept.modifiers.<名>.from`；`platforms[].standoffFrom`；`economy.historicalEvents[].from/until` | `Active = (from 缺省 或 关卡年月 ≥ from) 且 (until 缺省 或 关卡年月 < until)` | 不适用（`Active = false`） |
+| C. 生效闸门（单个 `from` / `until`） | `weapons[].targetsFrom[]`；`intercept.modifiers.<名>.from`；`platforms[].standoffFrom`；`munitions[].aiVisionFrom`；`economy.historicalEvents[].from/until` | `Active = (from 缺省 或 关卡年月 ≥ from) 且 (until 缺省 或 关卡年月 < until)` | 不适用（`Active = false`） |
 
 - 数组必须按 `from` **严格升序**，否则 `E_PERIOD_ORDER`。
 - `YearMonth` 比较：先年后月，整数比较。`"2025-08"` 表示 2025 年 8 月 1 日起生效：关卡日期 `2025-07-31` → 不生效，`2025-08-01` → 生效。
-- 形态 C 的解析结果：`targetsFrom` 中 `Active` 的标签**并入** `WeaponDef.Targets`（并去重，顺序 = 原 `targets` 后接按数据顺序追加的新标签）；`modifiers` 解析为 `InterceptModifierDef.Active`；`standoffFrom` 解析为 `PlatformDef.StandoffActive`；`historicalEvents` 解析为 `HistoricalEventDef.Active`。
+- 形态 C 的解析结果：`targetsFrom` 中 `Active` 的标签**并入** `WeaponDef.Targets`（并去重，顺序 = 原 `targets` 后接按数据顺序追加的新标签）；`modifiers` 解析为 `InterceptModifierDef.Active`；`standoffFrom` 解析为 `PlatformDef.StandoffActive`；`aiVisionFrom` 解析为 `MunitionDef.AiVisionActive`（缺省字段 = `false`，02 B-T3-08）；`historicalEvents` 解析为 `HistoricalEventDef.Active`。
+- 敌方定义的可选字段 `firstSeen`（年月，C-T2-08）**不是**闸门：加载器原样保留为 `YearMonth? FirstSeen`，只供 `tools/validate` 的时间线检查使用，模拟不读。
 - `until` 取"不含该月"语义，依据是 `economy.json` `_source`："2023.04 之前申请不到 Patriot"。
 - `firstAvailable.level` 是战役层闸门（05），不是日期，加载时原样保留。
 
@@ -552,14 +577,16 @@ public sealed record GameCatalog
     public GameDate ResolvedForDate { get; init; }
     // 按 ID 查找（内部用有序数组 + 二分，或 Dictionary 仅作查找；不得遍历 Dictionary）
     public AirDefenseUnitDef GetAirDefenseUnit(string id);  /* 其余 Get… 同理；找不到抛 KeyNotFoundException */
-    public PlayerUnitCategory GetPlayerUnitCategory(string unitId);   // FireUnit / Sensor / Ew / Deception
+    public PlayerUnitCategory GetPlayerUnitCategory(string unitId);   // Fire / Sensor / Ew / Deception
 }
 public enum PlayerUnitCategory { Fire = 0, Sensor = 1, Ew = 2, Deception = 3 }
+// 凡类型为 PlayerUnitCategory 的字段（事件、记录、视图）一律命名 Category，不叫 Kind（A-3-05）
 
 public sealed record LevelData
 {
     public string Id { get; init; }
-    public GameDate Date { get; init; }                      // = Meta.DateFrom（1.4）
+    public GameDate Date { get; init; }                      // 解析日期（1.4）：该夜 date ?? Meta.DateFrom
+    public int? ResolvedNightIndex { get; init; }            // LoadLevel 的 nightIndex 参数（null = 整关，1.4）
     public LevelMetaDef Meta { get; init; }
     public WavesDef Waves { get; init; }
     public IntelDef Intel { get; init; }
@@ -593,24 +620,31 @@ public sealed record LevelMetaDef
     public IReadOnlyList<AvailableUnitDef> AvailableUnits; public IReadOnlyList<AmmoQuotaDef>? AmmoQuota;
     public int CommandPointsPerNight; public double? CityResourcePerDay;
     public IReadOnlyList<ConditionDef> Victory; public IReadOnlyList<ConditionDef> Defeat;
+    // 追加（字段结构由所属规格第 1 节给出）：LauncherOverrides（→ 03，B-T2-57）；SectorCoverageAnchors（→ 05 / 03，B-T2-89）
 }   // （示意：实际为 init 属性）
 public sealed record MapInfoDef(double WidthM, double HeightM, HeightmapInfoDef Heightmap, IReadOnlyList<string>? Attribution);
 public sealed record HeightmapInfoDef(string File, double MetersPerPixel, double MinElevationM, double MaxElevationM);
 public sealed record AvailableUnitDef(string UnitId, int Count, UnitSource? Source);
 public sealed record AmmoQuotaDef(string WeaponId, int Count);
-public sealed record ConditionDef(ConditionType Type, int? Nights, double? Sec, string? StructureId, double? Fraction);  // JSON gameSec → Sec
+public sealed record ConditionDef(ConditionType Type, int? Nights, double? Sec, string? StructureId, double? Fraction);  // JSON gameSec → Sec；grid_collapse 的 Fraction 缺省 1.0（03，B-T2-79）
 
 // ---- waves.json（→ 01）----
 public enum AiTag { Probe = 0, Suppress = 1, Hunt = 2, Bypass = 3, Saturate = 4 }
 public enum Weather { Clear = 0, Moonlit = 1, LowCloud = 2, Fog = 3 }
 public enum Season { Spring = 0, Summer = 1, Autumn = 2, Winter = 3 }
+public enum TimeOfDay { Night = 0, Day = 1 }                       // 05 R-01-2；缺省 Night（B-T2-45）
 public enum RouteKind { Template = 0, Waypoints = 1, Direct = 2 }
 public enum TargetMode { WeightedRandom = 0, KnownTargets = 1, AirDefense = 2, DecoyFlight = 3 }
 public sealed record WavesDef(IReadOnlyList<EntryPointDef> EntryPoints, IReadOnlyList<NightDef> Nights);
 public sealed record EntryPointDef(string Id, string? NameKey, Vec2 Pos, double? WarningSec);
-public sealed record NightDef(int Night, double DurationSec, Weather? Weather, Season? Season, IReadOnlyList<WaveDef> Waves);
-public sealed record WaveDef(string Id, double AtSec, IReadOnlyList<AiTag>? AiTags, IReadOnlyList<WaveGroupDef> Groups);
-public sealed record WaveGroupDef(string EnemyId, int Count, string EntryId, double? SpacingSec, RouteDef Route, TargetSpecDef Target);
+public sealed record NightDef(int Night, double DurationSec, Weather? Weather, Season? Season, IReadOnlyList<WaveDef> Waves,
+    GameDate? Date,                 // 可选：该夜的解析日期（1.4，B-T2-17）
+    bool? BigRaid,                  // 可选：大空袭夜（03 Q-S8，B-T2-88）
+    TimeOfDay? TimeOfDay);          // 可选：缺省 Night（05 R-01-2）
+public sealed record WaveDef(string Id, double AtSec, IReadOnlyList<AiTag>? AiTags, IReadOnlyList<WaveGroupDef> Groups,
+    string? AdaptiveTrigger);       // 可选：敌人适应（05 3.12，B-T2-112；WS05-006）
+public sealed record WaveGroupDef(string EnemyId, int Count, string EntryId, double? SpacingSec, RouteDef Route, TargetSpecDef Target,
+    string? AdaptiveTrigger, IReadOnlyList<AdaptiveSubstituteDef>? AdaptiveSubstitutes);   // 可选，字段 → 05（WS05-006）
 public sealed record RouteDef(RouteKind Kind, string? TemplateId, IReadOnlyList<Vec2>? Waypoints);
 public sealed record TargetSpecDef(string? StructureId, TargetMode? Mode);   // 二者恰有一个非 null
 
@@ -636,7 +670,8 @@ public sealed record UrbanAreaDef(string Id, IReadOnlyList<Vec2> Polygon, UrbanD
 public sealed record ForestDef(string Id, IReadOnlyList<Vec2> Polygon);
 public sealed record BorderDef(string Id, IReadOnlyList<Vec2> Path, BorderKind Kind);    // enum BorderKind { Oblast, National, Frontline }
 public sealed record RestrictedZoneDef(string Id, IReadOnlyList<Vec2> Polygon, ZoneRule Rule, ZoneReason? Reason);
-    // enum ZoneRule { NoEngagement, RestrictedEngagement, FrontlineRisk }; enum ZoneReason { Border, NuclearPlant, CivilCorridor, Frontline }
+    // enum ZoneRule { NoEngagement = 0, RestrictedEngagement = 1, FrontlineRisk = 2, NeighborCountry = 3 }; enum ZoneReason { Border, NuclearPlant, CivilCorridor, Frontline }
+    // NeighborCountry（JSON neighbor_country）：多边形 = 邻国领土，用于越界计数（03，C-T2-03）；Schema 枚举追加
 public sealed record StructureDef(string Id, string NameKey, StructureType Type, Vec2 Pos, double RadiusM, double Weight, int Hp, string? GridNodeId);
     // enum StructureType { PowerPlant, Substation, CommandPost, Factory, Residential, Port, Shipyard, WaterPlant, Hospital, Shelter, AirbaseRunway, AirbaseHangar, RepairPlant, Bridge }
 public sealed record GridDef(IReadOnlyList<GridNodeDef> Nodes, IReadOnlyList<GridLinkDef> Links);   // → 03
@@ -646,18 +681,29 @@ public sealed record DeployDef(IReadOnlyList<DeployZoneDef> Zones, IReadOnlyList
 public sealed record DeployZoneDef(string Id, IReadOnlyList<Vec2> Polygon, IReadOnlyList<Mobility>? AllowedMobility);
 public sealed record ForbiddenZoneDef(string Id, IReadOnlyList<Vec2> Polygon, ForbiddenReason Reason); // enum ForbiddenReason { Water, UrbanCore, Frontline, Other }
 public sealed record AlternatePositionDef(string Id, Vec2 Pos, bool Surveyed);
-public sealed record Heightmap(int WidthPx, int HeightPx, double MetersPerPixel, double MinElevationM, double MaxElevationM, IReadOnlyList<double> ElevationM);
+public sealed record Heightmap(int WidthPx, int HeightPx, double MetersPerPixel, double MinElevationM, double MaxElevationM, IReadOnlyList<double> ElevationM)
+{
+    internal double[] ElevationArray { get; }   // 内部存储（1.5）；ElevationM 是它的只读包装。01 的 TerrainModel 零复制引用它（P14）
+}
 
-// ---- 我方单位（字段命名示例，全字段 → 03 / 02）----
+// ---- 我方单位（全字段见 03 1.1、02 1.1–1.4）----
 public enum Mobility { Vehicle = 0, Towed = 1, Portable = 2, Fixed = 3 }
-public sealed record AirDefenseUnitDef        // → 03（交战）、04（部署状态机）
+public enum DeployTier { Instant = 0, Minutes = 1, HoursShort = 2, Hours = 3, Fixed = 4 }          // 04（P15）
+public enum FireOnMove { Yes = 0, Partial = 1, No = 2 }                                            // 02 / 03（B-T2-62）
+public enum SelfAcquisitionKind { Optical = 0 }                                                    // 02（B-T2-09：光学自主捕获受夜间 / 天气倍率）
+public sealed record FirstAvailableDef(int? Level, int? FullStrengthLevel, bool? Optional, bool? InfoSourceOnly);   // P17
+public sealed record AirDefenseUnitDef        // → 03（交战）、02（火控 / 自主捕获）、04（部署状态机）；不含单位级 ReactionSec（反应时间挂武器，B-T2-01）
 {
     public string Id; public string NameKey; public DeployTier DeployTier;
     public double? DeploySec; public double? PackSec;            // deployGameSec / packGameSec × 60
     public Mobility Mobility; public double? MoveSpeedMps; public FireOnMove FireOnMove;
     public double? SystemPriceMusd; public bool? StockOnly; public IReadOnlyList<string> WeaponIds;
+    public FireControlRadarDef? FireControlRadar;                // → 02 1.4（RangeM, LowAltitude, Origin, AntennaHeightM）
+    public double? SelfAcquisitionRangeM;                        // → 02 1.4（selfAcquisitionRangeKm）
+    public SelfAcquisitionKind? SelfAcquisition;                 // → 02（selfAcquisition，B-T2-09）
+    public FirstAvailableDef? FirstAvailable;
 }
-public sealed record WeaponDef                // → 03
+public sealed record WeaponDef                // → 03 1.1（WeaponKind / AmmoSupply 枚举值按 03 R-DATA）
 {
     public string Id; public string NameKey; public WeaponKind Kind; public string InterceptClass;
     public double RangeM; public IReadOnlyDictionary<TargetTag, double>? RangeByTagM;   // 只查找，不遍历；需要遍历时按 TargetTag 升序
@@ -665,41 +711,74 @@ public sealed record WeaponDef                // → 03
     public int? Launchers; public int? PerLevelLimit; public AmmoSupply AmmoSupply;
     public IReadOnlyList<TargetTag> Targets;   // 已并入 Active 的 targetsFrom（1.4）
     public IReadOnlyList<TargetTag>? LowEfficiencyTargets; public IReadOnlyList<string>? RestrictToEnemies; public bool? BarrelCooldown;
+    public double? ReactionSec;                // reactionGameSec × 60（可选，缺省按 InterceptClass 查 EngagementRulesDef，B-T2-01 / P16）
+    public double? ShotIntervalSec;            // shotIntervalGameSec × 60（可选，P16）
+    public double? InterceptorSpeedMps;        // interceptorSpeedKmh ÷ 3.6（可选，Gun 不得填写，B-T2-55 / P16）
 }
-public sealed record SensorDef { /* → 02；detectionRangeKm → DetectionRangeM，deployGameSec → DeploySec，nightRangeMult → NightRangeMult … */ }
-public sealed record EwUnitDef { /* → 02；radiusKm → RadiusM，offsetCellsAdd → OffsetAddM … */ }
-public sealed record DeceptionUnitDef { /* → 02 */ }
+public sealed record SensorDef { /* 全字段见 02 1.1；含 bool? LineOfSight（缺省 true，acoustic_post 为 false，B-T2-50）、double? AntennaHeightM（缺省取 Terrain.DefaultAntennaHeightM，B-T2-03）、FirstAvailableDef? FirstAvailable（P17） */ }
+public sealed record EwUnitDef { /* 全字段见 02 1.2；radiusKm → RadiusM，offsetCellsAdd → OffsetAddM（0.4.2 第 7 条，仅界面显示，B-T3-08）、FirstAvailableDef? FirstAvailable（P17） */ }
+public sealed record DeceptionUnitDef { /* 全字段见 02 1.3；含 FirstAvailableDef? FirstAvailable（P17） */ }
 
-// ---- 敌方（→ 01 / 03）----
-public sealed record MunitionDef
+// ---- 敌方与外部支援（→ 01 / 02 / 03）----
+public sealed record MunitionDef              // MunitionCategory / AltitudeBand 枚举定义见 01 1.2（P18）
 {
     public string Id; public string NameKey; public MunitionCategory Category; public TargetTag? Tag;
     public double? SpeedMps; public bool? DiveFaster; public AltitudeBand AltitudeBand; public MinMax? AltitudeM;
-    public bool Interceptable; public int? Hp; public double? InterceptProbMult; public int DamageLevel;
+    public bool Interceptable; public int? Hp; // Hp 当前版本不参与拦截判定（命中即毁，B-T3-03），只保留字段
+    public double? InterceptProbMult; public int DamageLevel;
     public double? VehicleDamageMult; public double SplashM; public SubmunitionsDef? Submunitions;
     public AccuracyTier Accuracy;              // 已按 accuracyByPeriod 解析（1.4 形态 B）
     public bool? EwImmune; public bool? TracksEmittingRadarOnly; public double? ReleaseRangeM;
-    public double? CostMusd; /* 其余布尔标记 → 01 / 03 */
+    public double? CostMusd;
+    public bool? RadioLinked;                  // 02 1.5（无线电链路，B-T2-43）
+    public bool AiVisionActive;                // 02 1.5（1.4 形态 C 闸门 aiVisionFrom，缺省 false，B-T3-08 / B-T2-35）
+    public bool? StoryEventOnly;               // 01 1.2（仅剧情生成）
+    public YearMonth? FirstSeen;               // C-T2-08（仅 tools/validate 时间线检查使用）
 }
-public sealed record PlatformDef { /* → 01；cruiseSpeedKmh → CruiseSpeedMps，standoffFrom → bool StandoffActive … */ }
-public sealed record FighterDef { /* → 03 */ }
-public sealed record SupportDef { /* → 03 */ }
+public sealed record LoadoutEntryDef(IReadOnlyList<string> OptionIds, int? Count);                 // Count 为 null 时按 1 枚（01，B-T2-25）
+public sealed record PlatformWhileAliveDef(int? EnemyAccuracyTierBoost, bool? CruiseMissilesAvoidAirDefense); // B-T2-14：升档数只读 accuracy.spotterTierBoost
+public enum OtherArmament { Atgm = 0, Rockets = 1, UnguidedBombs = 2, LongRangeAam = 3, SmallGuidedBombs = 4 }
+public enum PlatformBehavior { FrontlineAttack = 0, MustEnterShorad = 1, LowStrike = 2, StandoffReleaseAndReturn = 3,
+                               HuntFightersAndRadars = 4, LaunchFromMapEdge = 5, GlobalAlertOnTakeoff = 6, WaveSourceOnly = 7,
+                               ArmedRecon = 8, Spotter = 9, Awacs = 10 }
+public enum ReconQuality { Low = 0, Medium = 1, High = 2 }                                         // 02 1.5（B-T2-41）
+public sealed record PlatformDef              // 01 1.3 + 02 1.5（P19）
+{
+    public string Id; public string NameKey; public TargetTag? Tag;
+    public double CruiseSpeedMps; public double? MaxSpeedMps;                                      // MaxSpeedMps 保留不用（B-T2-26）
+    public AltitudeBand AltitudeBand; public int? Hp; public bool EntersMap;
+    public IReadOnlyList<LoadoutEntryDef>? Loadout; public IReadOnlyList<OtherArmament>? OtherArmament;
+    public PlatformBehavior Behavior; public bool StandoffActive;                                  // standoffFrom 形态 C
+    public PlatformWhileAliveDef? WhileAlive;
+    public double? ReleaseRangeM;              // releaseRangeKm × 1000（可选，飞到距目标此距离再投放并返航；null = 停留 0 秒，01 B-T3-09）
+    public bool? RadioLinked;                  // 02 1.5（B-T2-43）
+    public ReconQuality? ReconQuality;         // 02 1.5（假发射车识破，B-T2-41）
+    public YearMonth? FirstSeen;               // C-T2-08
+}
+public sealed record FighterDef { /* 全字段见 03 1.2；FighterWeaponDef.Kind 必填（Missile / Rocket）（P20） */ }
+public sealed record SupportDef { /* 全字段见 03 1.3；含 double? RadiusM（radiusKm，02 B-T2-04）、int? AccuracyTierDrop、string? AffectsSameAsEwUnitId（P20） */ }
 
-// ---- rules/*.json ----
+// ---- rules/*.json（属性名严格遵守 1.2 与 0.4.2 的机械映射，A-3-02）----
 public sealed record RulesSet
 {
-    public ConventionsDef Conventions;  // 00
-    public AccuracyRulesDef Accuracy;   // → 03
-    public DamageRulesDef Damage;       // → 03
-    public InterceptRulesDef Intercept; // → 03（classes 已解析为 double；modifiers 带 Active）
-    public ExposureRulesDef Exposure;   // → 02
-    public EmissionRulesDef Emission;   // → 02
-    public DebrisRulesDef Debris;       // → 03
-    public TrackRulesDef Tracks;        // → 02
-    public EwRulesDef Ew;               // → 02（effectivenessByPeriod 已解析为单行 EwEffectivenessDef）
-    public PositionRulesDef Positions;  // → 04
-    public SupportRulesDef Support;     // → 03
-    public EconomyRulesDef Economy;     // → 05（historicalEvents 带 Active）
+    public ConventionsDef Conventions;         // 00（rules/conventions.json）
+    public AccuracyRulesDef Accuracy;          // → 03
+    public DamageRulesDef Damage;              // → 03
+    public InterceptRulesDef Intercept;        // → 03（classes 已解析为 double；modifiers 带 Active）
+    public ExposureRulesDef Exposure;          // → 02
+    public EmissionRulesDef Emission;          // → 02
+    public DebrisRulesDef Debris;              // → 03
+    public TrackRulesDef Tracks;               // → 02（detectionRules 块见 A-3-06）
+    public EwRulesDef Ew;                      // → 02（effectivenessByPeriod 已解析为单行 EwEffectivenessDef）
+    public PositionRulesDef Positions;         // → 04（02 读 newUnsurveyed 与新增 deception 块，P12）
+    public SupportRulesDef Support;            // → 03
+    public EconomyRulesDef Economy;            // → 05（historicalEvents 带 Active；追加 Trust、Exchange、CrossLevelModClamp、CityResource、Supply、Repair、Relocation、EmergencySupport、Requests，P13 / B-T3-01 / B-T3-04）
+    public MovementRulesDef Movement;          // → 01（rules/movement.json，P11）
+    public TerrainRulesDef Terrain;            // → 01（rules/terrain.json，P11）
+    public EngagementRulesDef Engagement;      // → 03（rules/engagement.json，P11）
+    public CivilRulesDef Civil;                // → 03（rules/civil.json，P11）
+    public EnemyAiRulesDef EnemyAi;            // → 04（rules/enemy_ai.json，P11）
+    public CommandRulesDef Commands;           // → 04（rules/commands.json，P11）
 }
 ```
 
