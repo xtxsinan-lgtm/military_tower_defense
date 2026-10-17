@@ -1905,7 +1905,7 @@ M:System.String.GetHashCode;每进程随机化，使用 Fnv1a64
 
 ## 7. 测试用例
 
-> 所有十六进制向量由 `simrandom_vectors.py` / `hasher_vectors.py` 计算（Python 参考实现，见待决问题之后的"附：参考脚本"）。测试数据均为手写小数据。
+> 所有十六进制向量由 [`tools/spec_calc/00/simrandom_vectors.py`](../../tools/spec_calc/00/simrandom_vectors.py) / [`tools/spec_calc/00/hasher_vectors.py`](../../tools/spec_calc/00/hasher_vectors.py) 计算（Python 参考实现，见待决问题之后的"附：参考脚本"，C-T1-01）。测试数据均为手写小数据。
 
 ### RNG（WS01-002）
 
@@ -2052,7 +2052,7 @@ seed 42：取 3 个输出后 `s = GetState()`；再取 5 个记为 X；`SetState
 用 `RecordingSystem` 包装（测试构造入口允许替换系统实现但不允许改变 Order 表）。`Create` 后记录 = 14 个 `Initialize`，`Name` 依次为 3.3 表顺序；`Step()` 两次后记录追加 `Execute` × 28，每步顺序同 3.3 表；每个系统收到的 `ctx.Rng.Seed` 等于 `ChildSeed(seed, 该系统子流名)`（EventLog 为 null）。
 
 **T-00-22 `EndWhenClear` 与失败优先**
-- 迷你关卡、无波次、`EndWhenClear = true`：第 1 步结束即 `AllClear`（`AllWavesSpawned` 为 true 且无目标），`EndReason == AllClear`、`EndTick == 1`。
+- 迷你关卡、无波次、`EndWhenClear = true`：第 1 步结束即 `AllClear`（波次队列为空且无目标），`EndReason == AllClear`、`EndTick == 1`。
 - 测试系统在第 5 步设置 `EndRequest(Defeated, DefeatCondition)`，且 `DurationTicksOverride = 5`：结果为 `Defeated / DefeatCondition`。
 
 **T-00-23 事件序号与 `DrainEvents`**
@@ -2075,8 +2075,8 @@ seed 42：取 3 个输出后 `s = GetState()`；再取 5 个记为 X；`SetState
 **T-00-25 同种子同命令 → 1000 步哈希逐步一致**
 迷你关卡（含 1 个进入点、1 波 3 个手写敌方目标、1 个火力单元；各系统实现到当时进度即可）、`DurationTicksOverride = 1000`、`EndWhenClear = false`、seed `0x6DD180096484586D`，命令：第 10 步 `Noop`、第 500 步 `Noop`。两个独立世界各 `Step()` 1000 次，每步 `ComputeStateHash()` 相等（1000 对）。另一个世界只把 seed 改为 `0x92C4A19D40D3C63D`：`Tick 0` 的哈希即不同（子流状态参与哈希）。
 
-**T-00-26 只读访问不影响哈希**
-同 T-00-25 设置，世界 A 每步读取 `Snapshot` 并 `DrainEvents()`，世界 B 从不读取。1000 步内每步哈希相等。
+**T-00-26 只读访问与 `CaptureDebug` 不影响哈希**
+同 T-00-25 设置，世界 A 每步读取 `Snapshot` 并 `DrainEvents()`，世界 B 从不读取，世界 C 开启 `Config.CaptureDebug = true` 且每步读取 `Snapshot.Debug`（P44）。1000 步内三个世界的每步哈希两两相等。
 
 **T-00-27 快照不可变**
 第 1 步后取 `snap1`，记录 `snap1.Threats` 的内容；再 `Step()` 若干步；`snap1` 的 `Tick` 与数组内容不变；`Snapshot` 在两次 `Step()` 之间多次读取返回同一实例（`ReferenceEquals`）。
@@ -2124,46 +2124,55 @@ seed 42：取 3 个输出后 `s = GetState()`；再取 5 个记为 X；`SetState
 手写 2×2 16 位灰度 PNG（过滤器：第 0 行 None、第 1 行 Up），像素（行主序，北行在前）`[0, 65535; 32768, 0]`，`minElevationM = 100, maxElevationM = 300`，`metersPerPixel = 10`，地图 `20 × 20` m。
 预期 `ElevationM == [100.0, 300.0, 200.00152590218966, 100.0]`。8 位灰度 PNG → `E_PNG_FORMAT`；地图写成 `40 × 20` m → `E_RANGE`。
 
-**T-00-35 正式样例数据可加载**（集成测试，读仓库 `data/`）
-`LoadLevel(FileSystemDataSource(<repo>/data), "test_01")` 不抛异常；`Meta.Map.WidthM == 20000`；`Waves.Nights[0].DurationSec == 28800`；`Waves.EntryPoints.Count == 2`；`Heightmap.WidthPx == 200 && HeightPx == 200`；`Date == 2022-11-15`；`LoadedFiles.Count == 29`（20 个全局 + 8 个关卡 JSON + 1 个 PNG）；`DataHash` 以 `sha256:` 开头且长度 71。（只断言结构，不断言具体平衡数值。）
+**T-00-35 正式样例数据可加载**（集成测试，读仓库 `data/`，P49）
+`LoadLevel(FileSystemDataSource(<repo>/data), "test_01")` 不抛异常；`Meta.Map.WidthM == 20000`；`Waves.Nights[0].DurationSec == 28800`；`Waves.EntryPoints.Count == 2`；`Heightmap.WidthPx == 200 && HeightPx == 200`；`Date == 2022-11-15`；`LoadedFiles.Count == 35`（26 个全局 + 8 个关卡 JSON + 1 个 PNG）；`DataHash` 以 `sha256:` 开头且长度 71。（只断言结构，不断言具体平衡数值。）
 
 **T-00-36 夜晚不存在**
 迷你关卡只有第 1 夜，`SimConfig.NightIndex = 2` → `SimSetupException`，消息为 `[E_NIGHT_NOT_FOUND] levels/mini/waves.json $.nights: waves.json 中没有第 2 夜`。
 
-### 架构
+### 架构与几何工具扩展
 
 **T-00-37 不引用 Godot**
 0.5 节三道检查全部通过；人为在测试夹具字符串中构造 `using Godot;` 的源文件文本，扫描函数能识别（自检扫描器有效）。
+
+**T-00-38 多边形点内判定与圆切点几何工具（A-2-23、A-2-26）**
+- 正方形 `poly = [(0,0), (10,0), (10,10), (0,10)]`：`Geo.PointInPolygon((5,5), poly) == true`；`Geo.PointInPolygon((15,5), poly) == false`；半开边界：`Geo.PointInPolygon((0,5), poly) == true`、`Geo.PointInPolygon((10,5), poly) == false`。`poly.Count < 3` 恒返回 `false`。
+- `Geo.FirstEntryIntoCircle(a: (-100, 0), b: (100, 0), c: (0, 0), r: 50)` 返回 `(-50.0, 0.0)`；起点已在圆内 `FirstEntryIntoCircle((0, 0), (100, 0), (0, 0), 50)` 返回 `(0.0, 0.0)`；不相交 `FirstEntryIntoCircle((-100, 60), (100, 60), (0, 0), 50)` 返回 `null`。
+
+**T-00-39 按夜日期解析与时期失配检查（B-T2-17）**
+- 手写关卡：`level.json` 的 `dateRange = { from: "2025-07-15", to: "2025-08-20" }`；`waves.json` 中第 1 夜省略 `date`、第 2 夜 `"date": "2025-08-05"`；`rules/intercept.json` 含 `2025-08` 时期切换。
+- `LoadLevel(src, "mini", nightIndex: 1)` 的 `Date == 2025-07-15`；`LoadLevel(src, "mini", nightIndex: 2)` 的 `Date == 2025-08-05` 且解析到 `2025-08` 档数值。
+- 若把 `nightIndex: 1` 加载得到的 `LevelData` 传给 `SimWorld.Create(level, new SimConfig { NightIndex = 2, ... }, 1)`，抛 `SimSetupException`（错误码 `E_NIGHT_DATE_MISMATCH`）。
 
 ---
 
 ## 8. 待决问题
 
-| # | 问题 | 背景 | 建议默认值 |
+| # | 问题 | 背景 | 裁决结论 |
 |---|---|---|---|
-| Q1 | 多夜关卡（时间结构 C / E，跨 2–10 周）随时期变化的数值按哪个日期解析？ | `level.json` 只有 `dateRange`，`waves.json` 的夜晚没有日期 | 整关使用 `dateRange.from`；若需要每夜不同，给 `waves.json` 的 `nights[]` 增加可选 `date` 字段，加载时按夜解析 |
-| Q2 | 所有波次生成完毕、场上无目标时，夜晚是否提前结束？ | GDD 11.2 只说"无来袭目标时自动快进 8×"；WBS 未定义 | `SimConfig.EndWhenClear = true`（提前结束，结局 `Survived / AllClear`）；若希望夜晚总是跑满时长，改默认为 false |
-| Q3 | 失败条件（`weighted_damage_at_least`、`grid_collapse`、`structure_destroyed`）达成时是否立即结束当夜？ | `level.json` 只列条件，未说何时判定 | 立即结束，`Defeated / DefeatCondition`（由 03 的 `ScoringSystem` 设置 `EndRequest`） |
-| Q4 | 胜利条件 `survive_game_sec` 与 `waves.json` 的 `durationGameSec` 是什么关系？ | 两处都表示时长 | 夜内时长只以 `durationGameSec` 为准；`survive_game_sec` 由关卡层（05）判定；二者同时存在时加载器检查 `gameSec ≤ 各夜 durationGameSec 之和`，否则 `E_RANGE` |
-| Q5 | WBS 01.B 的 14 个系统之外的功能放在哪一步？ | 命令应用、二选一超时、剧情事件、空袭警报、电网传播、天气、班组没有槽位 | 命令应用 / 二选一超时 / 剧情事件：阶段 0（本文件 3.4）；电网传播：`ImpactSystem`（10，WBS 原文含"电网连锁"）；空袭警报：状态切换在阶段 0（命令），效果在 `ScoringSystem`（13）累计；天气：每夜静态，`Create` 时读入；班组：每夜静态，经 `CarryIn` 带入。**阶段 0 是对 01.B 的补充（不改变 1–14 的顺序），需确认** |
-| Q6 | `…Pct` 后缀（`rules/damage.json` 的 `gridDamagePct`）不在 data/README 的换算表中 | 加载器需要统一规则 | 加载时 `÷ 100`，C# 字段名改为 `…Frac`；同时在 data/README 第 2 节补一行 |
-| Q7 | 我方单位的部署 / 撤收 / 移动状态机由哪个规格负责？ | README 的规格分工未列出 | 04（与 `DeployUnit / PackUnit / MoveUnit / RelocateUnit` 命令同处）；展开 / 撤收时长读各单位定义 |
-| Q8 | 方位角约定 | 任务要求选一个写死 | 已选"从正北顺时针、弧度 `[0, 2π)`"（贴合军事习惯与指挥层界面）；如需改为数学角请在实现前提出 |
-| Q9 | 回放是否需要跨平台（Windows x64 ↔ macOS arm64）一致？ | WBS 01.A："回放只保证同平台一致" | 维持同平台；回放文件记录 `runtime`，不同时警告。若将来需要跨平台，须改为自带确定性三角函数实现（影响 01 / 03） |
-| Q10 | `runSeed` 由谁生成、存在哪里？ | WBS 只说"种子来自关卡 + 夜晚序号"，缺少每局战役的变化来源，否则每局都一样 | 05 在新战役时生成（模拟层外，可用系统随机源）并写入存档；每夜 `seed = NightSeed(runSeed, levelId, nightIndex)` |
-| Q11 | "自动结算"（GDD 11.5）"略逊于亲自指挥"如何体现？ | 涉及 `SimConfig` 是否需要一个惩罚参数 | 不在 00 中处理；05 规定（建议通过 `CarryIn` 或专门的 `SimConfig.AutoResolve` 修正项，数值进 `rules/`） |
-| Q12 | 快照是否包含敌方目标真值？ | 界面应只显示航迹（战争迷雾），但复盘 / 调试需要真值 | 包含（`SimSnapshot.Threats`），06 规定正常界面不得渲染，仅调试开关 / 复盘可见 |
-| Q13 | 事件输出缓冲是否设上限？ | 无画面批量运行若不 Drain 会累积 | 不设上限；`tools/simrun` 与客户端每帧 / 每步 Drain |
-| Q14 | 加载器对未知字段是否报错？ | Schema 为 `additionalProperties: false`；但严格加载会让"先改数据、后改代码"变难 | 报错（`E_UNKNOWN_FIELD`），与 Schema 一致 |
-| Q15 | `events.json` 剧情事件由哪个规格 / 系统执行？ | 触发（结构被毁、波次生成等）与动作（台词、追加波次、二选一、警报）跨多个系统 | 04 负责，在阶段 0 读取 `PreviousStep` 事件判断触发；`spawn_wave` 动作写入 `WaveState` 由 01 下一步生成 |
-| Q16 | `Debris` 是否需要成为持续存在的实体？ | GDD 16.4 把碎片列为实体，但数值表 3.6 的规则可能只需瞬时结算 | 保留 `EntityKind.Debris` 槽位；03 决定是否使用（不用则保持空存储） |
-| Q17 | 夜间是否允许部署预备队（`DeployUnit`）？ | GDD 5.2 列出"调动机动单位"和"紧急转移"，未列"新部署" | 保留命令；是否允许、是否耗指挥点由 04 决定（默认：不允许，拒绝 `NotAvailable`） |
+| Q1 | 多夜关卡（时间结构 C / E，跨 2–10 周）随时期变化的数值按哪个日期解析？ | `level.json` 只有 `dateRange`，`waves.json` 的夜晚没有日期 | **已决（2026-10-17）**：给 `waves.json` 的 `nights[]` 增加可选字段 `date`（`YYYY-MM-DD`，须落在 `[dateRange.from, dateRange.to]` 内）；`LoadLevel(source, levelId, nightIndex = null)` 按 `night.Date ?? meta.DateFrom` 解析全部 `periodValue`；`SimWorld.Create` 校验 `level.Date == (night.Date ?? meta.DateFrom)`，不一致抛 `E_NIGHT_DATE_MISMATCH` —— 依据 B-T2-17、DECISIONS.md §2.1 |
+| Q2 | 所有波次生成完毕、场上无目标时，夜晚是否提前结束？ | GDD 11.2 只说"无来袭目标时自动快进 8×"；WBS 未定义 | **已决（2026-10-17）**：`SimConfig.EndWhenClear` 默认 `true`，满足清场时以 `Survived / AllClear` 提前结束；`AllClear()` 直接判 `Pending.Count == 0 && Injections.Count == 0`、场上无存活弹药且无仍有未完成投放项的平台、无在飞拦截弹、`HeldWaves.Count == 0`、`!StoryRules.HasPendingScheduledSpawn`（已投完弹返航平台与纯侦察平台不阻塞清场） —— 依据 P41、A-4-03、B-T2-08、DECISIONS.md §2.1 |
+| Q3 | 失败条件（`weighted_damage_at_least`、`grid_collapse`、`structure_destroyed`）达成时是否立即结束当夜？ | `level.json` 只列条件，未说何时判定 | **已决（2026-10-17）**：立即结束，`Defeated / DefeatCondition`（由 03 的 `ScoringSystem` 设置 `EndRequest`） —— 依据 B-T1-01、DECISIONS.md §2.1 |
+| Q4 | 胜利条件 `survive_game_sec` 与 `waves.json` 的 `durationGameSec` 是什么关系？ | 两处都表示时长 | **已决（2026-10-17）**：夜内时长只以 `durationGameSec` 为准；`survive_game_sec` 由关卡层（05）判定；二者同时存在时加载器检查 `gameSec ≤ 各夜 durationGameSec 之和`，否则 `E_RANGE` —— 依据 B-T2-18、DECISIONS.md §2.1 |
+| Q5 | WBS 01.B 的 14 个系统之外的功能放在哪一步？ | 命令应用、二选一超时、剧情事件、空袭警报、电网传播、天气、班组没有槽位 | **已决（2026-10-17）**：命令应用 / 单位状态推进 / 二选一超时 / 剧情事件放在阶段 0（严格按 `ApplyDueCommands → DeploymentStage.Run → ChoiceStage.Run → StoryStage.Run` 顺序执行）；电网传播归 `ImpactSystem`（10）；空袭警报命令处理与每步效果累计均归 `ScoringSystem`（13）；天气每夜静态在 `Create` 读入；班组经 `CarryIn` 带入 —— 依据 P40、P50、B-T2-15、DECISIONS.md §2.1 |
+| Q6 | `…Pct` 后缀（`rules/damage.json` 的 `gridDamagePct`）不在 data/README 的换算表中 | 加载器需要统一规则 | **已决（2026-10-17）**：加载时 `÷ 100`，C# 字段名改为 `…Frac` —— 依据 B-T1-02、DECISIONS.md §2.1 |
+| Q7 | 我方单位的部署 / 撤收 / 移动状态机由哪个规格负责？ | README 的规格分工未列出 | **已决（2026-10-17）**：04 负责（`DeploymentStage` 与 `CommandStage`），展开 / 撤收时长读各单位定义 —— 依据 P50、B-T1-03、DECISIONS.md §2.1 |
+| Q8 | 方位角约定 | 任务要求选一个写死 | **已决（2026-10-17）**：从正北（+Y）顺时针、弧度 `[0, 2π)` —— 依据 B-T2-19、DECISIONS.md §2.1 |
+| Q9 | 回放是否需要跨平台（Windows x64 ↔ macOS arm64）一致？ | WBS 01.A："回放只保证同平台一致" | **已决（2026-10-17）**：维持同平台；回放文件记录 `runtime`，不同时打印警告；禁止 `Math.Hypot` 与 `FusedMultiplyAdd` —— 依据 B-T2-20、C-T1-04、DECISIONS.md §2.1 |
+| Q10 | `runSeed` 由谁生成、存在哪里？ | WBS 只说"种子来自关卡 + 夜晚序号"，缺少每局战役的变化来源 | **已决（2026-10-17）**：05 在新战役开始时生成并写入存档；每夜调用方传 `seed = NightSeed(runSeed, levelId, nightSeq)`（战役传 `flow.nights[]` 1-based 下标，单夜运行传 `NightIndex`），战役层 `ChildSeed` 名字一律以 `campaign:` 开头 —— 依据 P43、P50、A-5-01、B-T2-07、DECISIONS.md §2.1 |
+| Q11 | "自动结算"（GDD 11.5）"略逊于亲自指挥"如何体现？ | 涉及 `SimConfig` 是否需要一个惩罚参数 | **已决（2026-10-17）**：05 通过跑真实模拟 + `CarryIn.AutoResolve`（03 拦截概率乘 `InterceptProbMult`，02 跳过不开机惩罚等）实现，并支持重打覆盖 —— 依据 P34、P50、A-2-22、B-T3-07、DECISIONS.md §3.7 |
+| Q12 | 快照是否包含敌方目标真值？ | 界面应只显示航迹（战争迷雾），但复盘 / 调试需要真值 | **已决（2026-10-17）**：包含（`SimSnapshot.Threats`），06 规定正常作战界面只渲染 `Tracks`，仅调试开关 / 战后复盘可见 —— 依据 B-T2-21、DECISIONS.md §2.1 |
+| Q13 | 事件输出缓冲是否设上限？ | 无画面批量运行若不 Drain 会累积 | **已决（2026-10-17）**：不设上限（单夜典型百级事件 ≈ 数十 KB）；`tools/simrun` 与客户端每步 / 每帧调用 `DrainEvents()` —— 依据 B-T3-06、DECISIONS.md §3.6 |
+| Q14 | 加载器对未知字段是否报错？ | Schema 为 `additionalProperties: false` | **已决（2026-10-17）**：严格报错（`E_UNKNOWN_FIELD`），仅忽略 `$schema`、`_source`、`notes`、`provisional` 四个白名单字段 —— 依据 B-T1-04、DECISIONS.md §2.1 |
+| Q15 | `events.json` 剧情事件由哪个规格 / 系统执行？ | 触发与动作跨多个系统 | **已决（2026-10-17）**：04 `StoryStage` 在阶段 0 末尾读取 `PreviousStep` 事件判断触发；`spawn_wave` 动作写入 `State.Waves.Injections` 由 01 下一步生成 —— 依据 P40、P50、B-T1-05、DECISIONS.md §2.1 |
+| Q16 | `Debris` 是否需要成为持续存在的实体？ | GDD 16.4 把碎片列为实体，但数值表 3.6 只需瞬时结算 | **已决（2026-10-17）**：碎片在系统 10 内瞬时结算并发出 `DebrisFell`；保留 `EntityKind.Debris = 9` 槽位但运行时 `State.Debris` 恒为空存储 —— 依据 P50、B-T2-16、DECISIONS.md §2.1 |
+| Q17 | 夜间是否允许部署预备队（`DeployUnit`）？ | GDD 5.2 列出"调动机动单位"和"紧急转移"，未列"新部署" | **已决（2026-10-17）**：`DeployUnit` 仅允许对夜前已在 `DeploymentPlan` 中且当前处于 `Packed` 状态的存活单位原地重新展开（0 指挥点）；不支持从场外预备队新投送单位（`UnitDefId != null` 或 `Pos != null` 一律拒绝 `NotAvailable`） —— 依据 P50、04 3.1.2、DECISIONS.md §2.1 |
 
 ---
 
-### 附：参考脚本
+### 附：参考脚本（C-T1-01）
 
-- `/Users/xtxsinan/.gemini/antigravity/brain/3c71df62-d91b-4de5-a3dc-5b43867948d8/scratch/simrandom_vectors.py`：`SimRandom` 的 Python 参考实现（含 PCG32 官方示例自检、SplitMix64 自检、全部子流种子），T-00-01 – T-00-10 的数值均由它输出。
-- `/Users/xtxsinan/.gemini/antigravity/brain/3c71df62-d91b-4de5-a3dc-5b43867948d8/scratch/hasher_vectors.py`：`StateHasher` 编码与 FNV‑1a 向量（T-00-24）。
+- [`tools/spec_calc/00/simrandom_vectors.py`](../../tools/spec_calc/00/simrandom_vectors.py)：`SimRandom` 的 Python 参考实现（含 PCG32 官方示例自检、SplitMix64 自检、全部子流种子），T-00-01 – T-00-10 的数值均由它输出。
+- [`tools/spec_calc/00/hasher_vectors.py`](../../tools/spec_calc/00/hasher_vectors.py)：`StateHasher` 编码与 FNV‑1a 向量（T-00-24）。
 
-实现 `SimRandomTests` 时，可以把脚本输出的全部子流种子（含 `setup`、`command`、`civil`……）补进 T-00-08 的表中。
+实现 `SimRandomTests` 时，可直接对照 T-00-08 表中全部 18 个子流的种子与前 3 个输出向量。
