@@ -132,6 +132,19 @@
 
 ## 01_spawn_movement_terrain.md
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| P01, P05–P07, P11, P14, P18–P19, P23, P29–P31, P35, P41, P45–P46, P48–P49 | 已应用 | §1.1–1.5、§2.1–2.4、§3.1–3.4、§4、§8.2：数据模型（`MovementRulesDef`、`TerrainRulesDef`、`PlatformDef`）、`Threat` 前 32 个哈希字段（弧长统一 `…ArcM` 后缀）、`WaveState` / `PendingSpawn` / `WaveInjection`、事件 100–104 全部与 `00_core.md` 对齐 |
+| A-2-01..04, A-2-06, A-2-09..10, A-2-23, A-2-26..29 | 已应用 | §2.2、§3.1.9、§3.2.6、§3.3、§8.3：`TrajectoryPredictor.Predict` 的 `AtPathEnd` 语义、平台不发 `ThreatArrived`、`TargetUnitId`/`HomingUnitId` 单写者归属、`ThreatRouting`（`Retarget`/`BeginEgress`/`Hover`）统一改航入口、`IEnemyAiHooks` 扩展签名、复用 `Geo.FirstEntryIntoCircle`、直接用 `s.Hp > 0` 判定存活建筑 |
+| A-3-01..04, A-3-08..09 | 已应用 | 全文统一 `TimeSec`、弧长 `…ArcM`、`Geo.FirstEntryIntoCircle`、`AvoidanceActive` 命名 |
+| A-4-02..04, A-4-06 | 已应用 | §3.1.2、§3.2.5、§4.1、§6：终结事件守恒、同一步先到达后拦截时序、`AtSec` 窗口归一化 `(t-1, t]`、压制波/剧情注入阻塞 `AllClear` |
+| B-T1-06 | 已应用 | §1.1、§3.2.5、§3.3.3、§8.1 Q13–Q15：`decoy_flight` 飞越假目标后直线出界发 `ThreatExited { DecoyPathEnd }`；地球曲率 `6371000 m` 与大气折射 `k = 4/3`；`losSampleStepPx = 0.5` |
+| B-T2-03, B-T2-19..20, B-T2-22..31 | 已应用 | §1.1–1.3、§3.1–3.3、§5、§8.1 Q1–Q15：高度转换 `GetGroundElevation`、入口点缺省海拔、平台投放距离/挂载缺省、弹道/滑翔忽略 `waypointsM`、`maxSpeedKmh` 预留、`weighted_random` 逐枚独立抽签、`IsStoryOnlyWave`、`aiTags` 联动、巡航恒定 AGL、地平线 720 方位桶预计算 |
+| B-T3-05 | 已应用 | §3.1.2、§3.1.9：`IEnemyAiHooks.SelectWeightedRandomOverride` 支持暴露度达 100 时改打暴露友方单位 |
+| B-T3-09 | 已应用 | §1.2.2、§2.2、§3.1.4、§3.2.4、§5 #24、§7 `T-01-28`/`T-01-28b`：发射平台从入口进场飞至 `releaseRangeM` 释放挂载并发 `PlatformReleased`，随后 `Egressing` 返航出界发 `ThreatExited { PlatformReturned }`；释放前被击毁则取消未释放挂载 |
+| C-T1-01, C-T1-04, C-T1-12 | 已应用 | §0.3、§3、§7：`tools/spec_calc/01/`（`01_movement_calc.py`、`01_terrain_calc.py`）归档入库；不用 `Math.Hypot`；添加文档同步免责声明 |
+| C-T2-01, C-T2-08 | 已应用 | §1.2.2、§2.4、§3.3.2–3.3.4、§7 `T-01-33`/`T-01-43`：`HorizonProfile` 改为 720 方位桶 × 径向单调非降累积最大遮挡斜率包络 $S_{\max}(b, k)$，修复多山脊近高远低遮挡漏洞并保持 $O(1)$ 查表；补充 `Su-34`、`Tu-22M3` 平台定义与测试用例 |
+
 ## 02_sensing_tracks_ew_emission.md
 
 ## 03_engagement_impact_scoring.md

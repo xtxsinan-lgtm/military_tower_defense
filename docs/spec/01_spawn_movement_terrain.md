@@ -1157,7 +1157,7 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 
 ## 7. 测试用例
 
-> 预期值由 `/Users/xtxsinan/.gemini/antigravity/brain/a6d360e5-4c81-4530-9448-7555c8e757a0/scratch/spec_calc/01_movement_calc.py` 与 `01_terrain_calc.py` 计算（与 3.2.3、3.3 的运算顺序一致）。浮点比较：标"=="的逐位相等；其余容差 `1e-9`（绝对值，除非另注）。
+> 预期值由 [01_movement_calc.py](../../tools/spec_calc/01/01_movement_calc.py) 与 [01_terrain_calc.py](../../tools/spec_calc/01/01_terrain_calc.py) 计算（与 3.2.3、3.3 的运算顺序一致，C-T1-01）。浮点比较：标"=="的逐位相等；其余容差 `1e-9`（绝对值，除非另注）。
 > 测试文件：`sim.tests/Spawn/WaveSpawnTests.cs`、`sim.tests/Movement/EnemyMovementTests.cs`、`sim.tests/Movement/ThreatKinematicsTests.cs`、`sim.tests/Terrain/TerrainModelTests.cs`、`sim.tests/Data/MovementRulesLoadTests.cs`。
 
 ### 7.0 公共夹具 `Mini01`（`MiniLevelBuilder`，手写，不依赖正式数值）
@@ -1167,7 +1167,7 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 - 电网为空；保护目标（ID 依次为 1、2、3）：`s1 (10000, 10000) weight 5`、`s2 (15000, 5000) weight 3`、`s3 (5000, 15000) weight 2`。个别测试另行给出保护目标列表时替换这三项。
 - 进入点：`eE (25000, 10000)`、`eW (−5000, 10000)`、`e0 (0, 0)`。
 - `rules/movement.json`（测试值）：`altitudeBandsM = { very_low {50,50}, low {300,300}, low_mid {1000,1000}, mid {3000,3000}, mid_high {6000,6000}, high {8000,8000}, high_dive {10000,10000}, glide {9000,9000} }`，`cruiseDescentAngleDeg 45`，`highDiveAngleDeg 45`，`ballisticTerminalAngleDeg 45`，`quasiBallisticTerminalAngleDeg 30`，`diveSpeedMult 2`。（`tan(45°)` 在 double 中为 `0.9999999999999999`。）
-- `rules/terrain.json`（测试值）：`losSampleStepPx 0.5, earthRadiusM null, refractionK 1, defaultAntennaHeightM 10`。
+- `rules/terrain.json`（测试值）：`losSampleStepPx 0.5, earthRadiusM null, refractionK 1, defaultAntennaHeightM 10, horizonAzimuthBins 720`。
 - 弹药（只列移动相关字段，其余必填字段任意合法值）：
 
 | id | tag | speedKmh（→ m/s） | altitudeBand | altitudeM | 其他 |
@@ -1191,7 +1191,8 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 | `p_bomb` | null | 720（200） | high | false | `[{options:[c1], count:3}]` | wave_source_only | |
 | `p_glide` | AC_HIGH | 252（70） | high | true | `[{options:[g1], count:2}]` | standoff_release_and_return | 无 `standoffFrom`（⇒ `StandoffActive = true`） |
 | `p_glide_old` | AC_HIGH | 252（70） | high | true | 同上 | standoff_release_and_return | `standoffFrom "2099-01"`（⇒ false） |
-| `p_edge` | AC_HIGH | 252（70） | high | true | `[{options:[a1], count:1}]` | launch_from_map_edge | |
+| `p_edge` | AC_HIGH | 252（70） | high | true | `[{options:[a1], count:1}]` | launch_from_map_edge | `releaseRangeKm: null` |
+| `p_edge_r` | AC_HIGH | 252（70） | high | true | `[{options:[a1], count:1}]` | standoff_release_and_return | `releaseRangeKm: 13.6`（`ReleaseRangeM = 13600`，B-T3-09） |
 | `p_low` | AC_LOW | 252（70） | low | true | `[{options:[f1], count:1}]` | low_strike | |
 | `p_multi` | AC_LOW | 252（70） | low | true | `[{options:[c1, a1, u1], count:1}]` | low_strike | |
 | `p_spot` | UAV | 108（30） | low_mid | true | — | spotter | |
@@ -1206,16 +1207,16 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 波次 `w1 { atGameSec 2, groups: [{ enemy u1, count 3, entry eE, spacingGameSec 0.5, route {direct}, target {structure s1} }] }`。`movement` 用脚本随机 `NextDouble = [0.5, 0.0, 0.25]`。
 - 第 119 步后：`Threats.Count == 0`，`AllWavesSpawned == false`。
 - 第 120 步事件依次：`WaveStarted { WaveId "w1", AiTags null, Injected false, AtSec 120.0 }`、`ThreatSpawned { ThreatId 4, DefId "u1", Kind Munition, EntryId "eE", WaveId "w1", AtSec 120.0 }`。第 150、180 步各一个 `ThreatSpawned`（ID 5、6，`AtSec` 150.0、180.0）。
-- 第 120 步后威胁 4：`Pos == (25000, 10000)`，`AltM == 1250.0`，`VelMps == (−50, 0)`；第 121 步后 `Pos == (24950, 10000)`、`PathS == 50.0`。威胁 5 的 `AltM == 500.0`，威胁 6 的 `AltM == 875.0`。
+- 第 120 步后威胁 4：`Pos == (25000, 10000)`，`AltM == 1250.0`，`VelMps == (−50, 0)`；第 121 步后 `Pos == (24950, 10000)`、`PathArcM == 50.0`。威胁 5 的 `AltM == 500.0`，威胁 6 的 `AltM == 875.0`。
 - 第 179 步后 `AllWavesSpawned == false`；第 180 步后 `true`；`SpawnedThreatCount == 3`。
 
 **T-01-02 小数生成时刻**
 `w1 { atGameSec 1, groups: [{ enemy u1, count 3, entry eW, spacingGameSec 0.01, route {direct}, target {structure s1} }] }`（间隔 0.6 秒）。
 - 生成步与 `AtSec`：第 60 步 `60.0`，第 61 步 `60.6`，第 62 步 `61.2`（`SpawnAtSec` 逐位等于 `60.0 + k * 0.6`）。
-- 第 61 步后威胁 5：`PathS = 19.99999999999993`。第 62 步后 `PathS` 依次为 `100.0`、`69.99999999999993`、`39.99999999999986`；`Pos.X` ≈ `−4900, −4930, −4960`。
+- 第 61 步后威胁 5：`PathArcM = 19.99999999999993`。第 62 步后 `PathArcM` 依次为 `100.0`、`69.99999999999993`、`39.99999999999986`；`Pos.X` ≈ `−4900, −4930, −4960`。
 
 **T-01-03 atGameSec 0**
-`w1 { atGameSec 0, …, count 1, entry eW }`：第 1 步生成；`ThreatSpawned.AtSec == null`、`WaveStarted.AtSec == null`；第 1 步后 `PathS == 50.0`。
+`w1 { atGameSec 0, …, count 1, entry eW }`：第 1 步生成；`ThreatSpawned.AtSec == null`、`WaveStarted.AtSec == null`；第 1 步后 `PathArcM == 50.0`。
 
 **T-01-04 同时刻多波的顺序**
 `wA { atGameSec 1, groups: [{u1, count 2, entry eE, 无 spacing, direct, structure s1}] }`、`wB { atGameSec 1, groups: [{d1, count 1, entry eW, direct, structure s2}] }`（数据顺序 wA、wB）。第 60 步事件顺序：`WaveStarted(wA)`、`ThreatSpawned(4)`、`ThreatSpawned(5)`、`WaveStarted(wB)`、`ThreatSpawned(6)`。威胁 4、5 位置相同。
@@ -1224,12 +1225,12 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 `w1 { atGameSec 1, groups: [{u1, count 4, entry eE, direct, target {mode weighted_random}}] }`；`spawn` 用脚本随机 `NextDouble = [0.55, 0.0, 0.5, 0.95]`（总权重 10）。
 预期 `TargetStructureId` 依次 `2, 1, 2, 3`（`r = 5.5, 0, 5.0, 9.5`；`r = 5.0` 不满足 `r < 5` ⇒ 选 s2）；`TargetPos` 为对应结构位置；`TargetKind == Structure`。脚本序列恰好用完（再多取一次会抛异常）。
 
-**T-01-06 weighted_random 排除已摧毁目标**
-同 T-01-05 但 `count 2`，在第 1 步前经 03 的接口把 s1 标为已摧毁（03 实现前用测试替身 `StructureRules.IsDestroyed`）。脚本 `[0.0, 0.9]`：总权重 5 ⇒ `r = 0` → s2，`r = 4.5` → s3。再把 s1、s2、s3 全部标为已摧毁，脚本 `[0.0]` ⇒ 回退到全部保护目标，选 s1。
+**T-01-06 weighted_random 排除已摧毁目标（`s.Hp > 0`，A-2-29）**
+同 T-01-05 但 `count 2`，在第 1 步前把 s1 的 `Hp` 置为 `0`（`s1.Hp = 0`）。脚本 `[0.0, 0.9]`：总权重 5 ⇒ `r = 0` → s2，`r = 4.5` → s3。再把 s1、s2、s3 的 `Hp` 全部置为 `0`，脚本 `[0.0]` ⇒ 回退到全部保护目标，选 s1。
 
-**T-01-07 known_targets / air_defense**
+**T-01-07 known_targets / air_defense 与 `TargetRequest`**
 - 默认钩子：`target {mode known_targets}`，脚本 `[0.0]` ⇒ 回退 `weighted_random` ⇒ s1。`air_defense` 同理。
-- `EnemyAiHooksOverride` 的 `SelectKnownTarget` 返回 `TargetChoice(PlayerUnit, (12000, 8000), 0, 77)`，不消耗随机数；`spawn` 脚本序列为空。预期：`TargetKind == PlayerUnit`、`TargetUnitId == 77`、`Path == [(25000,10000), (12000,8000)]`，无异常（未消耗随机数）。
+- `EnemyAiHooksOverride` 的 `SelectKnownTarget(state, level, req, rng)` 断言 `req == TargetRequest("u1", Munition, "w1", 0, 0, 0, (25000, 10000))` 并返回 `TargetChoice(PlayerUnit, (12000, 8000), 0, 77)`，不消耗随机数；`spawn` 脚本序列为空。预期：`TargetKind == PlayerUnit`、`TargetUnitId == 77`、`Path == [(25000,10000), (12000,8000)]`，无异常（未消耗随机数）。
 
 **T-01-08 诱饵 decoy_flight**
 `w1 { atGameSec 2, groups: [{d1, count 1, entry eE, direct, target {mode decoy_flight}}] }`，`spawn` 脚本 `[0.0]`（假目标 s1）。
@@ -1245,10 +1246,11 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 **T-01-10 挂载选择**
 `p_multi`，`target {structure s1}`，`spawn` 脚本 `NextUInt32 = [7]`：`Bounded(3)` 阈值 1，7 % 3 = 1 ⇒ 选 `a1`（第 60 步出现 `MunitionReleased`，子弹药 `DefId "a1"`）。脚本 `[0, 5]`：0 被拒，5 % 3 = 2 ⇒ `u1`。
 
-**T-01-11 剧情注入波次**
+**T-01-11 剧情注入波次与 `GroupIndices` 放行（A-2-10、A-2-28）**
 `waves` 含 `w_story { atGameSec 1, groups: [{u1, count 2, entry eE, spacingGameSec 0.5, direct, structure s1}] }`；`events.json` 有一个事件，其动作 `{ type spawn_wave, wave "w_story" }`（触发器任意，测试中不由 04 执行）。
-- `Create` 后 `Pending.Count == 0`；第 1 步后 `AllWavesSpawned == true`；第 60 步无生成。
+- `WaveSpawnRules.IsStoryOnlyWave(level, "w_story") == true`。`Create` 后 `Pending.Count == 0`；第 1 步后 `AllWavesSpawned == true`；第 60 步无生成。
 - 第 49 步后测试代码直接执行 `State.Waves.Injections.Add(new WaveInjection("w_story", 49.0))`；第 50 步：`WaveStarted { Injected true, AtSec 50.0 }`、`ThreatSpawned(AtSec 50.0)`；第 50 步后 `AllWavesSpawned == false`、`Injections.Count == 0`；第 80 步生成第二个，之后 `AllWavesSpawned == true`。
+- 变体（压制波推迟与放行）：`w_sup { atGameSec 1, aiTags [suppress], groups: [{a1 ×1, eE, direct, s1}, {c1 ×1, eE, direct, s1}] }`，`EnemyAiHooksOverride.DeferGroup` 对 `gi == 1` 返回 `true` ⇒ 第 60 步只生成第 0 组 `a1` 并发出 `WaveStarted`；第 99 步后 `Injections.Add(new WaveInjection("w_sup", 99.0, GroupIndices: [1]))` ⇒ 第 100 步生成第 1 组 `c1`，且**不再**重复发 `WaveStarted`。
 - 注入不存在的 `"nope"` → 下一次 `Step()` 抛 `InvalidOperationException`。
 
 **T-01-12 模板航线被拒绝**
@@ -1261,12 +1263,12 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 保护目标改为 `t0 (100, 100) weight 1`；`w1 { atGameSec 1, groups: [{p_spot, count 1, entry e0, route {waypointsM [[100,0]]}, target {structure t0}}] }`。
 - `Path == [(0,0), (100,0), (100,100)]`，`PathEnd == Hold`，`AltM == 1000.0`（全程）。
 - 第 63 步后：`Pos == (90, 0)`，`VelMps == (30, 0)`；第 64 步后：`Pos == (100, 20)`，`VelMps == (0, 30)`；第 66 步后：`(100, 80)`。
-- 第 67 步后：`Pos == (100, 100)`，`Phase == Holding`，`VelMps == (0, 0)`，`PathS == 200.0`；之后不再变化，没有任何 `ThreatArrived` / `ThreatExited`。
+- 第 67 步后：`Pos == (100, 100)`，`Phase == Holding`，`VelMps == (0, 0)`，`PathArcM == 200.0`；之后不再变化，没有任何 `ThreatArrived` / `ThreatExited`。
 
 **T-01-21 巡航末段直线下降与到达**
 保护目标 `t0 (1000, 0)`；`m100`、`entry e0`、`direct`、`atGameSec 1`。
-- `TerminalStartS == 900.0`（`1000 − 100 / 0.9999999999999999`）。
-- 第 61 步后：`PathS 50`、`AltM 100`、`VertSpeedMps 0`；第 78 步后：`PathS 900`、`AltM 100`、`VertSpeedMps −50`；第 79 步后：`PathS 950`、`AltM 50`、`VertSpeedMps −50`。
+- `TerminalStartArcM == 900.0`（`1000 − 100 / 0.9999999999999999`）。
+- 第 61 步后：`PathArcM 50`、`AltM 100`、`VertSpeedMps 0`；第 78 步后：`PathArcM 900`、`AltM 100`、`VertSpeedMps −50`；第 79 步后：`PathArcM 950`、`AltM 50`、`VertSpeedMps −50`。
 - 第 80 步：`ThreatArrived { ThreatId 2, DefId "m100", Pos (1000, 0), TargetKind Structure, TargetStructureId 1, TargetUnitId 0, AtSec 80.0 }`；该步 `EnemyMovementSystem` 之后 `Phase == Arrived`、`AltM == 0`、`ArrivedAtSec == 80.0`（用 Order 3 的记录替身读取）；第 80 步结束后已被占位 `ImpactSystem` 删除。
 
 **T-01-22 高度掷骰与子流消耗**
@@ -1275,37 +1277,41 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 
 **T-01-23 俯冲加速（diveFaster）**
 保护目标 `t0 (1025, 0)`；`l1`、`entry e0`、`direct`、`atGameSec 1`。
-- `TerminalStartS == 925.0`，`SpeedMps == 50`，`TerminalSpeedMps == 100`。
-- 第 78 步后：`PathS 900`、`AltM 100`；第 79 步后：`PathS 975`、`AltM 50`、`VertSpeedMps −100`。
+- `TerminalStartArcM == 925.0`，`SpeedMps == 50`，`TerminalSpeedMps == 100`。
+- 第 78 步后：`PathArcM 900`、`AltM 100`；第 79 步后：`PathArcM 975`、`AltM 50`、`VertSpeedMps −100`。
 - 第 80 步：`ThreatArrived.AtSec == 79.5`。
 
 **T-01-24 弹道抛物线（忽略航点）**
 保护目标 `t0 (10000, 0)`；`b1`、`entry e0`、`route {waypointsM [[5000, 5000]]}`、`atGameSec 1`。
 - `Path == [(0,0), (10000,0)]`，`Profile == Parabolic`，`StartAltM == 4999.999999999999`（`10000 × tan45 / 2`）。
-- 第 61 步后：`PathS 2000`、`AltM 4799.999999999999`、`VertSpeedMps −399.9999999999999`；第 62 步后：`AltM 4199.999999999999`、`VertSpeedMps −799.9999999999998`；第 64 步后：`AltM 1799.9999999999998`。
+- 第 61 步后：`PathArcM 2000`、`AltM 4799.999999999999`、`VertSpeedMps −399.9999999999999`；第 62 步后：`AltM 4199.999999999999`、`VertSpeedMps −799.9999999999998`；第 64 步后：`AltM 1799.9999999999998`。
 - 第 65 步：`ThreatArrived.AtSec == 65.0`。
 - 换成 `q1`：`StartAltM == 2886.751345948128`；`movement` 子流不消耗（`b1`、`q1` 都不掷骰）。
 
 **T-01-25 高空俯冲**
 地图 `40000 × 20000`；保护目标 `t0 (30000, 0)`；`h1`、`entry e0`、`direct`、`atGameSec 0`。
-- `StartAltM == 10000`，`TerminalStartS == 20000.0`。
+- `StartAltM == 10000`，`TerminalStartArcM == 20000.0`。
 - 第 19 步后 `AltM 10000`、`VertSpeedMps 0`；第 21 步后 `AltM 9000`、`VertSpeedMps −1000`；第 25 步后 `AltM 5000`。
 - 第 30 步：`ThreatArrived.AtSec == 30.0`。
 
 **T-01-26 平台远程投放滑翔炸弹并返航**
 地图 `60000 × 20000`；保护目标 `t0 (50000, 0)`；`w1 { atGameSec 1, groups: [{p_glide, count 1, entry e0, direct, structure t0}] }`。
-- 平台（ID 2）：`Releases == [{LoadoutIndex 0, MunitionId "g1", Count 2, AtS 30000.0, Done false}]`，`TurnS == 30000.0`，`Path == [(0,0), (30000,0), (0,0)]`，`PathEnd == Exit`，`AltM == 8000`。
-- 第 489 步：两个 `MunitionReleased { ParentThreatId 2, ThreatId 3 / 4, DefId "g1", AtSec 488.57142857142856 }`；平台 `Phase == Egress`。子弹药第 489 步后：`PathS ≈ 85.71428571428896`（容差 1e-6），`Pos ≈ (30085.71428571429, 0)`，`AltM ≈ 7965.7142857142835`，`VertSpeedMps ≈ −80.0`，`WaveId == "w1"`。第 539 步后子弹药 `AltM ≈ 3965.7142857142844`。
+- 平台（ID 2）：`Releases == [{LoadoutIndex 0, MunitionId "g1", Count 2, AtArcM 30000.0, Done false}]`，`TurnArcM == 30000.0`，`Path == [(0,0), (30000,0), (0,0)]`，`PathEnd == Exit`，`AltM == 8000`。
+- 第 489 步：两个 `MunitionReleased { ParentThreatId 2, ThreatId 3 / 4, DefId "g1", AtSec 488.57142857142856 }`；平台 `Phase == Egress`。子弹药第 489 步后：`PathArcM ≈ 85.71428571428896`（容差 1e-6），`Pos ≈ (30085.71428571429, 0)`，`AltM ≈ 7965.7142857142835`，`VertSpeedMps ≈ −80.0`，`WaveId == "w1"`。第 539 步后子弹药 `AltM ≈ 3965.7142857142844`。
 - 第 589 步：两个 `ThreatArrived`（ID 3、4 顺序），`AtSec ≈ 588.5714285714286`。
 - 第 700 步后平台 `Pos == (15200, 0)`；第 918 步：`ThreatExited { ThreatId 2, Reason EgressComplete, AtSec ≈ 917.1428571428571 }`。
 - `movement` 子流：只有平台消耗 1 次（滑翔子弹药用平台高度）。
 
 **T-01-27 standoff 未生效 ⇒ 飞到目标上空投弹**
-同 T-01-26，平台换成 `p_glide_old`。投放 `AtS == 50000`；第 775 步：`MunitionReleased`（`AtSec ≈ 774.2857142857143`），子弹药路径长度 0，同一步紧接着 `ThreatArrived`（同 `AtSec`、`Pos (50000, 0)`）；平台第 1489 步离开（`AtSec ≈ 1488.5714285714287`）。
+同 T-01-26，平台换成 `p_glide_old`。投放 `AtArcM == 50000`；第 775 步：`MunitionReleased`（`AtSec ≈ 774.2857142857143`），子弹药路径长度 0，同一步紧接着 `ThreatArrived`（同 `AtSec`、`Pos (50000, 0)`）；平台第 1489 步离开（`AtSec ≈ 1488.5714285714287`）。
 
-**T-01-28 一生成就投放（无 releaseRangeKm）**
-`p_edge`、`entry eE`、`route {waypointsM [[20000, 15000]]}`、`structure s1`、`atGameSec 1`；`movement` 脚本 `[0.0, 0.5]`。
-第 60 步事件顺序：`ThreatSpawned { ThreatId 4, Kind Platform }`、`MunitionReleased { 4 → 5, DefId "a1" }`、`ThreatExited { 4, EgressComplete }`，`AtSec` 都是 `60.0`；平台被删除。子弹药 5：`Path == [(25000,10000), (20000,15000), (10000,10000)]`，`AltM == 50.0`，`ParentThreatId == 4`。
+**T-01-28 平台 `releaseRangeKm` 缺省与配置（含投放前被击落，B-T3-09）**
+- **子例 A（弹药与平台 `releaseRangeKm` 均缺省 ⇒ 0 秒停留）**：`p_edge`、`entry eE`、`route {waypointsM [[20000, 15000]]}`、`structure s1`、`atGameSec 1`；`movement` 脚本 `[0.0, 0.5]`。第 60 步事件顺序：`ThreatSpawned { ThreatId 4, Kind Platform }`、`MunitionReleased { 4 → 5, DefId "a1" }`、`ThreatExited { 4, EgressComplete }`，`AtSec` 都是 `60.0`；平台被删除。子弹药 5：`Path == [(25000,10000), (20000,15000), (10000,10000)]`，`AltM == 50.0`，`ParentThreatId == 4`。
+- **子例 B（弹药 `releaseRangeKm == null`，回退使用平台 `p_edge_r.releaseRangeKm = 13.6` ⇒ 飞行 1400 m 后投放并返航）**：`p_edge_r`、`entry eE (25000, 10000)`、`direct`、`structure s1 (10000, 10000)`、`atGameSec 1`；`movement` 脚本 `[0.0, 0.5]`。
+  - 第 60 步：平台（ID 4）生成，`Releases == [{LoadoutIndex 0, MunitionId "a1", Count 1, AtArcM 1400.0, Done false}]`，`TurnArcM == 1400.0`，`Path == [(25000,10000), (23600,10000), (25000,10000)]`，`PathLengthM == 2800.0`。第 60–79 步平台向西进场（`Phase == Ingress`），无 `MunitionReleased`。
+  - 第 80 步（`t = 80.0`）：平台到达 `(23600, 10000)`，发出 `MunitionReleased { ParentThreatId 4, ThreatId 5, DefId "a1", AtSec 80.0 }`，平台转为 `Phase == Egress`；子弹药 5 在 `(23600, 10000)` 生成，`AltM == 50.0`，第 148 步到达 `s1`（`ThreatArrived.AtSec == 148.0`）。
+  - 第 100 步（`t = 100.0`）：平台回到 `(25000, 10000)`，发出 `ThreatExited { ThreatId 4, Reason EgressComplete, AtSec 100.0 }` 并删除。
+- **子例 C（投放前被击落）**：同子例 B，第 70 步（`PathArcM == 700.0 < AtArcM == 1400.0`）由 Order 8 替身调用 `State.Threats.Remove(4)`（模拟远程防空在投放前击落平台）。推进至第 200 步：全程无 `MunitionReleased`，`SpawnedThreatCount == 1`，`State.Threats.AliveCount == 0`。
 
 **T-01-29 无制导炸弹（carrier）**
 地图 `20000 × 20000`；保护目标 `t0 (7000, 0)`；`p_low`、`entry e0`、`direct`、`atGameSec 1`。
@@ -1313,14 +1319,13 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 
 **T-01-30 改航接口 `Retarget`**
 保护目标 `t0 (1000, 0)`；`m100`、`entry e0`、`direct`、`atGameSec 0`。用 Order 5 的测试替身在第 10 步调用 `ThreatRouting.Retarget(ctx, th, (500, 400))`。
-- 调用时 `th.Pos == (500, 0)`；返回 `true`；之后 `PathVersion == 2`、`Path == [(500,0), (500,400)]`、`TerminalStartS == 300.0`、`StartAltM == 100`、`AnchorSec == 10`。
+- 调用时 `th.Pos == (500, 0)`；返回 `true`；之后 `PathVersion == 2`、`Path == [(500,0), (500,400)]`、`TerminalStartArcM == 300.0`、`StartAltM == 100`、`AnchorSec == 10`。
 - 第 12 步后 `Pos == (500, 100)`；第 18 步：`ThreatArrived { Pos (500, 400), AtSec 18.0, TargetStructureId 1 }`。
 - 对平台调用返回 `false`；在 Order 1 替身中调用抛 `InvalidOperationException`（`LastUpdateSec != TimeSec`）。
 
-**T-01-31 返航接口 `BeginEgress`**
-地图 `60000 × 20000`；保护目标 `t0 (50000, 0)`；`p_glide`、`entry e0`、`direct`、`atGameSec 0`。Order 12 替身在第 30 步调用 `BeginEgress`。
-- 调用时 `Pos == (2100, 0)`；之后 `Phase == Egress`、`Path == [(2100,0), (0,0)]`、`Releases[0].Done == true`。
-- 第 60 步：`ThreatExited { Reason EgressComplete, AtSec 60.0 }`；全程没有 `MunitionReleased`。
+**T-01-31 返航接口 `BeginEgress` 与悬停接口 `Hover`（A-2-27）**
+- **`BeginEgress`**：地图 `60000 × 20000`；保护目标 `t0 (50000, 0)`；`p_glide`、`entry e0`、`direct`、`atGameSec 0`。Order 12 替身在第 30 步调用 `BeginEgress(ctx, th)`。调用时 `Pos == (2100, 0)`；之后 `Phase == Egress`、`Path == [(2100,0), (0,0)]`、`Releases[0].Done == true`。第 60 步：`ThreatExited { Reason EgressComplete, AtSec 60.0 }`；全程没有 `MunitionReleased`。
+- **`Hover`**：同上场景（另建世界），Order 5 替身在第 30 步调用 `ThreatRouting.Hover(ctx, th)`。调用返回 `true`；之后 `Phase == Holding`、`PathEnd == Hold`、`Path == [(2100,0), (2100,0)]`、`PathLengthM == 0.0`、`PathVersion == 2`、`VelMps == (0,0)`、`VertSpeedMps == 0`、`Releases[0].Done == true`。推进至第 100 步：`Pos == (2100, 0)`、`AltM == 8000` 保持不变，无 `MunitionReleased` / `ThreatExited`；`ThreatKinematics.Predict(th, 80.0)` 返回 `Pos (2100, 0)`、`VelMps (0,0)`、`AtPathEnd true`（且 `th.PathEnd == Hold != Arrive`）。
 
 **T-01-32 反辐射归航（`HomingUnitId`）**
 保护目标 `t0 (1000, 0)`；部署方案含一个探测单位（任意 `sensors` 定义）于 `(800, 300)`，其实体 ID 记为 `R`（= 2）；`m100`、`entry e0`、`direct`、`atGameSec 0`（威胁 ID 3）。
@@ -1330,15 +1335,15 @@ return targetSlope >= MaxSlope[b, j]                     # 相等为擦边可见
 **T-01-33 已到达目标不再移动**
 同 T-01-21，但 Order 10 替身为空操作（不删除）。第 80 步之后每步：威胁仍 `Alive`、`Phase == Arrived`、`Pos == (1000, 0)`，不再产生任何事件。
 
-**T-01-34 绕行钩子（A‑50）**
+**T-01-34 绕行钩子（A‑50 与 `bypass` 标签，A-2-10）**
 `EnemyAiHooksOverride.AdjustAvoidance` = 在首末点之间插入 `(12345, 6789)`。波次：`wA { atGameSec 1: [{c1, count 1, eE, direct, s1}] }`、`wB { atGameSec 2: [{p_awacs, count 1, eE, direct, s2}] }`、`wC { atGameSec 3: [{c1, count 1, eE, direct, s1}, {u1, count 1, eE, direct, s1}] }`。
-预期：wA 的 c1 `Path == [eE, s1]`（A‑50 尚未出现）；wC 的 c1 `Path == [eE, (12345,6789), s1]`；wC 的 u1（UAV）不修正。
+预期：wA 的 c1 `Path == [eE, s1]`（A‑50 尚未出现且无 `bypass` 标签）；wC 的 c1 `Path == [eE, (12345,6789), s1]`（`req.A50Active == true`、`req.BypassTagged == false`）；wC 的 u1（UAV）不修正。若将 `wA` 加上 `aiTags: [bypass]`，则 `wA` 的 c1 也调用 `AdjustAvoidance`（`req.A50Active == false`、`req.BypassTagged == true`）。
 
 ### 7.3 解析预测（WS01-005，供 WS01-010）
 
 **T-01-40 `Predict` 公式**
-直接构造威胁（`ThreatTestFactory`）：`Path [(0,0),(100,0),(100,100)]`、`AnchorSec 0.5`、`AnchorS 0`、`SpeedMps = TerminalSpeedMps = 7`、`TerminalStartS = 200`、`StartAltM = EndAltM = 50`、`Profile Linear`、`PathEnd Hold`、`LastUpdateSec 0.5`。
-`Predict(th, 10)` → `Pos (66.5, 0)`、`VelMps (7, 0)`、`AltM 50`；`Predict(th, 20)` → `(100, 36.5)`、`VelMps (0, 7)`；`Predict(th, 37.25)` → `(100, 100)`、`AtPathEnd true`、`VelMps (0,0)`。`Predict(th, 0.0)` → `ArgumentOutOfRangeException`。
+直接构造威胁（`ThreatTestFactory`）：`Path [(0,0),(100,0),(100,100)]`、`AnchorSec 0.5`、`AnchorArcM 0`、`SpeedMps = TerminalSpeedMps = 7`、`TerminalStartArcM = 200`、`StartAltM = EndAltM = 50`、`Profile Linear`、`PathEnd Hold`、`LastUpdateSec 0.5`。
+`Predict(th, 10)` → `Pos (66.5, 0)`、`VelMps (7, 0)`、`AltM 50`、`PathArcM 66.5`；`Predict(th, 20)` → `(100, 36.5)`、`VelMps (0, 7)`、`PathArcM 136.5`；`Predict(th, 37.25)` → `(100, 100)`、`AtPathEnd true`、`VelMps (0,0)`、`PathArcM 200.0`。`Predict(th, 0.0)` → `ArgumentOutOfRangeException`。
 
 **T-01-41 预测 == 实际（逐位）**
 T-01-20 的世界：第 61 步后取 `p = Predict(th, 66.0)`；推进到第 66 步，`th.Pos == p.Pos`、`th.AltM == p.AltM`、`th.VelMps == p.VelMps`（`==` 比较）。T-01-24 的世界：第 61 步后 `Predict(th, 64.0)` 与第 64 步后状态逐位相等。
@@ -1347,6 +1352,12 @@ T-01-20 的世界：第 61 步后取 `p = Predict(th, 66.0)`；推进到第 66 �
 - T-01-20 的世界，第 60 步后 `Legs(th, 60.0)`：3 段：`[60, 63.333333333333336]` `VelMps (30,0)`、`StartPos (0,0)`；`[63.333333333333336, 66.66666666666667]` `VelMps (0,30)`、`StartPos (100,0)`；`[66.66666666666667, +∞]` `VelMps (0,0)`、`StartPos (100,100)`。各段 `StartAltM 1000`、`VertSpeedMps 0`、`VertAccelMps2 0`。在 `t = 61, 64.5` 用段公式算出的位置与 `Predict` 相差 ≤ 1e-6 m。
 - T-01-24 的世界，第 60 步后 `Legs(th, 60.0)`：1 段 `[60, 65]`，`StartAltM 4999.999999999999`、`VertSpeedMps 0`、`VertAccelMps2 −399.99999999999994`；段公式在 `t = 62` 给出 `AltM 4199.999999999999`（与 `Predict` 差 ≤ 1e-6）。
 - `PredictArrivalSec`：T-01-21 的世界第 61 步后返回 `80.0`；T-01-20（Hold）返回 `null`。
+
+**T-01-43 `MaxSpeed3DMps`（C-T1-03）**
+- T-01-21 的 `m100`（`Linear`，`SpeedMps = TerminalSpeedMps = 50`，`L = 1000`，`TerminalStartArcM = 900`，`StartAltM = 100`，`EndAltM = 0`，末段斜率 `1.0`）：`MaxSpeed3DMps(th) ≈ 70.71067811865476`（`= 50 * Math.Sqrt(2.0)`）。
+- T-01-23 的 `l1`（`Linear`，`SpeedMps = 50`，`TerminalSpeedMps = 100`，末段斜率 `1.0`）：`MaxSpeed3DMps(th) ≈ 141.4213562373095`（`= 100 * Math.Sqrt(2.0)`）。
+- T-01-24 的 `b1`（`Parabolic`，`SpeedMps = 2000`，`L = 10000`，`StartAltM = 4999.999999999999`，末端斜率 `2 * A0 / L = tan(45°)`）：`MaxSpeed3DMps(th) ≈ 2828.42712474619`。
+- T-01-20 第 67 步后的悬停平台（`Phase == Holding`）或 T-01-33 第 80 步后的已到达弹药（`Phase == Arrived`）：`MaxSpeed3DMps(th) == 0.0`。
 
 ### 7.4 地形与视线（WS01-006）
 
@@ -1394,7 +1405,7 @@ T-01-20 的世界：第 61 步后取 `p = Predict(th, 66.0)`；推进到第 66 �
 T-01-52 的网格（`MaxElevationM == 100`）：`aMsl = bMsl = 100.000002`（> 100 + 1e-6）→ 可见，且不调用采样（用计数替身验证 `ElevationAt` 调用次数为 0）。`aMsl = 100.0000005` → 进入逐样本计算（结果可见）。
 
 **T-01-55 test_01 东北山脊（正式高程图，集成测试）**
-读取 `data/levels/test_01/map/heightmap.png`（200 × 200、100 m/像素、80–330 m）；**测试自带** `TerrainRulesDef { LosSampleStepPx 0.5, EarthRadiusM 6371000, RefractionK 4/3（= 4.0 / 3.0）, DefaultAntennaHeightM 10 }`（不依赖正式规则文件）。
+读取 `data/levels/test_01/map/heightmap.png`（200 × 200、100 m/像素、80–330 m）；**测试自带** `TerrainRulesDef { LosSampleStepPx 0.5, EarthRadiusM 6371000, RefractionK 4/3（= 4.0 / 3.0）, DefaultAntennaHeightM 10, HorizonAzimuthBins 720 }`（不依赖正式规则文件）。
 - `MaxElevationM ≈ 290.6202792401007`；`ElevationAt(15500, 11500) ≈ 133.64309147783626`；`ElevationAt(11500, 15500) ≈ 139.62462806134127`；`ElevationAt(13500, 13500) ≈ 247.85782406347752`（山脊上）；`ElevationAt(26000, 14000) == ElevationAt(19950, 14000)`（地图外常值延伸）。
 - 观察者：备用阵地 `alt_east (15500, 11500)`，天线 10 m（`aMsl = E + 10`）。目标 `(11500, 15500)`（山脊西北侧）：AGL `50 / 100 / 150 / 200` → **遮挡**；AGL `300 / 500` → 可见。最低可见 AGL ≈ 223.97 m：AGL 220 → 遮挡，AGL 228 → 可见。
 - 对照（不越山脊）：目标 `(11500, 7500)`，AGL 50 → 可见。
@@ -1406,6 +1417,17 @@ T-01-52 的网格（`MaxElevationM == 100`）：`aMsl = bMsl = 100.000002`（> 1
 **T-01-57 AGL 包装**
 T-01-52 网格：`HasLineOfSightAgl((50,150), 10, (1050,150), 190) == HasLineOfSight((50,150), 10, (1050,150), 190)`（地形 0 ⇒ 相同）。
 
+**T-01-58 双山脊地形遮挡与 `HorizonProfile` 多山脊包络（B-T2-31、C-T2-01）**
+`Heightmap(WidthPx 10, HeightPx 1, MetersPerPixel 100, ElevationM [0, 0, 30, 0, 0, 0, 130, 0, 0, 0])`（像素中心 `x_c = 50, 150, …, 950`，`y_c = 50`：近处矮山脊 $R_1$ 在 `x = 250` 高 `30` m；远处高山脊 $R_2$ 在 `x = 650` 高 `130` m）；规则 `losSampleStepPx 0.5, earthRadiusM null, refractionK 1, defaultAntennaHeightM 10, horizonAzimuthBins 720`。
+观察者 `obs = (50, 50)`、`aAgl = 10`（`aMsl = 10`；对 $R_1$ 斜率 `(30 − 10) / 200 = 0.10`，对 $R_2$ 斜率 `(130 − 10) / 600 = 0.20`），构造 `hp = terrain.BuildHorizonProfile(obs, 10, maxRangeM: 900)`。验证以下 4 个目标点的 `terrain.HasLineOfSight(obs, 10, b, bMsl)` 与 `hp.HasLineOfSight(b, bMsl)` 完全一致：
+
+| 目标点 `b` | `bMsl` | 目标斜率 | 预期结果 | 意义 |
+|---|---|---|---|---|
+| `(450, 50)`（两山脊之间，`d = 400`） | `70` | `0.15`（`> R1 0.10`、`< R2 0.20`） | **可见 (`true`)** | 验证两山脊之间的中空目标不会被远处高山脊 $R_2$ 误判遮挡 |
+| `(450, 50)`（两山脊之间山谷低处，`d = 400`） | `30` | `0.05`（`< R1 0.10`） | **遮挡 (`false`)** | 验证被第一道山脊 $R_1$ 遮挡 |
+| `(850, 50)`（第二道山脊之后，`d = 800`） | `130` | `0.15`（`> R1 0.10`、`< R2 0.20`） | **遮挡 (`false`)** | 验证越过 $R_1$ 但低于 $R_2$ 的远方目标被第二道山脊 $R_2$ 遮挡 |
+| `(850, 50)`（第二道山脊之后，`d = 800`） | `170` | `0.20`（`== R2 0.20`） | **可见 (`true`)** | 验证擦边越过第二道山脊 $R_2$ 可见 |
+
 ### 7.5 数据加载与确定性
 
 **T-01-60 `rules/movement.json` 加载**
@@ -1416,7 +1438,7 @@ T-01-52 网格：`HasLineOfSightAgl((50,150), 10, (1050,150), 190) == HasLineOfS
 - `diveSpeedMult 0.5` → `[E_RANGE] rules/movement.json $.diveSpeedMult: 取值 0.5 超出范围 ≥ 1`。
 
 **T-01-61 `rules/terrain.json` 加载**
-`losSampleStepPx 0` → `[E_RANGE] rules/terrain.json $.losSampleStepPx: 取值 0 超出范围 > 0`；`earthRadiusM null` → `EarthRadiusM == null`，`TerrainModel.ReffM == null`。
+`losSampleStepPx 0` → `[E_RANGE] rules/terrain.json $.losSampleStepPx: 取值 0 超出范围 > 0`；`horizonAzimuthBins 0` → `[E_RANGE] rules/terrain.json $.horizonAzimuthBins: 取值 0 超出范围 > 0`；`earthRadiusM null` → `EarthRadiusM == null`，`TerrainModel.ReffM == null`。
 
 **T-01-62 交叉校验**
 - 平台 `loadout[0].options[0] = "nope"` → `[E_UNKNOWN_REF] enemies/platforms.json $.platforms[0].loadout[0].options[0]: 引用的 敌方单位 "nope" 不存在`。
@@ -1428,67 +1450,62 @@ T-01-52 网格：`HasLineOfSightAgl((50,150), 10, (1050,150), 190) == HasLineOfS
 
 ---
 
-## 8. 待决问题
+## 8. 待决问题与跨规格边界（D2b 已全部收口）
 
-### 8.1 需要人决定
+### 8.1 原待决问题的最终裁定
 
-| # | 问题 | 背景 | 建议默认值（理由） |
-|---|---|---|---|
-| Q1 | 高度带 → 米（`rules/movement.json` 的 `altitudeBandsM`） | 数值表只给出 Shahed（500–2000 m）与 Kh‑101（30–70 m）的具体高度，其余只写"极低 / 低 / 中……" | `very_low {30,100}`、`low {100,1000}`、`low_mid {500,3000}`、`mid {3000,6000}`、`mid_high {5000,9000}`、`high {9000,12000}`、`high_dive {12000,20000}`（Kh‑22 / 锆石的巡航段）、`glide {8000,12000}`（地面发射滑翔弹的起始高度）。均为 AGL。定义中有 `altitudeM` 的以定义为准 |
-| Q2 | 弹道 / 俯冲几何 | 数值表只写"弹道 / 准弹道 / 末端机动 / 高空俯冲"；WBS 要求"弹道目标按抛物线下落" | 地图内一段为以进入点为顶点的抛物线，用落地倾角参数化：`ballisticTerminalAngleDeg 70`、`quasiBallisticTerminalAngleDeg 40`、`highDiveAngleDeg 45`、`cruiseDescentAngleDeg 30`、`diveSpeedMult 2`；数据中的速度按**水平速度**使用；`terminal_maneuver` 轨迹同准弹道，机动只体现在 `interceptProbMult`。由平台投放的弹道弹（匕首）在投放瞬间高度从平台高度跳到抛物线顶点高度（简化，不影响落点） |
-| Q3 | 传感器 / 火控雷达的天线离地高度从哪里来 | 视线需要观察者海拔；`sensors.json` / `air_defense.json` 没有该字段 | 由 02 决定；建议在 `sensors.json` 与 `air_defense.json` 单位上增加可选 `antennaHeightM`，缺省用 `rules/terrain.json` 的 `defaultAntennaHeightM`（建议 10 m）；系留气球可填数百米 |
-| Q4 | 一生成就投放的平台（Tu‑22M3、MiG‑31K、Su‑24M 带 Kh‑59）在地图上停留多久 | 数值表说 Tu‑22M3"S‑200/Patriot 可打"，但按本规则平台同一步生成、投放、离开，玩家打不到 | 默认按本规则（停留 0 秒）；若要可打，给 `rules/movement.json` 增加 `launchLingerSec`（平台投放后先原地盘旋该时长再返航），并相应改 3.1.8 |
-| Q5 | 无挂载平台（Orlan‑10、A‑50、直升机、Orion 无挂载时）走完航线后做什么 | 数值表只写行为名 | 悬停在航线终点直到夜晚结束（存活效果持续）；后果：有这类平台存活时 `AllClear` 不会触发 |
-| Q6 | 弹道 / 滑翔类弹药的 `waypointsM` | 物理上不走折线 | 忽略并直飞（`tools/validate` 给出警告）。备选：加载报错 `E_RANGE` |
-| Q7 | 平台挂载 `count: null`（数值表未给数量，如 Su‑25、Su‑35S、Orion） | 必须有个数 | 按 1 枚；建议数值表补数 |
-| Q8 | `maxSpeedKmh` 是否使用 | 平台有巡航 / 最大速度两个值 | 不使用（返航、规避都用巡航速度）；保留字段供以后"遭拦截时加速脱离" |
-| Q9 | `weighted_random` 按每个目标独立抽签，还是按组抽一次 | GDD 未说明 | 每个目标独立抽签（分散压力，符合"按权重分布"直觉）；需要集中打击时数据用 `structure` 指定 |
-| Q10 | 被 `spawn_wave` 引用的波次是否也按 `atGameSec` 自动生成；注入时 `atGameSec` 的含义 | `events.json` 与 `waves.json` 都能决定时间 | 被引用的波次**不**自动生成；注入时以注入时刻为本波起点，`atGameSec` 不使用 |
-| Q11 | `aiTags` 在生成 / 移动层的效果 | GDD 7.4 的"饱和 = 同一时刻多方向集中到达"可以在生成层自动调整生成时间；"绕行"可以自动生成航线 | 本文件不解释 `aiTags`（只写入 `WaveStarted`）；饱和、绕行由数据作者通过时间与航点表达，04 若要自动化，在 04 中定义并通过注入 / 钩子实现 |
-| Q12 | 巡航剖面的高度按 AGL 恒定（贴地）还是按海拔恒定 | 对 500 m 以上的目标几乎没有区别；对 30–70 m 的巡航导弹，AGL 恒定即"地形跟随" | 全部按 AGL 恒定（实现简单、与"低空突防沿地形"一致） |
-| Q13 | 诱饵（`decoy_flight`）的终点 | Schema 只说"只飞航线不攻击" | 以按权重随机选出的保护目标为假目标点，飞越后沿末段方向直线飞出地图（`ThreatExited`），不落地；备选：飞到假目标点后坠毁（`ThreatArrived`、伤害由 03 按 `damageLevel` 结算） |
-| Q14 | 地球曲率是否计入视线 | GDD 8.1"地形和地平线形成低空盲区" | 计入：`earthRadiusM 6371000`、`refractionK 4/3`（标准大气折射的有效地球半径，公开的物理约定） |
-| Q15 | 视线采样步长 | 精度与性能的取舍 | `losSampleStepPx 0.5`（半个像素，保证不跨过单个像素的山脊顶点） |
-
-### 8.2 需登记到 00_core
-
-| 表 / 位置 | 编号建议 | 内容 |
+| # | 问题 | 决议状态与最终决定（2026-10-17） |
 |---|---|---|
-| 1.1 全局目录文件表 | 21、22 | `rules/movement.json`（`kind: movement`，`MovementRulesDef`，细化 01）；`rules/terrain.json`（`kind: terrain`，`TerrainRulesDef`，细化 01）。T-00-35 的 `LoadedFiles.Count` 随之改为 31 |
-| 1.6 `RulesSet` | — | 追加 `MovementRulesDef Movement`、`TerrainRulesDef Terrain`（字段见本文件 1.5、1.6） |
-| 1.6 敌方模型 | — | `MunitionCategory`、`AltitudeBand` enum（本文件 1.2）；`PlatformDef` 全字段及 `LoadoutEntryDef`、`PlatformWhileAliveDef`、`OtherArmament`、`PlatformBehavior`（本文件 1.3） |
-| 1.5 / 1.6 `Heightmap` | — | 内部以 `double[]` 存储，增加 `internal double[] ElevationArray`（`TerrainModel` 零复制引用） |
-| 1.2 第 15 条交叉引用 | — | `platforms[].loadout[].options[]` ∈ 弹药 ID（`E_UNKNOWN_REF`，类别 `敌方单位`） |
-| 1.2 新增校验 | V1 | `rules/movement.json`：`altitudeBandsM` 恰好 8 个键（缺 → `E_MISSING_FIELD`，多 → `E_UNKNOWN_FIELD`）；角度 `(0, 90)`；`diveSpeedMult ≥ 1`；`rules/terrain.json`：`losSampleStepPx > 0`、`refractionK > 0`、`earthRadiusM` 为 null 或 > 0、`defaultAntennaHeightM ≥ 0`（均 `E_RANGE`，说明文字见 T-01-60、T-01-61） |
-| 1.2 新增校验 | V2 | 波次组 `enemy` 为 `altitudeBand = carrier` 的弹药 → `E_RANGE`（`由载机投放的弹药不能直接出现在波次中`）；非 carrier 弹药 `speedKmh` 为 null 或 0 → `E_RANGE` |
-| 1.2 新增校验 | V3 | 平台 `altitudeBand` 只允许 `very_low … high` → 否则 `E_RANGE`；平台 `cruiseSpeedKmh > 0`（Schema 已有） |
-| 1.3 错误码表 | — | `E_NOT_IMPLEMENTED`：`SimWorld.Create` 时数据用到尚未实现的功能；Detail 格式见本文件 4.3 |
-| 0.5 项目结构 | — | 领域目录追加 `Movement/`（`Nightwatch.Sim.Movement`：`ThreatKinematics`、`ThreatRouting`、`ThreatPath`、枚举）与 `EnemyAi/`（`Nightwatch.Sim.EnemyAi`：`IEnemyAiHooks`、`DefaultEnemyAiHooks`、`TargetChoice`；正式实现归 04） |
-| 2.4 公共字段 | — | `Threat.VertSpeedMps` 的含义明确为 `d(AltM)/dt`（AGL 高度变化率） |
-| 2.6 `SimContext` | — | 追加 `TerrainModel Terrain { get; }`、`IEnemyAiHooks EnemyAiHooks { get; }` |
-| 2.6 `SimConfig` | — | 追加 `[JsonIgnore] IEnemyAiHooks? EnemyAiHooksOverride`（仅测试；写回放时非 null → `InvalidOperationException`，同 `RandomOverride`） |
-| 3.2 `SimWorld.Create` | 3a | 第 3 步之后构造 `TerrainModel`、选定 `IEnemyAiHooks` |
-| 2.5 / 3.7.2 单例组件 | 1 | `WaveState` 字段（本文件 2.3）；`PendingSpawn`、`WaveInjection` 类型 |
-| 2.3 实体 | — | `Threat` 的 01 字段（本文件 2.2 表，含 `PendingRelease`）；`ThreatPhase`、`PathEndAction`、`MotionProfile`、`ThreatTargetKind`、`ThreatExitReason` enum |
-| 2.7 快照 | — | `ThreatView` 字段；`GlobalView` 追加 `PendingSpawnCount`、`SpawnedThreatCount`、`AllWavesSpawned` |
-| 4.2 事件总表 | 100–104 | 字段细化：`WaveStarted { WaveId, AiTags, Injected }`；`ThreatSpawned { ThreatId, DefId, Kind, EntryId, WaveId }`；`MunitionReleased { ParentThreatId, ThreatId, DefId }`；`ThreatArrived { ThreatId, DefId, Pos, TargetKind, TargetStructureId, TargetUnitId }`；`ThreatExited { ThreatId, DefId, Reason }` |
-| 3.1.4 子流表 | — | 无新增。`spawn` 用途补充"挂载选择（`NextInt`）、04 钩子的目标选择"；`movement` 用途确认为"高度区间掷骰" |
-| Q15（剧情事件） | — | 04 写入 `State.Waves.Injections`（`WaveInjection(WaveId, StartAtSec = ctx.TimeSec)`）；被 `spawn_wave` 引用的波次不进入自动时间表 |
+| Q1 | 高度带 → 米（`rules/movement.json` 的 `altitudeBandsM`） | **已决（2026-10-17）**：采用建议默认值 `very_low {30,100}`、`low {100,1000}`、`low_mid {500,3000}`、`mid {3000,6000}`、`mid_high {5000,9000}`、`high {9000,12000}`、`high_dive {12000,20000}`、`glide {8000,12000}`（均为 AGL），写入 `data/rules/movement.json`；定义中有 `altitudeM` 的以定义为准 —— 依据 `B-T2-02` |
+| Q2 | 弹道 / 俯冲几何 | **已决（2026-10-17）**：采用建议默认值 `ballisticTerminalAngleDeg 70`、`quasiBallisticTerminalAngleDeg 40`、`highDiveAngleDeg 45`、`cruiseDescentAngleDeg 30`、`diveSpeedMult 2`；数据速度按水平速度使用；`terminal_maneuver` 轨迹同准弹道，机动只体现在 03 的 `interceptProbMult` —— 依据 `B-T2-22` |
+| Q3 | 传感器 / 火控雷达的天线离地高度从哪里来 | **已决（2026-10-17）**：使用 `rules/terrain.json` 的 `defaultAntennaHeightM = 10` m，不在 `sensors.json` / `air_defense.json` 新增逐单位字段 —— 依据 `B-T2-03`、`A-2-26` |
+| Q4 | 一生成就投放的平台（Tu‑22M3、MiG‑31K、Su‑24M 带 Kh‑59）在地图上停留多久 | **已决（2026-10-17）**：在 `platforms.json`（`PlatformDef`）增加可选字段 `releaseRangeKm`（`ReleaseRangeM`；Tu‑22M3 默认 `60` km，进入防区边缘后飞行一段再投放，留出 S‑300/Patriot 远程猎杀窗口；投放前被击落则未投放弹药不生成）；挂载弹药与平台均为 `null` 时退化为 0 秒停留 —— 依据 `B-T3-09`（正文 1.3、3.1.8、T-01-28 已更新） |
+| Q5 | 无挂载平台走完航线后做什么 | **已决（2026-10-17）**：走完进场路径后悬停在航线终点（`Phase = Holding`，`PathEnd = Hold`）直到夜晚结束或被击落；存活期间阻止 `AllClear` —— 依据 `B-T2-23` |
+| Q6 | 弹道 / 滑翔类弹药的 `waypointsM` | **已决（2026-10-17）**：模拟层忽略 `waypointsM` 并直飞目标；`tools/validate` 对此类配置给出警告 —— 依据 `B-T2-24` |
+| Q7 | 平台挂载 `count: null` | **已决（2026-10-17）**：按 1 枚处理 —— 依据 `B-T2-25` |
+| Q8 | `maxSpeedKmh` 是否使用 | **已决（2026-10-17）**：本版本不使用（进场、返航均用 `cruiseSpeedKmh`），保留字段备后续扩展 —— 依据 `B-T2-26` |
+| Q9 | `weighted_random` 按每个目标独立抽签，还是按组抽一次 | **已决（2026-10-17）**：每个目标独立抽签 —— 依据 `B-T2-27` |
+| Q10 | 被 `spawn_wave` 引用的波次是否自动生成；注入时 `atGameSec` 的含义 | **已决（2026-10-17）**：被引用的波次不进入自动时间表（`WaveSpawnRules.IsStoryOnlyWave`）；注入时以注入时刻 `Math.Max(StartAtSec, ctx.TimeSec)` 为起点 —— 依据 `B-T2-28`、`A-2-28` |
+| Q11 | `aiTags` 在生成 / 移动层的效果 | **已决（2026-10-17）**：生成与移动层通过 `IEnemyAiHooks`（`DeferGroup`、`SaturationSpawnTimes`、`AdjustAvoidance`）及 `WaveInjection.GroupIndices` 与 04 配合实现 `suppress`、`saturate`、`bypass` —— 依据 `B-T2-29`、`A-2-10`（正文 3.1.2、3.1.5、3.1.9 已更新） |
+| Q12 | 巡航剖面的高度按 AGL 恒定还是按海拔恒定 | **已决（2026-10-17）**：全部按 AGL 恒定（低空自动贴地飞行） —— 依据 `B-T2-30` |
+| Q13 | 诱饵（`decoy_flight`）的终点 | **已决（2026-10-17）**：以按权重随机选出的保护目标为假目标点，飞越后沿末段方向直线飞出地图边界（`ThreatExited { DecoyPathEnd }`），不落地 —— 依据 `B-T1-06` |
+| Q14 | 地球曲率是否计入视线 | **已决（2026-10-17）**：计入，`earthRadiusM = 6371000`、`refractionK = 4/3` —— 依据 `B-T1-06` |
+| Q15 | 视线采样步长 | **已决（2026-10-17）**：`losSampleStepPx = 0.5`（半像素），并配合 `horizonAzimuthBins = 720` 的多山脊包络 `HorizonProfile` —— 依据 `B-T1-06`、`B-T2-31`、`C-T2-01` |
 
-### 8.3 与其他规格的边界
+### 8.2 已登记到 `00_core.md` 的清单（全部已并入）
 
-| # | 边界 | 本文件的假设 | 需要谁确认 |
+| 表 / 位置 | 对应提案编号 | 状态与内容 |
+|---|---|---|
+| 1.1 全局目录文件表 | P11 | **已并入**：顺序 21 `rules/movement.json`（`MovementRulesDef`）、顺序 22 `rules/terrain.json`（`TerrainRulesDef`）；合并 03/04 后 `LoadedFiles.Count == 35` |
+| 1.6 `RulesSet` | P11 | **已并入**：`MovementRulesDef Movement`、`TerrainRulesDef Terrain` |
+| 1.6 敌方模型 | P01、B-T3-09、C-T2-08 | **已并入**：`MunitionCategory`、`AltitudeBand` enum；`PlatformDef` 全字段（含 `ReleaseRangeM`、`FirstSeen`、`RadioLinked`、`ReconQuality`）及 `LoadoutEntryDef`、`PlatformWhileAliveDef`、`OtherArmament`、`PlatformBehavior` |
+| 1.5 / 1.6 `Heightmap` | P14 | **已并入**：内部以 `double[]` 存储，提供 `internal double[] ElevationArray` |
+| 1.2 交叉引用与校验 | P18、P19 | **已并入**：`platforms[].loadout[].options[]` ∈ 弹药 ID（`E_UNKNOWN_REF`）；V1–V3 范围与枚举校验 |
+| 1.3 错误码表 | P23 | **已并入**：`E_NOT_IMPLEMENTED` |
+| 0.4.6 `Geo` | P48、A-3-09 | **已并入**：`Geo.FirstEntryIntoCircle(P0, d, C, R)` |
+| 0.5 项目结构 | P46、P49 | **已并入**：`Movement/`、`EnemyAi/`（含 `EnemyAiQueries.AvoidanceActive`） |
+| 2.4 `Threat` 字段 | P05、P06、A-3-08 | **已并入**：01 负责的前 32 个哈希字段（弧长字段统一 `…ArcM` 后缀）及 `PendingRelease`、枚举 |
+| 2.5 / 3.7.2 单例组件 | P07、A-2-10 | **已并入**：`WaveState`、`PendingSpawn`、`WaveInjection(WaveId, StartAtSec, GroupIndices)` |
+| 2.6 `SimContext` / `SimConfig` | P29、P30、P31 | **已并入**：`SimContext.Terrain`、`SimContext.EnemyAiHooks`、`SimConfig.EnemyAiHooksOverride`；`SimWorld.Create` 第 3a 步构造 |
+| 2.7 快照 | P35 | **已并入**：`ThreatView`；`GlobalView` 的 `PendingSpawnCount`、`SpawnedThreatCount`、`AllWavesSpawned` |
+| 3.1.4 子流表 | P41 | **已并入**：`spawn`、`movement` 用途说明 |
+| 4.2 事件总表 | P45 | **已并入**：事件 100–104 定稿签名 |
+
+### 8.3 与其他规格的边界（全部已对齐）
+
+| # | 边界 | 对齐结论（依据） | 对方 |
 |---|---|---|---|
-| B1 | 保护目标"已摧毁"的判定 | 03 提供只读 `StructureRules.IsDestroyed(Structure)`（或等价字段）；`weighted_random` 排除已摧毁目标 | 03 |
-| B2 | 路径改写（`PathVersion` 变化）后在飞拦截弹的处理 | 本文件只递增 `PathVersion`；03 决定拦截点重算 / 拦截弹失效 | 03 |
-| B3 | 同一步内"先到达、后被拦截"的时间先后 | 第 2 步已发 `ThreatArrived`（`AtSec = 到达时刻`）；若 03 的拦截时刻早于 `ArrivedAtSec`，应由 03 判定拦截优先并阻止 `ImpactSystem` 结算；`Phase == Arrived` 的目标不得再被选为新的交战目标 | 03 |
-| B4 | 视线调用频率 | 本文件只保证单次视线的定义与复杂度；"每步对哪些（传感器，目标）对做视线、是否每 K 步一次"是 02 的探测规则（必须写入数据，属于定义） | 02 |
-| B5 | 天线高度来源 | 见 Q3 | 02 |
-| B6 | 反辐射导弹何时设置 / 清除 `HomingUnitId`、初始目标如何选 | 02（归航随辐射状态）与 04（`air_defense` 选目标钩子）分工；本文件只执行"有归航目标就改航" | 02、04 |
-| B7 | 电子战诱导 / 链路中断的移动后果 | 02 调用 `ThreatRouting.Retarget`（诱导点、坠落点）或 `BeginEgress`；坠落 = `Retarget` 到当前位置附近一点（路径极短，下一步到达，03 按落地结算） | 02 |
-| B8 | `global_alert_on_takeoff`（MiG‑31K 起飞即全图警报）、弹道导弹发射预警 | 02 读取 `ThreatSpawned` + `PlatformDef.Behavior` / `MunitionDef.Category` 产生 `EarlyWarning` | 02 |
-| B9 | Oreshnik 的 6 个子弹头 | 本文件不在飞行中分裂；03 在落地时按 `submunitions` 结算 6 次命中 | 03 |
-| B10 | 已到达目标的删除 | 03 的 `ImpactSystem` 在同一步删除；WS01-011 之前由占位实现删除 | 03、00（占位） |
-| B11 | `known_targets` / `air_defense` 的选择算法、A‑50 绕开防空圈的航线算法 | 04 实现 `IEnemyAiHooks`；只能用传入的 `spawn` 子流，`AdjustAvoidance` 不得用随机数 | 04 |
-| B12 | 剧情注入波次后 `AllClear` 的时机 | `AllWavesSpawned` 只看当前待生成与待注入；若剧情会在之后注入波次，`EndWhenClear` 可能提前结束夜晚 | 04（必要时在剧情事件未全部触发前阻止 `AllClear`） |
-| B13 | 地形服务被 02（探测）、03（交战射界）共用 | `TerrainModel` 放在 `SimContext`，接口见 2.5 | 02、03 |
+| B1 | 保护目标"已摧毁"的判定 | **已对齐（A-2-29）**：`WeightedStructure()` 直接读取 `s.Hp > 0`（`Structure.Hp` 已在 00 登记），不调用 `StructureRules.IsDestroyed` | 03 |
+| B2 | 路径改写（`PathVersion` 变化）后在飞拦截弹的处理 | **已对齐（A-2-09）**：03 在 `Interceptor.TargetPathVersion` 记录发射时的 `th.PathVersion`；`InterceptorResolutionSystem` 检测到 `TargetPathVersion != th.PathVersion` 时令拦截弹按 `TargetLost` 自毁并触发补射 | 03 |
+| B3 | 同一步内"先到达、后被拦截"的时间先后 | **已对齐（A-4-03）**：第 7 步不得向 `Phase == Arrived` 的目标新发射拦截弹；第 8 步允许命中时刻 `HitAtSec <= th.ArrivedAtSec` 的在飞拦截弹结算命中（若摧毁目标，第 10 步 `ImpactSystem` 因 `!th.Alive` 跳过落地伤害） | 03 |
+| B4 | 视线调用频率与单步 < 2 ms 预算 | **已对齐（B-T2-31、C-T2-01）**：本文件在 `TerrainModel` 提供 `BuildHorizonProfile`（720 方位桶 × 径向单调非降累积最大遮挡斜率包络 `HorizonProfile`），支持多山脊地形下的 $O(1)$ 查表 | 02、04 |
+| B5 | 天线高度来源 | **已对齐（B-T2-03、A-2-26）**：统一使用 `rules/terrain.json` 的 `defaultAntennaHeightM = 10` m（04 绕行网格用 `bypass.siteAntennaHeightM = 10` m）；`TerrainModel` 同时提供 `HasLineOfSight`（MSL）与 `HasLineOfSightAgl`（AGL） | 02、04 |
+| B6 | `TargetUnitId` 与 `HomingUnitId` 的读写归属 | **已对齐（A-2-04、A-2-06）**：`Threat.TargetUnitId` 唯一写入者为 01（生成、投放继承、`ApplyHoming`）；`Threat.HomingUnitId` 唯一写入者为 02 第 6 步 `EmissionSystem`，01 在下一步第 2 步 `ApplyHoming` 读取 | 02、04 |
+| B7 | 电子战诱导 / 链路中断的移动后果 | **已对齐（A-2-27）**：02 第 5 步 `ElectronicWarfareSystem` 统一调用 `ThreatRouting.Retarget`（诱导改航）、`ThreatRouting.BeginEgress`（`Return` 返航）、`ThreatRouting.Hover`（`Hover` 原地悬停）；`Crash` 由 02 直接发 `EwLinkCut` 并 `Remove` | 02 |
+| B8 | `global_alert_on_takeoff`、弹道导弹发射预警 | **已对齐（A-2-28）**：02 读取 `ThreatSpawned` 与 `WaveSpawnRules.IsStoryOnlyWave` 产生预警 | 02 |
+| B9 | Oreshnik 的 6 个子弹头 | **已对齐**：飞行中为单个 `Threat`，03 在 `ImpactSystem` 落地时按 `submunitions` 结算 6 次命中 | 03 |
+| B10 | 已到达目标的删除与 `ThreatArrived` 范围 | **已对齐（A-2-03、A-4-04）**：`ThreatArrived` 只由 `Kind == Munition` 产生；03 的 `ImpactSystem`（Order 10）在同一步消费并 `Remove` | 03 |
+| B11 | 04 钩子扩展签名与压制 / 饱和 / 绕行 / 暴露度 100 改打 | **已对齐（A-2-10、B-T3-05）**：`IEnemyAiHooks` 扩展为 3.1.9 签名（含 `TargetRequest`、`AvoidanceRequest`、`SelectWeightedRandomOverride`、`DeferGroup`、`SaturationSpawnTimes`），`WaveInjection` 含 `GroupIndices` | 04 |
+| B12 | 剧情注入与压制波推迟后 `AllClear` 的时机 | **已对齐（A-4-02）**：00 3.5 的 `AllClear` 同时检查 `Waves.AllWavesSpawned && EnemyIntel.HeldWaves.Count == 0 && !StoryRules.HasPendingScheduledSpawn(ctx)` | 00、04 |
+| B13 | `Predict` 的 `AtPathEnd` 与悬停目标拦截 | **已对齐（A-2-02）**：`AtPathEnd` 对 `PathEnd == Hold` 的悬停目标也为 `true`；03 `InterceptSolver` 使用 `p.AtPathEnd && th.PathEnd == PathEndAction.Arrive` 判定已落地 | 03 |
+

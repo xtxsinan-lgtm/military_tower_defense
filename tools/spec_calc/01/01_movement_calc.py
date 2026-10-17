@@ -254,19 +254,19 @@ s_rel = u * seg_len
 prel = (P0[0] + u*dx, P0[1] + u*dy)
 print(f"  Oblique Entry (2000,600)->(0,0), R=1000: seg={seg_len:.6f}, u={u:.12f}, s_rel={s_rel:.6f}, pos=({prel[0]:.6f},{prel[1]:.6f}), dist_to_T={math.hypot(prel[0], prel[1]):.6f}")
 
-# ---------- Case G: T-01-28b Platform with releaseRangeKm=9.0 (ReleaseRangeM=9000) ----------
-# Entry eE=(10000,0) -> Target s1=(0,0), p_edge: v=200 m/s, alt=8000, ReleaseRangeM=9000
-# Carries 1x m_arm (ReleaseRangeM=null, v=300 m/s, alt=5000, dive 45 deg -> sD = 9000 - 5000 = 4000)
-# R = m.ReleaseRangeM ?? p.ReleaseRangeM ?? +inf = 9000 -> s_rel = 10000 - 9000 = 1000 m, pos = (9000, 0)
-# Platform path: [(10000,0), (9000,0), (10000,0)], L = 2000 m, TurnArcM = 1000 m
-# Release at t = 1000 / 200 = 5.0 s (Step 5); Platform exits at t = 2000 / 200 = 10.0 s (Step 10)
-# Released m_arm: SpawnAtSec = 5.0, Entry = (9000,0) -> (0,0), L_m = 9000, v_m = 300 m/s, arrives at t = 5 + 9000/300 = 35.0 s (Step 35)
-print("\n=== T-01-28b Platform p_edge with releaseRangeKm=9.0 (ReleaseRangeM=9000) ===")
-print("  s_rel = 1000 m, release pos = (9000, 0), t_rel = 5.0 s (Step 5)")
-print("  Platform exits at s = 2000 m, pos = (10000, 0), t_exit = 10.0 s (Step 10)")
-print("  m_arm (v=300 m/s, L=9000 m): at Step 5 pos=(9000,0), Step 6 pos=(8700,0), arrives Step 35 (t=35.0)")
+# ---------- Case G: T-01-28b Platform p_edge_r with releaseRangeKm=13.6 (ReleaseRangeM=13600, Mini01) ----------
+# Entry eE=(25000,10000) -> Target s1=(10000,10000), dist = 15000 m, p_edge_r: v=70 m/s, alt=8000, ReleaseRangeM=13600
+# Carries 1x a1 (ReleaseRangeM=null, v=200 m/s, alt roll 0.5 in [30,70] -> 50 m)
+# R = m.ReleaseRangeM ?? p.ReleaseRangeM ?? +inf = 13600 -> s_rel = 15000 - 13600 = 1400 m, pos = (23600, 10000)
+# Platform path: [(25000,10000), (23600,10000), (25000,10000)], L = 2800 m, TurnArcM = 1400 m
+# SpawnAtSec = 60.0 (Step 60); Release at t = 60 + 1400 / 70 = 80.0 s (Step 80); Platform exits at t = 60 + 2800 / 70 = 100.0 s (Step 100)
+# Released a1: SpawnAtSec = 80.0, Entry = (23600,10000) -> (10000,10000), L_m = 13600, v_m = 200 m/s, arrives at t = 80 + 13600/200 = 148.0 s (Step 148)
+print("\n=== T-01-28b Platform p_edge_r with releaseRangeKm=13.6 (ReleaseRangeM=13600, Mini01) ===")
+print("  s_rel = 1400 m, release pos = (23600, 10000), t_rel = 80.0 s (Step 80)")
+print("  Platform exits at s = 2800 m, pos = (25000, 10000), t_exit = 100.0 s (Step 100)")
+print("  a1 (v=200 m/s, L=13600 m): SpawnAtSec=80.0, arrives Step 148 (t=148.0)")
 
-# ---------- Case H: T-01-43 MaxSpeed3DMps ----------
+# ---------- Case H: T-01-43 MaxSpeed3DMps (Mini01) ----------
 def max_speed_3d(profile, phase, L, sD, v1, v2, A0, Aend):
     if phase in ("Arrived", "Holding") or L <= 0.0:
         return 0.0
@@ -277,16 +277,17 @@ def max_speed_3d(profile, phase, L, sD, v1, v2, A0, Aend):
         slope = abs(A0 - Aend) / (L - sD) if L > sD else 0.0
     return vh_max * math.sqrt(1.0 + slope * slope)
 
-print("\n=== T-01-43 MaxSpeed3DMps ===")
-# 1. m_shahed (Linear, L=1000, sD=800, v1=v2=50, A0=200, Aend=0): slope = 200/200 = 1.0 -> 50 * sqrt(2)
-v3d_shahed = max_speed_3d("Linear", "Ingress", 1000.0, 800.0, 50.0, 50.0, 200.0, 0.0)
-# 2. m_lancet (Linear, L=915, sD=765, v1=30, v2=75, A0=150, Aend=0): slope = 150/150 = 1.0 -> 75 * sqrt(2)
-v3d_lancet = max_speed_3d("Linear", "Ingress", 915.0, 765.0, 30.0, 75.0, 150.0, 0.0)
-# 3. m_bal (Parabolic, L=6000, sD=6000, v1=v2=2000, A0=50000, Aend=0): slope = 100000/6000 = 50/3 -> 2000 * sqrt(1 + 2500/9)
-v3d_bal = max_speed_3d("Parabolic", "Ingress", 6000.0, 6000.0, 2000.0, 2000.0, 50000.0, 0.0)
+print("\n=== T-01-43 MaxSpeed3DMps (Mini01) ===")
+# 1. m100 (Linear, L=1000, sD=900, v1=v2=50, A0=100, Aend=0): slope = 100/100 = 1.0 -> 50 * sqrt(2)
+v3d_m100 = max_speed_3d("Linear", "Ingress", 1000.0, 900.0, 50.0, 50.0, 100.0, 0.0)
+# 2. l1 (Linear, L=1025, sD=925, v1=50, v2=100, A0=100, Aend=0): slope = 100/100 = 1.0 -> 100 * sqrt(2)
+v3d_l1 = max_speed_3d("Linear", "Ingress", 1025.0, 925.0, 50.0, 100.0, 100.0, 0.0)
+# 3. b1 (Parabolic, L=10000, sD=0, v1=v2=2000, A0=10000*tan(45)/2, Aend=0): slope = tan(45) -> 2000 * sqrt(2)
+v3d_b1 = max_speed_3d("Parabolic", "Ingress", 10000.0, 0.0, 2000.0, 2000.0, 10000.0 * math.tan(math.radians(45.0)) / 2.0, 0.0)
 # 4. Holding / Arrived -> 0.0
-v3d_hold = max_speed_3d("Linear", "Holding", 1000.0, 1000.0, 40.0, 40.0, 1000.0, 1000.0)
-print(f"  m_shahed: {v3d_shahed:.12f} (= 50 * sqrt(2))")
-print(f"  m_lancet: {v3d_lancet:.12f} (= 75 * sqrt(2))")
-print(f"  m_bal:    {v3d_bal:.12f}")
-print(f"  holding:  {v3d_hold:.12f}")
+v3d_hold = max_speed_3d("Linear", "Holding", 200.0, 200.0, 30.0, 30.0, 1000.0, 1000.0)
+print(f"  m100:    {v3d_m100:.16f} (= 50 * sqrt(2))")
+print(f"  l1:      {v3d_l1:.16f} (= 100 * sqrt(2))")
+print(f"  b1:      {v3d_b1:.16f} (= 2000 * sqrt(2))")
+print(f"  holding: {v3d_hold:.16f}")
+
