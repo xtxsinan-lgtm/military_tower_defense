@@ -33,7 +33,7 @@
 | 事件值 | 04：新增 408 `EnemyGroupsReleased`；02 建议的终结事件见 A-4-03 | 408 `EnemyGroupsReleased`；**209–210 之后不新增**（A-4-03 复用 208 `EwLinkCut`） |
 | `PlayerUnitCommon` 字段的哈希顺序 | 00（4 个）、02（6 个）、03（3 个）、04（2 个，"位于 `DeployState` 之后"）、05（`RosterId`，不哈希） | 见 1.4 合并表 |
 | `Threat` 字段的哈希顺序 | 01（32 个）、02（10 个）、03（4 个） | 01 → 02 → 03，另加 A-2-07 的 `EwEverCovered`（02 段末） |
-| `CarryIn.KnownTargets` 类型 | 04：`IReadOnlyList<KnownTargetCarry>?`；05：`KnownTargetCarry?`（不透明单对象） | 04 的列表（见 A-2-19） |
+| `CarryIn.KnownTargets` 类型 | 04：`IReadOnlyList<KnownTargetCarry>?`；05：`KnownTargetCarry?`（不透明单对象） | 04 的列表（见 A-2-18） |
 | 指挥点奖励字段名 | 04：`CarryIn.BonusCommandPoints`（`int?`）；05：`CommandPointsBonus`（`int`） | `CommandPointsBonus`（`int`，缺省 0；05 拥有 `CarryIn`） |
 
 ### 1.2 数据加载（00 第 1 节）
@@ -42,7 +42,7 @@
 |---|---|---|---|---|
 | P01 | 1.1 全局目录表，L304 之后 | 追加 6 行 | `21 rules/movement.json kind movement → MovementRulesDef（01）`；`22 rules/terrain.json kind terrain → TerrainRulesDef（01）`；`23 rules/engagement.json kind engagement → EngagementRulesDef（03）`；`24 rules/civil.json kind civil → CivilRulesDef（03）`；`25 rules/enemy_ai.json kind enemy_ai → EnemyAiRulesDef（04）`；`26 rules/commands.json kind commands → CommandRulesDef（04）` | 01 8.2、03 R-DATA、04 G |
 | P02 | 1.1，L320 | 改写 | "`loc/`、`narrative/`、`schema/` 不由模拟层读取；`campaign/`、`rules/campaign.json`、`levels/<id>/flow.json` 不由 `DataLoader.LoadLevel` 读取，由 `CampaignDataLoader`（`sim/Campaign/Data`）读取，不计入 `LevelData.LoadedFiles`" | 05 R-00-6 |
-| P03 | 1.2 第 3 条，L326 | 改写 | "`kind` 字段：Schema 要求 `kind` 的文件（`rules/*`、`level_content`、`map/*`、05 的 `campaign/*`）读取并校验；`level.json`、`waves.json`、`units/*`、`enemies/*`、`support/*` 没有 `kind` 字段，不校验"（见 A-2-25） | 审查 |
+| P03 | 1.2 第 3 条，L326 | 改写 | "`kind` 字段：Schema 要求 `kind` 的文件（`rules/*`、`level_content`、`map/*`、05 的 `campaign/*`）读取并校验；`level.json`、`waves.json`、`units/*`、`enemies/*`、`support/*` 没有 `kind` 字段，不校验"（见 A-2-24） | 审查 |
 | P04 | 1.2 第 13 条，L336 末尾 | 追加 | "战斗机武器 ID（`fighters[].weapons[].id`）与防空武器 ID 不得重复" | 03 R-DATA |
 | P05 | 1.2 第 15 条，L338 末尾"其他规格可在本表追加"之前 | 追加 | `platforms[].loadout[].options[]` ∈ 弹药 ID（敌方单位）；`ewUnits[].effectiveAgainst[]` / `ineffectiveAgainst[]`、`sensors[].trackQualityUpgrades[].enemies[]` ∈ 敌方 ID；`support[].affectsSameAsEwUnit` ∈ 电子战单位 ID（单位）；`support[].fighterRef` ∈ 战斗机 ID（战斗机）；`support[].fighterWeaponRef` ∈ 该战斗机武器 ID（武器）；`support[].reinforcementUnit`、`coverageUnits[]` ∈ 防空单位 ID（单位）；`fighters[].weapons[].interceptClass` ∈ `intercept.classes`（拦截类别）；`emission.defaultStrategy` ∈ `strategies[].id`（辐射策略）；`events.json` 的 `unit_destroyed.ref` ∈ 单位 ID、`structure_destroyed.ref` ∈ 保护目标 ID、`wave_spawned.ref` / `spawn_wave.wave` ∈ 任一夜波次 ID | 01 V-、02 H6、03 R-DATA、04 H |
 | P06 | 1.2，第 16 条之后 | 新增第 17 条"规格追加校验" | 列出：01 V1–V3；02 H5、H7；03（`damage.bands` 覆盖 1–10 不重叠；`defeat`/`victory` 条件类型限制；`restrictedEngagement.reactionTimeMult` 两处相等）；04（1.1.1 范围、`commandPointCosts` 键规则、`commandPointsPerNight ∈ economy 范围`、`events.json` 必填项）。正文仍在各规格，00 只列索引 | 01/02/03/04 |
@@ -104,7 +104,7 @@
 |---|---|---|---|---|
 | P27 | `SimState` 单例块，L781 之后 | 追加 | `public EngagementState Engagement;  // 03：弹药池剩余、已记录的保留原因` | 03 2.8 |
 | P28 | 3.7.2 表，L1259 之后 | 追加 | `| 10 | EngagementState | 03 |` | 03 2.8 |
-| P29 | 3.7.2 表 1–9 行 | 补注字段来源 | `WaveState` → 01 2.3（`WaveInjection` 追加 `GroupIndices`，04 3.3.0）；`SensingState` / `EwState` → 02 2.7 / 2.8；`CommandState` / `EnemyIntelState` → 04 2.3 / 2.4；`SupportState` / `GridState` / `CivilState` / `ScoringState` → 03 2.8（`ScoringState` 追加 A-4-03、A-2-21 的计数） | 01–04 |
+| P29 | 3.7.2 表 1–9 行 | 补注字段来源 | `WaveState` → 01 2.3（`WaveInjection` 追加 `GroupIndices`，04 3.3.0）；`SensingState` / `EwState` → 02 2.7 / 2.8；`CommandState` / `EnemyIntelState` → 04 2.3 / 2.4；`SupportState` / `GridState` / `CivilState` / `ScoringState` → 03 2.8（`ScoringState` 追加 A-4-03、A-2-20 的计数） | 01–04 |
 
 ### 1.6 `SimWorld` 流程、`SimContext`、`SimConfig`（00 2.6 / 3.2 / 3.4 / 3.5）
 
@@ -114,7 +114,7 @@
 | P31 | `SimConfig`，L830 之后 | 追加 | `public bool AutoChoicePrompts { get; init; } = true;`（参与回放）；`[JsonIgnore] public IEnemyAiHooks? EnemyAiHooksOverride { get; init; }`（仅测试，写回放时非 null 抛异常）；`[JsonIgnore] public bool CaptureDebug { get; init; } = false;`（不影响任何系统，06） | 04、01、06 |
 | P32 | `PlacedUnit`，L839 之后 | 追加 | `public bool FirstNightAtNewPosition { get; init; }`（05 填）；`public int RosterId { get; init; }`（0 = 非战役单位） | 02 I、05 R-00-1 |
 | P33 | `UnitSettings`（L839 注释所指） | 定义 | 字段：02 1.11 全部（`EmissionPolicyId`、`DutyOnSec`、`DutyOffSec`、`OnArmIncoming`、`AfterFiring`、`NeighborTakeover`、`LurePoint`、`NightAids`、`EquipmentEwIds`）+ 03 `UnitEngagementSettings? Engagement` | 02、03 |
-| P34 | `CarryIn`，L841 | 替换 | 05 2.4.1 的全集；`KnownTargets` 类型为 `IReadOnlyList<KnownTargetCarry>?`，`KnownTargetCarry(string UnitDefId, Vec2 Pos, double Exposure, int RosterId)`（04 定义，`RosterId` 见 A-2-19）；`CommandPointsBonus int` | 05、04 |
+| P34 | `CarryIn`，L841 | 替换 | 05 2.4.1 的全集；`KnownTargets` 类型为 `IReadOnlyList<KnownTargetCarry>?`，`KnownTargetCarry(string UnitDefId, Vec2 Pos, double Exposure, int RosterId)`（04 定义，`RosterId` 见 A-2-18）；`CommandPointsBonus int` | 05、04 |
 | P35 | 3.2 第 3 步之后，L1059 | 新增第 3a 步 | "构造 `TerrainModel(level.Heightmap, level.Catalog.Rules.Terrain)`；选定 `IEnemyAiHooks`（`config.EnemyAiHooksOverride ?? EnemyAiHooks`）" | 01 |
 | P36 | 3.2 第 7 步，L1065 | 追加 | "创建每个实体时写 `Placement`、`RosterId`；`FireUnit` 创建后立即调用 03 的 `FireUnitFactory.Init`（建立 `Weapons` 列表，不分配弹药）"（A-4-05） | 02、05、03 |
 | P37 | 3.2 第 8 步，L1066 | 改写 | "按 `RosterId` 把 `CarryIn.Units[i]` 中的 `Exposure`、`DamageEfficiencyMult`、`LightDamaged`、`CrewConsecutiveNights`、`AceCrew` 写入对应实体；其余 `CarryIn` 字段（弹药、保护目标 HP、已知目标、警报响应度、欺骗单位寿命……）由所属系统在第 9 步 `Initialize` 中读取"（A-4-05） | 05、03 |
@@ -218,7 +218,7 @@
 | P45 | 2.7 注释，L892 | 改写 | `GlobalView` 字段：01（`PendingSpawnCount`、`SpawnedThreatCount`、`AllWavesSpawned`）、03（`AlertOn`、`ShelteredFrac`、`Responsiveness`、`SortiesRemaining`、`GridCollapsed`、`WeightedLossFrac`）、04（`CommandPoints`、`CommandPointsInitial`、`EnemyKnownTargets`、`HeldWaveCount`） | 01/03/04 |
 | P46 | 2.7 各单位视图 | 补注 | 我方单位视图公共追加：`DeployState`、`DeployPhaseEndTick`、`RelocationDest`（04）、`EmitterOn`、`PolicyId`、`FcMode`、`Exposure`、`ExposurePeak`、`NewPositionPenalty`（02）、`DamageEfficiencyMult`、`SuspendedUntilSec`、`LightDamaged`（03）；`TrackView` 按 02 2.9；`ThreatView` 按 01 2.4 | 02/03/04/06 |
 | P47 | 0.5 项目结构，L218 | 改写目录列表 | 追加 `Movement/`、`EnemyAi/`（01、04）、`Campaign/`、`Economy/`、`Save/`、`Production/`、`Research/`（05）；`Commands/` 含 `CommandStage`、`DeploymentStage`、`ChoiceStage`、`StoryStage`、`CommandPointRules`、`DeploymentValidator`、`DeploymentRules`、`StoryRules`（04） | 01、04、05 |
-| P48 | 0.4.4，L189 之后 | 追加 | `Geo` 公共函数（全目录唯一实现）：`BearingRad`、`Normalize`（0.4.5）、`PointInPolygon(Vec2 p, IReadOnlyList<Vec2> poly)`——代码取 03 3.0（半开规则，边界结果由公式决定）；02 3.1、04 3.5.2 改为引用此处（A-2-24） | 02 J、03 B16 |
+| P48 | 0.4.4，L189 之后 | 追加 | `Geo` 公共函数（全目录唯一实现）：`BearingRad`、`Normalize`（0.4.5）、`PointInPolygon(Vec2 p, IReadOnlyList<Vec2> poly)`——代码取 03 3.0（半开规则，边界结果由公式决定）；02 3.1、04 3.5.2 改为引用此处（A-2-23） | 02 J、03 B16 |
 | P49 | T-00-35，L1756 | 改写 | `LoadedFiles.Count == 35`（26 个全局 + 8 个关卡 JSON + 1 个 PNG） | 合并 |
 | P50 | 8 Q5、Q7、Q10、Q11、Q15、Q16、Q17 | 关闭 | Q5 → 04 3.1 + 03 3.7.1；Q7 → 04；Q10 → 05 / B-T2-07；Q11 → 05 R-00-9；Q15 → 04 3.8；Q16 → B-T2-16；Q17 → 04 3.4.5 | 各规格 |
 
@@ -407,3 +407,71 @@
 - `CommandPointRules` 签名：03 D15 与 04 3.6 一致。
 - `EmitterQueries.ListActive`、`DeceptionUnit.SeenThrough`、`PendingRelocationAltId`、`UnitDeployStateChanged` 三个追加字段：02 与 04 一致。
 - `WaveInjection` 的写入方：04（阶段 0d、系统 12），与 01 2.3 一致（但需 A-2-10 追加 `GroupIndices`）。
+
+---
+
+## 3. 术语与字段名
+
+### A-3-01 `ChoiceRequest.CreatedTick` 与 `Entity.CreatedTick` 重名
+- 位置：04 2.2 表第 5 行、2.5 `ChoiceRequestView`、8.2 A；00 2.2.2 `Entity.CreatedTick`（"创建时的 State.Tick"，由存储写入并参与公共哈希）。
+- 问题：子类再声明同名字段会遮蔽基类字段（C# 警告 CS0108，`TreatWarningsAsErrors` 下编译失败），且哈希会重复写。
+- 建议：删除 04 2.2 表中的 `CreatedTick` 行，直接使用基类 `CreatedTick`（`Add` 时由存储填写，值相同）；`ChoiceRequestView` 与 `ChoiceRequested` 事件中的同名字段保留（取自基类）。
+- 分级：T1。
+
+### A-3-02 03 的数据模型改名不遵守 00 1.2 的机械映射
+- 位置：00 1.2 第 8–10 条与 1.6 开头（"命名必须遵守 1.2 与 0.4.2"）；03 1.5（`modifiers.trackApproximateCued.probMult` → `TrackApproximateCuedProbMult`、`noCueSelfSearch.firstShotReactionTimeMult` → `NoCueFirstShotReactionMult`、`interceptorDroneInFriendlyEw.probMult` → `DroneInFriendlyEwProbMult`、`evasiveTargetVsInterceptorDrone` → `EvasiveVsDrone`）、1.8（`splashFalloff.center` → `SplashCenterMult`）、1.9（`urbanInterceptDamageFraction` → `UrbanFrac`、`urbanInterceptRadiusCells` → `UrbanRadiusM`、`ruralInterceptDamageFraction` → `RuralFrac`、`divertedImpactFullDamageInUrban` → `DivertedFullDamageInUrban`）、1.10（`airspace.restrictedEngagement` → `Airspace.Restricted`）。
+- 问题：加载器按"JSON 路径 → C# 路径"机械生成 / 审查时，这些名字无法从 JSON 推出；02、04 都按机械规则命名，03 是唯一例外。
+- 建议：03 的数据模型（`…Def` 类型）一律按机械规则：`Modifiers.TrackApproximateCued.ProbMult`、`Modifiers.NoCueSelfSearch.FirstShotReactionTimeMult`、`SplashFalloff.Center`、`UrbanInterceptDamageFraction`、`UrbanInterceptRadiusM`、`Airspace.RestrictedEngagement`……；正文伪代码若想用短名，在 03 1.13 之后加"派生只读属性"小表（如 `UrbanFrac => UrbanInterceptDamageFraction`），派生属性不参与加载。
+- 分级：T1。
+
+### A-3-03 未登记的单位后缀
+- 位置：00 0.4.1（只登记 `Sec / Tick / M / AltM / Mps / PerSec / Rad / Musd`）；01 2.2 / 3.2.9 `VertAccelMps2`；03 `…Frac`（`GridDamageFrac`、`ProtectionFrac`、`ShelteredFrac`）；05 `cityResourcePerDay`（已在 level.json）、`dayExposureDecayPerDay`、`structureHpFracPerDay`、`startDays`、`arrivalDays`、`woundedNights`、`durationNights`、`returnAfterDay`。
+- 建议：→ P10 登记 `Mps2`、`Frac`、`PerDay`；另登记战役层计数后缀 `Days`、`Nights`（整数，战役日 / 夜，不换算；`…Day` 表示"第几天"）。
+- 分级：T1。
+
+### A-3-04 数据字段名违反后缀约定（需改 data）
+- 位置：02 8.1 Q37 / 8.2 H（`sensorExposureLevelRates`、`ewExposureLevelRates` 值为每游戏秒但无后缀；`configurableOnOffGameSec` 是布尔；`offsetCellsAdd` 后缀不在末尾）；05 1.3 `adaptation.rules[].effect`（`kind: uav_altitude_add_m` + `value`，单位藏在枚举名里）。
+- 建议：data 改名：`sensorExposureLevelRatesPerGameSec`、`ewExposureLevelRatesPerGameSec`、`configurableOnOff`、`offsetAddCells`；05 的效果改为 `{ "kind": "uav_altitude_add", "valueM": 1000 }`。改名完成后删除 P09 的加载器特例。
+- 分级：T1（与 B 中 02 Q37 的批准同时执行）。
+
+### A-3-05 `PlayerUnitCategory` 在事件中叫 `Kind`、在记录中叫 `Category`
+- 位置：00 4.2（`PlayerUnitDestroyed { UnitId, DefId, Kind }`）；03 4.2（`PlayerUnitDamaged / Destroyed … PlayerUnitCategory Kind`，并注"沿用 00 的 `Kind`"）、3.8.6（`UnitLossRecord.Category`、`UnitExposure.Category`）；02 3.7.2 `ActiveEmitter.Kind`（`EntityKind`）；04 3.2.5（候选 `Kind = KindOf(UnitId)`，`KnownTargetKind`）；00 1.6 注释"`FireUnit / Sensor / Ew / Deception`"而 enum 成员是 `Fire`。
+- 问题：同一份数据里 `Kind` 分别表示 `ThreatKind`、`PlayerUnitCategory`、`EntityKind`、`KnownTargetKind`、`ChoiceKind`、`WeaponKind`。在事件 / 记录这一层同概念两个名字。
+- 建议：凡类型为 `PlayerUnitCategory` 的字段一律命名 `Category`（00 4.2 / 03 4.2 的两个事件字段改名）；`ActiveEmitter.Kind` 改名 `EntityKind`；其余 `Kind` 保持（类型名已区分）。00 1.6 `GetPlayerUnitCategory` 注释改为 `Fire / Sensor / Ew / Deception`。
+- 分级：T1。
+
+### A-3-06 "探测"一词：00 的 `Detection`（每步原始探测）与 02 的 `TrackRulesDef.Detection`（规则块）同名
+- 位置：00 0.3.3 `Detection`；02 1.6（`detection` → `Detection : DetectionRulesDef`）及正文 `Detection.LowAltitudeBelowM`、`Detection.ErrorRadiusM[q]` 等（与 `new Detection(...)` 记录在同一段伪代码中混用）。
+- 建议：新数据块的 JSON 键改为 `detectionRules`（C# `DetectionRules`），02 正文中作为规则引用的 `Detection.` 全部改为 `DetectionRules.`。
+- 分级：T1。
+
+### A-3-07 `EwDiverted.EwUnitId` 有时装 `SupportAsset` 的 ID
+- 位置：02 4.1 第 207 行（"`NationalSpoof` 时 `EwUnitId` 为 `SupportAsset` 的实体 ID"）。
+- 问题：同名字段指向两类实体，消费者（06 通知、复盘）必须先看 `Kind` 才能解释。
+- 建议：字段改名 `SourceId`（含义：造成效果的 `EwUnit` 或 `SupportAsset` 的实体 ID，由 `Kind` 区分）；`EwLinkCut` 同理改 `SourceId`（目前只会是 `EwUnit`）。
+- 分级：T1。
+
+### A-3-08 01 用后缀 `S` 表示弧长（米），与"`Sec` = 秒"易混
+- 位置：01 2.2 `AnchorS`、`PathS`、`TerminalStartS`、`TurnS`，`PendingRelease.AtS`，`ThreatPose.PathS`；00 0.4.1（米 = `M`）。
+- 问题：00 规定长度后缀 `M`；`…S` 不在表中，且读者会误读为秒（如 `AnchorSec` 与 `AnchorS` 并列）。
+- 建议：改为 `AnchorArcM`、`PathArcM`、`TerminalStartArcM`、`TurnArcM`、`PendingRelease.AtArcM`、`ThreatPose.PathArcM`；函数名 `SAt` / `TimeAtS` 可保留（局部数学记号）。
+- 分级：T1。
+
+### A-3-09 同一公式多处实现（违反 00 3.8"同一公式全目录只写一处"）
+- 位置与问题：
+  - "对某标签的射程"：03 1.1 `WeaponParams.RangeFor`；02 3.5.4 `Rw = w.RangeByTagM?[k.Tag] ?? w.RangeM`；04 3.2.6 `RangeFor(defId, tag)`（同名不同参）、3.7.2 内联。
+  - "点在城区"：02 3.1 `InUrban`；03 3.0 `InUrban`。
+  - "直线首次进入圆"：02 3.1 `TimeToEnterRadius`（射线）；01 3.1.8 `ReleaseS`（折线段）——同一二次方程两份写法。
+- 建议：`WeaponParams.RangeFor(WeaponDef, TargetTag)` 随 A-2-30 移至 `Nightwatch.Sim.Rules`，02 / 04 调用它；04 的单位级函数改名 `MaxRangeAgainst(defId, tag)` 并在内部调用 `RangeFor`。`InUrban(LevelData, Vec2)` 放入 `Geo`（P48 同处）。圆进入公式放 `Geo.FirstEntryIntoCircle(Vec2 p, Vec2 d, Vec2 c, double r) : double?`（返回参数 `u ≥ 0`，`d` 为速度或段向量），01 / 02 各自在外层判断 `u ≤ 1` 或换算时间。
+- 分级：T1。
+
+### A-3-10 暴露度峰值：02 `ExposurePeak` 与 03 `ScoringState.ExposureMax` 重复
+- 位置：02 2.1 `ExposurePeak`（第 11 步维护）；03 2.8 `ExposureMax` / `ExposureStart` / `ExposureLast`、3.8.1 第 3 步、3.8.6 `UnitExposure`。
+- 问题：同一量两处维护；03 的唯一理由是"被毁单位的值"。
+- 建议：03 删除 `ExposureMax`、`ExposureLast`，`UnitExposure.Max` 读 `ExposurePeak`、`End` 读 `Exposure`；被毁单位的两值由 A-2-20 的 `DestroyedUnitSnapshots` 提供。`ExposureStart` 保留（夜初值，02 不存）。
+- 分级：T1。
+
+### A-3-11 00 术语表缺少跨规格共用的新名词
+- 位置：00 0.3。
+- 建议：0.3.1 追加 `阶段 0｜Stage0 / CommandStage｜Step 开头、系统 1 之前的命令与剧情阶段（04 3.1）`；0.3.2 追加 `花名册编号｜RosterId`、`部署条目｜Placement`、`辐射控制｜EmitterControl`、`精确持有者｜PreciseHolderIds`、`弹药池｜AmmoPool（夜内） / Depot（战役层，05）`；0.3.3 追加 `已知目标带出记录｜KnownTargetCarry`、`推迟的波次组｜HeldWave`、`覆盖查询｜CoverageQuery`。
+- 分级：T1。
