@@ -1688,7 +1688,7 @@ FNV‑1a 64（常数同 3.1.1），对以下规范字节流计算。全部为**�
 
 ### 4.1 编号规则
 
-事件类型 `SimEventType`、命令类型 `SimCommandType`、拒绝原因 `CommandRejectReason` 都是显式整数值的 enum，按规格分段，**只追加、不重排**：
+事件类型 `SimEventType`、命令类型 `SimCommandType`、拒绝原因 `CommandRejectReason` 都是显式整数值的 enum，按规格分段，**只追加、不重排**（05 白天战役操作使用独立枚举 `CampaignRejectReason`，不合入夜内 `CommandRejectReason`，A-3-06）：
 
 | 段 | 规格 |
 |---|---|
@@ -1714,57 +1714,59 @@ public abstract record SimEvent
 
 - 事件字段只放值（ID、数字、enum、字符串），**不放实体对象引用**。
 - 事件命名：过去式 / 名词短语，PascalCase，类名 = enum 成员名。
+- **`AtSec` 窗口归一化规则（A-4-06）**：若某事件的物理精确时刻 `tSec` 因跨系统顺序而落在当前步窗口左端或更早（例如第 9 步战斗机近距发射的拦截弹在下一步第 8 步结算时 `InterceptAtSec ≤ (Tick − 1) · StepSec`），发出方统一按 `AtSec = tSec > (ctx.Tick - 1) * StepSec ? tSec : null` 归一化，严禁违反 `(Tick − 1) · StepSec < AtSec ≤ Tick · StepSec`。
 
-**事件总表**（字段由"规格"列所指文件第 4 节细化；00 的事件字段在此给全）：
+**事件总表**（字段顺序即 `WriteHash` 写入顺序，A-1.8）：
 
-| 值 | 事件 | 规格 | 含义 / 关键字段 |
+| 值 | 事件 | 规格 | 定稿字段（顺序 = 哈希顺序） |
 |---|---|---|---|
 | 0 | `NightStarted` | 00 | `int NightIndex, int DurationTicks, string Seed` |
 | 1 | `NightEnded` | 00 | `NightOutcome Outcome, NightEndReason Reason, int EndTick` |
 | 2 | `CommandApplied` | 00 | `long CommandSeq, SimCommandType CommandType` |
 | 3 | `CommandRejected` | 00 | `long CommandSeq, SimCommandType CommandType, CommandRejectReason Reason` |
-| 100 | `WaveStarted` | 01 | 一波开始生成（`WaveId`） |
-| 101 | `ThreatSpawned` | 01 | 敌方目标进入（`ThreatId, DefId, EntryId, WaveId`） |
-| 102 | `MunitionReleased` | 01 | 平台投放弹药 / 母弹释放子弹药（`ParentThreatId, ThreatId`） |
-| 103 | `ThreatArrived` | 01 | 到达目标点 / 投放点，移交落地结算（`ThreatId, Pos`） |
-| 104 | `ThreatExited` | 01 | 离开地图或返航，不再参与（`ThreatId`） |
-| 200 | `EarlyWarning` | 02 | 国家层预警（模糊；含弹道导弹发射预警，界面据此减速报警） |
-| 201 | `TrackCreated` | 02 | 新航迹（`TrackId, Quality`） |
-| 202 | `TrackQualityChanged` | 02 | 质量升降（`TrackId, From, To`） |
-| 203 | `TrackLost` | 02 | 航迹丢失 / 删除（`TrackId`） |
-| 204 | `DecoyIdentified` | 02 | 诱饵甄别成功（`TrackId`） |
-| 205 | `EmitterSwitched` | 02 | 雷达开 / 关机（`UnitId, On, Cause`） |
-| 206 | `ArmThreatDetected` | 02 | 反辐射导弹来袭预警（`TrackId, TargetUnitId`）；04 可据此发二选一 |
-| 207 | `EwDiverted` | 02 | 导航干扰 / 欺骗使目标偏离或降档（`ThreatId, EwUnitId`） |
-| 208 | `EwLinkCut` | 02 | 反无人机链路中断（`ThreatId, EwUnitId, Outcome`） |
-| 209 | `ExposureThresholdCrossed` | 02 | 暴露度跨越阈值（`UnitId, Threshold, Rising`） |
-| 210 | `DeceptionTriggered` | 02 | 欺骗单位吸引 / 被识破（`UnitId, ThreatId`） |
-| 300 | `InterceptorLaunched` | 03 | 发射（`FireUnitId, LauncherIndex, WeaponId, InterceptorId, TrackId`） |
-| 301 | `GunFired` | 03 | 身管武器一次射击（`FireUnitId, WeaponId, TrackId`） |
-| 302 | `InterceptResolved` | 03 | 拦截判定（`InterceptorId?, ThreatId, Hit, Probability`；`AtSec` = 拦截时刻） |
-| 303 | `InterceptorExpired` | 03 | 拦截弹失效 / 自毁 / 目标已消失（`InterceptorId, Cause`） |
-| 304 | `EngagementHeld` | 03 | 有目标但未开火及原因（弹药保留、约束区、射程外……），供复盘 |
-| 305 | `AmmoDepleted` | 03 | 某武器弹药耗尽（`FireUnitId, WeaponId`） |
-| 306 | `ThreatImpacted` | 03 | 敌方弹药落地（`ThreatId, Pos, DamageLevel`） |
-| 307 | `StructureDamaged` | 03 | 保护目标受损（`StructureId, HpBefore, HpAfter, SourceThreatId`） |
-| 308 | `StructureDestroyed` | 03 | 保护目标被毁（`StructureId`） |
-| 309 | `PlayerUnitDamaged` | 03 | 我方单位受损 |
-| 310 | `PlayerUnitDestroyed` | 03 | 我方单位被毁（`UnitId, DefId, Kind`） |
-| 311 | `DebrisFell` | 03 | 碎片落地（`Pos, StructureId?`） |
-| 312 | `GridPowerChanged` | 03 | 电网节点通断（`GridNodeId, Powered`） |
-| 313 | `AirRaidAlertChanged` | 03 | 警报拉响 / 解除（`On, Cause`） |
-| 314 | `SupportRequested` | 03 | 呼叫外部支援（`SupportDefId, SupportAssetId`） |
-| 315 | `SupportRefused` | 03 | 呼叫被拒绝（`SupportDefId, Reason`） |
-| 316 | `SupportArrived` | 03 | 支援到位（`SupportAssetId`） |
-| 317 | `SupportEnded` | 03 | 支援结束 / 返航（`SupportAssetId`） |
-| 400 | `KnownTargetAdded` | 04 | 我方单位进入已知目标清单（`UnitId, Reason`） |
-| 401 | `KnownTargetRemoved` | 04 | 移出清单 |
-| 402 | `ChoiceRequested` | 04 | 二选一请求（`ChoiceId, ChoiceKey, DeadlineTick, DefaultOption`） |
-| 403 | `ChoiceResolved` | 04 | 已回答或超时（`ChoiceId, Option, TimedOut`） |
-| 404 | `CommandPointsChanged` | 04 | 指挥点变化（`Before, After`） |
-| 405 | `UnitDeployStateChanged` | 04 | 我方单位部署状态变化（`UnitId, From, To`） |
-| 406 | `StoryEventFired` | 04 | 剧情事件触发（`StoryEventId`） |
-| 407 | `DialogueShown` | 04 | 剧情台词（`DialogueKey`） |
+| 100 | `WaveStarted` | 01 | `string WaveId, IReadOnlyList<AiTag>? AiTags, bool Injected` |
+| 101 | `ThreatSpawned` | 01 | `int ThreatId, string DefId, ThreatKind Kind, string EntryId, string WaveId` |
+| 102 | `MunitionReleased` | 01 | `int ParentThreatId, int ThreatId, string DefId` |
+| 103 | `ThreatArrived` | 01 | `int ThreatId, string DefId, Vec2 Pos, ThreatTargetKind TargetKind, int TargetStructureId, int TargetUnitId` |
+| 104 | `ThreatExited` | 01 | `int ThreatId, string DefId, ThreatExitReason Reason` |
+| 200 | `EarlyWarning` | 02 | `string WaveId, string EntryId, double ExpectedAtSec, double BearingRad, bool Ballistic` |
+| 201 | `TrackCreated` | 02 | `int TrackId, TrackQuality Quality` |
+| 202 | `TrackQualityChanged` | 02 | `int TrackId, TrackQuality From, TrackQuality To` |
+| 203 | `TrackLost` | 02 | `int TrackId, TrackLostCause Cause` |
+| 204 | `DecoyIdentified` | 02 | `int TrackId` |
+| 205 | `EmitterSwitched` | 02 | `int UnitId, bool On, EmitterSwitchCause Cause`（`Cause` 含 `RadarDestroyed = 6, Suspended = 7`，A-2-12） |
+| 206 | `ArmThreatDetected` | 02 | `int TrackId, int TargetUnitId` |
+| 207 | `EwDiverted` | 02 | `int ThreatId, int SourceId, EwDivertKind Kind`（`SourceId` 可为 `EwUnit` 或 `SupportAsset` ID，A-3-07） |
+| 208 | `EwLinkCut` | 02 | `int ThreatId, int SourceId, LinkCutOutcome Outcome, string DefId`（悬停超时坠落也发本事件且 `SourceId = 0`，A-4-04） |
+| 209 | `ExposureThresholdCrossed` | 02 | `int UnitId, double Threshold, ExposureConsequence Consequence, bool Rising` |
+| 210 | `DeceptionTriggered` | 02 | `int UnitId, int ThreatId, DeceptionOutcome Outcome` |
+| 300 | `InterceptorLaunched` | 03 | `int FireUnitId, int LauncherIndex, string WeaponId, int InterceptorId, int TrackId, int ThreatId, int SupportAssetId` |
+| 301 | `GunFired` | 03 | `int FireUnitId, string WeaponId, int TrackId, int ThreatId, double Probability, int RoundsUsed` |
+| 302 | `InterceptResolved` | 03 | `int? InterceptorId, int ThreatId, bool Hit, double Probability, Vec2 Pos, double AltM, bool OverUrban, string WeaponId, int FireUnitId, int SupportAssetId` |
+| 303 | `InterceptorExpired` | 03 | `int InterceptorId, InterceptorExpiryCause Cause`（`Cause` 含 `TargetGone = 0, TargetManeuvered = 1, TargetArrived = 2`，A-2-09、A-4-02） |
+| 304 | `EngagementHeld` | 03 | `int FireUnitId, string WeaponId, int TrackId, int ThreatId, HoldReason Reason` |
+| 305 | `AmmoDepleted` | 03 | `int FireUnitId, string WeaponId` |
+| 306 | `ThreatImpacted` | 03 | `int ThreatId, string DefId, Vec2 Pos, Vec2 AimPos, int DamageLevel, AccuracyTier Tier, ImpactOutcome Outcome, int SubIndex, LeakReason? LeakReason, int LeakMask` |
+| 307 | `StructureDamaged` | 03 | `int StructureId, int HpBefore, int HpAfter, int SourceThreatId, DamageCause Cause` |
+| 308 | `StructureDestroyed` | 03 | `int StructureId` |
+| 309 | `PlayerUnitDamaged` | 03 | `int UnitId, string DefId, PlayerUnitCategory Category, UnitDamageEffect Effect, DamagedComponent Component, int SourceThreatId` |
+| 310 | `PlayerUnitDestroyed` | 03 | `int UnitId, string DefId, PlayerUnitCategory Category, int SourceThreatId, Vec2 Pos`（A-2-05、A-3-05） |
+| 311 | `DebrisFell` | 03 | `Vec2 Pos, int StructureId, int DamageLevel, int SourceThreatId`（`StructureId = 0` 表示无） |
+| 312 | `GridPowerChanged` | 03 | `int GridNodeId, bool Powered` |
+| 313 | `AirRaidAlertChanged` | 03 | `bool On, AlertCause Cause` |
+| 314 | `SupportRequested` | 03 | `string SupportDefId, int SupportAssetId` |
+| 315 | `SupportRefused` | 03 | `string SupportDefId, SupportRefusalReason Reason` |
+| 316 | `SupportArrived` | 03 | `int SupportAssetId` |
+| 317 | `SupportEnded` | 03 | `int SupportAssetId, SupportEndReason Reason` |
+| 400 | `KnownTargetAdded` | 04 | `int EntryId, int UnitId, string UnitDefId, KnownTargetKind Kind, KnownTargetReason Reason, Vec2 Pos` |
+| 401 | `KnownTargetRemoved` | 04 | `int EntryId, int UnitId, KnownTargetRemovedReason Reason` |
+| 402 | `ChoiceRequested` | 04 | `int ChoiceId, ChoiceKind Kind, string ChoiceKey, int OptionCount, int DefaultOption, int DeadlineTick, int SubjectUnitId, int SubjectTrackId, string? StoryEventId` |
+| 403 | `ChoiceResolved` | 04 | `int ChoiceId, int Option, bool TimedOut, bool Cancelled` |
+| 404 | `CommandPointsChanged` | 04 | `int Before, int After, SimCommandType Cause` |
+| 405 | `UnitDeployStateChanged` | 04 | `int UnitId, UnitDeployState From, UnitDeployState To, bool CompletedRelocation, bool DestinationScouted, string? DestinationAlternatePositionId` |
+| 406 | `StoryEventFired` | 04 | `string StoryEventId` |
+| 407 | `DialogueShown` | 04 | `string DialogueKey, string StoryEventId` |
+| 408 | `EnemyGroupsReleased` | 04 | `string WaveId, int HeldGroupCount, ReleaseCause Cause` |
 
 ### 4.3 命令
 
@@ -1777,34 +1779,37 @@ public abstract record SimCommand
 }
 ```
 
-**命令总表**（字段由"处理者 / 规格"细化；是否消耗指挥点由 04 统一规定）：
+**命令总表**（A-1.9；是否消耗指挥点由 04 统一规定，所有耗点命令的处理者在 `Validate` 最后一条检查 `!CommandPointRules.CanSpend(ctx, cost)` → `NoCommandPoints`，在 `Apply` 第一步调用 `CommandPointRules.Spend(ctx, cost)`，04 3.2.1 / A-2-17）：
 
-| 值 | 命令 | 处理者 / 规格 | 含义（GDD 5.2） |
+| 值 | 命令 | 定稿字段 | 处理者 / 规格 | 含义（GDD 5.2） |
+|---|---|---|---|---|
+| 0 | `Noop` | （无） | 框架 / 00 | 无操作，永远接受（测试、回放填充） |
+| 200 | `SetEmissionPolicy` | `int UnitId, string PolicyId, double? DutyOnSec, double? DutyOffSec, ArmResponse? OnArmIncoming, AfterFiringAction? AfterFiring, bool? NeighborTakeover` | `EmissionSystem` / 02 | 修改单位的辐射策略与细项 |
+| 201 | `SectorEmissionOverride` | `Vec2 Center, double RadiusM, SectorOverrideMode Mode` | `EmissionSystem` / 02 | 扇区紧急静默 / 强制开机 / 取消 |
+| 300 | `SetEngagementRule` | `int FireUnitId, string? WeaponId, EngagementRule Rule` | `EngagementSystem` / 03 | 切换交战规则（如 PAC‑3 只打弹道 / 放开交战） |
+| 301 | `CallSupport` | `string SupportDefId, Vec2? TargetPos` | `ExternalSupportSystem` / 03 | 呼叫外部支援（战斗机、国家级欺骗等） |
+| 302 | `SetAirRaidAlert` | `bool On` | `ScoringSystem` / 03 | 拉响 / 解除空袭警报（B-T2-15，原 Q5） |
+| 303 | `SetFighterZone` | `int SupportAssetId, bool Exclusive` | `ExternalSupportSystem` / 03 | 划设 / 取消战斗机排他专区（GDD 8.9） |
+| 400 | `DeployUnit` | `int UnitId, string? UnitDefId, Vec2? Pos` | `CommandStage` / 04 | 夜间部署预备队单位或原地重新展开 |
+| 401 | `PackUnit` | `int UnitId` | `CommandStage` / 04 | 撤收单位 |
+| 402 | `MoveUnit` | `int UnitId, Vec2 Dest` | `CommandStage` / 04 | 调动机动单位（火力组、拦截无人机班组） |
+| 403 | `RelocateUnit` | `int UnitId, Vec2? Dest, string? AlternatePositionId` | `CommandStage` / 04 | 紧急转移阵地 |
+| 404 | `AnswerChoice` | `int ChoiceId, int Option` | `CommandStage` / 04 | 回答二选一 |
+
+**拒绝原因**（`CommandRejectReason`）：
+
+| 值 | 原因 | 规格 | 含义 |
 |---|---|---|---|
-| 0 | `Noop` | 框架 / 00 | 无操作，永远接受（测试、回放填充） |
-| 200 | `SetEmissionPolicy` | `EmissionSystem` / 02 | 修改单位的辐射策略 |
-| 201 | `SectorEmissionOverride` | `EmissionSystem` / 02 | 扇区紧急静默 / 强制开机 / 取消 |
-| 300 | `SetEngagementRule` | `EngagementSystem` / 03 | 切换交战规则（如 PAC‑3 只打弹道 / 放开交战） |
-| 301 | `CallSupport` | `ExternalSupportSystem` / 03 | 呼叫外部支援（战斗机等） |
-| 302 | `SetAirRaidAlert` | 03（宿主见 Q5） | 拉响 / 解除空袭警报（`bool On`） |
-| 303 | `SetFighterZone` | `ExternalSupportSystem` / 03 | 划设 / 取消战斗机专区（GDD 8.9；是否可在夜间操作由 03 定） |
-| 400 | `DeployUnit` | 04 | 夜间部署预备队单位（有展开时间） |
-| 401 | `PackUnit` | 04 | 撤收 |
-| 402 | `MoveUnit` | 04 | 调动机动单位（火力组、拦截无人机班组） |
-| 403 | `RelocateUnit` | 04 | 紧急转移（仅展开时间按分钟计的系统） |
-| 404 | `AnswerChoice` | 04 | 回答二选一（`int ChoiceId, int Option`） |
-
-**拒绝原因**（`CommandRejectReason`，00 段为公共原因，其他规格可在本段之外追加）：
-
-| 值 | 原因 | 含义 |
-|---|---|---|
-| 0 | `UnknownEntity` | 引用的实体 ID 不存在或已删除 |
-| 1 | `WrongEntityKind` | 实体类型不符 |
-| 2 | `InvalidState` | 实体当前状态不允许（如撤收中开火） |
-| 3 | `InvalidArgument` | 参数非法（越界坐标、非法枚举……） |
-| 4 | `NotAvailable` | 本关 / 本时期不可用 |
-| 5 | `NoCommandPoints` | 指挥点不足 |
-| 6 | `NotImplemented` | 处理者尚未实现（占位） |
+| 0 | `UnknownEntity` | 00 | 引用的实体 ID 不存在或已删除 |
+| 1 | `WrongEntityKind` | 00 | 实体类型不符 |
+| 2 | `InvalidState` | 00 | 实体当前状态不允许（如撤收中开火） |
+| 3 | `InvalidArgument` | 00 | 参数非法（越界坐标、非法枚举……） |
+| 4 | `NotAvailable` | 00 | 本关 / 本时期不可用 |
+| 5 | `NoCommandPoints` | 00 | 指挥点不足 |
+| 6 | `NotImplemented` | 00 | 处理者尚未实现（占位） |
+| 300 | `NoSortiesLeft` | 03 | 本夜战斗机架次已耗尽 |
+| 301 | `InRiskZone` | 03 | 巡逻区中心与敌远程防空覆盖重叠 |
+| 302 | `AirbaseUnavailable` | 03 | 机场受损或不可用 |
 
 ---
 
@@ -1835,9 +1840,10 @@ public abstract record SimCommand
 | 21 | 高程图尺寸与地图尺寸不一致 | `E_RANGE`（1.5） |
 | 22 | `DrainEvents()` 在 `Create` 之后、第一次 `Step()` 之前调用 | 返回 `[NightStarted]` |
 | 23 | 读取 `Snapshot` 两次而中间无 `Step()` | 返回同一实例 |
-| 24 | `SimConfig.RandomOverride` 非 null 时写回放 | 回放写入抛 `InvalidOperationException` |
+| 24 | `SimConfig.RandomOverride` 或 `EnemyAiHooksOverride` 非 null 时写回放 | 回放写入抛 `InvalidOperationException`（P31） |
 | 25 | 回放数据哈希不一致 | `ReplayDataMismatchException`（`force` 时警告后继续） |
 | 26 | `DurationTicks` 计算结果 < 1 | `SimSetupException` |
+| 27 | `LevelData.Date` 与该夜 `night.Date ?? level.Meta.DateFrom` 不一致时 `SimWorld.Create` | 抛 `SimSetupException`（`E_NIGHT_DATE_MISMATCH`，B-T2-17） |
 
 ---
 
@@ -1853,6 +1859,7 @@ public abstract record SimCommand
 6. 事件 `Seq` 严格递增且连续（`DrainEvents` 拼接后无缺号）；每个事件 `Tick` 非递减。
 7. `SimRandom._inc` 为奇数。
 8. 读取 `Snapshot`、`DrainEvents()`、`ComputeStateHash()` 前后，`ComputeStateHash()` 结果不变。
+9. **敌方目标终结事件守恒（A-4-04）**：每个在本步被移除的 `Threat`（压缩前 `!Alive && RemovedTick == State.Tick`），在本步事件流中**恰有一条**对应的终结事件：`ThreatExited`、`InterceptResolved { Hit = true }`、`ThreatImpacted { SubIndex == 0 }` 或 `EwLinkCut { Outcome = LinkCutOutcome.Crash }`。
 
 ### 6.2 代码约束（编译期 / 测试期）
 
@@ -1875,6 +1882,7 @@ T:System.Threading.ThreadPool;禁止多线程
 T:System.Threading.Tasks.Task;模拟层同步执行
 T:System.Security.Cryptography.RandomNumberGenerator;使用 SimRandom
 M:System.Math.FusedMultiplyAdd(System.Double,System.Double,System.Double);与 a*b+c 结果不同，禁止混用
+M:System.Math.Hypot(System.Double,System.Double);跨平台精度未做逐位承诺，使用 Math.Sqrt(dx*dx + dy*dy)
 T:System.MathF;只用 double
 T:System.Numerics.Vector2;float 向量，使用 Vec2
 T:System.Numerics.Vector3;float 向量
@@ -1888,7 +1896,7 @@ M:System.String.GetHashCode;每进程随机化，使用 Fnv1a64
 1. 不以 `Dictionary` / `HashSet` 的遍历顺序作为逻辑依据（只做查找 / 成员判断）；需要遍历时用 `List`、排序数组或 `SortedDictionary` / `SortedSet`（比较器为序数比较）。
 2. 字符串比较一律 `StringComparer.Ordinal` / `string.CompareOrdinal`；数字格式化 / 解析一律 `CultureInfo.InvariantCulture`。
 3. 状态中不出现 `float`、`decimal`；不使用 `unsafe`。
-4. 不手写 FMA 形式的"优化"；不使用 `System.Runtime.Intrinsics`。
+4. 不手写 FMA 形式的"优化"；不使用 `System.Runtime.Intrinsics`；不使用 `Math.Hypot`，欧氏距离一律写 `Math.Sqrt(dx * dx + dy * dy [+ dz * dz])`（C-T1-04）。
 5. `Math.Round` 必须显式传 `MidpointRounding`。
 6. 系统不得持有静态可变状态；全部可变状态在 `SimState` 中。
 7. 模拟层除 `Data/`（读数据）与 `Replay/`（读写回放）外不做文件 I/O，不读环境变量。
