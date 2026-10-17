@@ -255,7 +255,7 @@
 ### A-2-05 `PlayerUnitDestroyed` 缺 `Pos`
 - 位置：02 3.5.6、8.2 D（要求追加）；03 3.5.6 `Destroy`、4.2（字段 `UnitId, DefId, Kind, SourceThreatId`，无 `Pos`）；06 8.2 C、8.4 B3（有回退）。
 - 问题：02 的"邻近雷达接替"在被毁单位压缩后无法再取位置。
-- 建议：03 4.2 字段改为 `int UnitId, string DefId, PlayerUnitCategory Kind, int SourceThreatId, Vec2 Pos`（`Pos` 追加在末尾，保持现有字段哈希顺序），`Destroy` 中填 `u.Pos`。→ 1.8 表。
+- 建议：03 4.2 字段改为 `int UnitId, string DefId, PlayerUnitCategory Category, int SourceThreatId, Vec2 Pos`（`Kind` → `Category` 见 A-3-05）（`Pos` 追加在末尾，保持现有字段哈希顺序），`Destroy` 中填 `u.Pos`。→ 1.8 表。
 - 分级：T1。
 
 ### A-2-06 反辐射导弹的 `HomingUnitId` 无人写入
