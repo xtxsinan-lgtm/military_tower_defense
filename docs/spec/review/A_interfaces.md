@@ -30,7 +30,7 @@
 | T-00-35 `LoadedFiles.Count` | 00：29；01：31；03：31；04："再加 2" | **35** = 26 个全局 + 8 个关卡 JSON + 1 个 PNG（05 的 `rules/campaign.json`、`flow.json` 不计入，05 R-00-6） |
 | 单例组件哈希序 | 03：`EngagementState`"插在 `SupportState` 之前，或追加为序 10" | **追加为序 10**（00 2.3 / 3.7.2 "只追加、不重排"原则） |
 | 拒绝原因 | 03：300–302；其余无新增 | 03 段 `300 NoSortiesLeft`、`301 InRiskZone`、`302 AirbaseUnavailable`；05 的 `CampaignRejectReason` 是**独立 enum**（05 R-00-4），不占 `CommandRejectReason` 的 500 段 |
-| 事件值 | 04：新增 408 `EnemyGroupsReleased`；02 建议的终结事件见 A-4-03 | 408 `EnemyGroupsReleased`；**209–210 之后不新增**（A-4-03 复用 208 `EwLinkCut`） |
+| 事件值 | 04：新增 408 `EnemyGroupsReleased`；02 建议的终结事件见 A-4-04 | 408 `EnemyGroupsReleased`；**209–210 之后不新增**（A-4-04 复用 208 `EwLinkCut`） |
 | `PlayerUnitCommon` 字段的哈希顺序 | 00（4 个）、02（6 个）、03（3 个）、04（2 个，"位于 `DeployState` 之后"）、05（`RosterId`，不哈希） | 见 1.4 合并表 |
 | `Threat` 字段的哈希顺序 | 01（32 个）、02（10 个）、03（4 个） | 01 → 02 → 03，另加 A-2-07 的 `EwEverCovered`（02 段末） |
 | `CarryIn.KnownTargets` 类型 | 04：`IReadOnlyList<KnownTargetCarry>?`；05：`KnownTargetCarry?`（不透明单对象） | 04 的列表（见 A-2-18） |
@@ -104,7 +104,7 @@
 |---|---|---|---|---|
 | P27 | `SimState` 单例块，L781 之后 | 追加 | `public EngagementState Engagement;  // 03：弹药池剩余、已记录的保留原因` | 03 2.8 |
 | P28 | 3.7.2 表，L1259 之后 | 追加 | `| 10 | EngagementState | 03 |` | 03 2.8 |
-| P29 | 3.7.2 表 1–9 行 | 补注字段来源 | `WaveState` → 01 2.3（`WaveInjection` 追加 `GroupIndices`，04 3.3.0）；`SensingState` / `EwState` → 02 2.7 / 2.8；`CommandState` / `EnemyIntelState` → 04 2.3 / 2.4；`SupportState` / `GridState` / `CivilState` / `ScoringState` → 03 2.8（`ScoringState` 追加 A-4-03、A-2-20 的计数） | 01–04 |
+| P29 | 3.7.2 表 1–9 行 | 补注字段来源 | `WaveState` → 01 2.3（`WaveInjection` 追加 `GroupIndices`，04 3.3.0）；`SensingState` / `EwState` → 02 2.7 / 2.8；`CommandState` / `EnemyIntelState` → 04 2.3 / 2.4；`SupportState` / `GridState` / `CivilState` / `ScoringState` → 03 2.8（`ScoringState` 追加 A-4-04、A-2-20 的计数） | 01–04 |
 
 ### 1.6 `SimWorld` 流程、`SimContext`、`SimConfig`（00 2.6 / 3.2 / 3.4 / 3.5）
 
@@ -160,8 +160,8 @@
 | 204 | `DecoyIdentified` | `int TrackId` | 02 |
 | 205 | `EmitterSwitched` | `int UnitId, bool On, EmitterSwitchCause Cause`（`Cause` 追加 `RadarDestroyed = 6`、`Suspended = 7`，A-2-12） | 02、A-2-12 |
 | 206 | `ArmThreatDetected` | `int TrackId, int TargetUnitId` | 02 |
-| 207 | `EwDiverted` | `int ThreatId, int EwUnitId, EwDivertKind Kind` | 02 |
-| 208 | `EwLinkCut` | `int ThreatId, int EwUnitId, LinkCutOutcome Outcome, string DefId`（`DefId` 追加；悬停超时坠落也发本事件，A-4-03） | 02、A-4-03 |
+| 207 | `EwDiverted` | `int ThreatId, int SourceId, EwDivertKind Kind`（`EwUnitId` 改名，A-3-07） | 02 |
+| 208 | `EwLinkCut` | `int ThreatId, int SourceId, LinkCutOutcome Outcome, string DefId`（`DefId` 追加；悬停超时坠落也发本事件，A-4-04） | 02、A-4-04 |
 | 209 | `ExposureThresholdCrossed` | `int UnitId, double Threshold, ExposureConsequence Consequence, bool Rising` | 02 |
 | 210 | `DeceptionTriggered` | `int UnitId, int ThreatId, DeceptionOutcome Outcome` | 02 |
 | 300 | `InterceptorLaunched` | `int FireUnitId, int LauncherIndex, string WeaponId, int InterceptorId, int TrackId, int ThreatId, int SupportAssetId` | 03 |
@@ -173,8 +173,8 @@
 | 306 | `ThreatImpacted` | `int ThreatId, string DefId, Vec2 Pos, Vec2 AimPos, int DamageLevel, AccuracyTier Tier, ImpactOutcome Outcome, int SubIndex, LeakReason? LeakReason, int LeakMask` | 03 |
 | 307 | `StructureDamaged` | `int StructureId, int HpBefore, int HpAfter, int SourceThreatId, DamageCause Cause` | 03 |
 | 308 | `StructureDestroyed` | `int StructureId` | 03 |
-| 309 | `PlayerUnitDamaged` | `int UnitId, string DefId, PlayerUnitCategory Kind, UnitDamageEffect Effect, DamagedComponent Component, int SourceThreatId` | 03 |
-| 310 | `PlayerUnitDestroyed` | `int UnitId, string DefId, PlayerUnitCategory Kind, int SourceThreatId, Vec2 Pos`（**追加 `Pos`**，A-2-05） | 03、02、06 |
+| 309 | `PlayerUnitDamaged` | `int UnitId, string DefId, PlayerUnitCategory Category, UnitDamageEffect Effect, DamagedComponent Component, int SourceThreatId` | 03 |
+| 310 | `PlayerUnitDestroyed` | `int UnitId, string DefId, PlayerUnitCategory Category, int SourceThreatId, Vec2 Pos`（**追加 `Pos`**，A-2-05） | 03、02、06 |
 | 311 | `DebrisFell` | `Vec2 Pos, int StructureId, int DamageLevel, int SourceThreatId`（`StructureId` 0 = 无） | 03 |
 | 312 | `GridPowerChanged` | `int GridNodeId, bool Powered` | 03 |
 | 313 | `AirRaidAlertChanged` | `bool On, AlertCause Cause` | 03 |
@@ -475,3 +475,132 @@
 - 位置：00 0.3。
 - 建议：0.3.1 追加 `阶段 0｜Stage0 / CommandStage｜Step 开头、系统 1 之前的命令与剧情阶段（04 3.1）`；0.3.2 追加 `花名册编号｜RosterId`、`部署条目｜Placement`、`辐射控制｜EmitterControl`、`精确持有者｜PreciseHolderIds`、`弹药池｜AmmoPool（夜内） / Depot（战役层，05）`；0.3.3 追加 `已知目标带出记录｜KnownTargetCarry`、`推迟的波次组｜HeldWave`、`覆盖查询｜CoverageQuery`。
 - 分级：T1。
+
+---
+
+## 4. Step 顺序与数据流
+
+### 4.1 读写表（阶段 0 + WBS 01.B 14 步；按第 2–3 节建议修正后的目标状态）
+
+> "读"列中 `(prev)` = 读到的是**上一步**写入的值（较晚系统写、较早系统读）；未标注 = 本步较早位置写入的值。⚠ = 规格中未意识到或有问题，见右列编号。
+
+| 步 | 执行者 | 写 | 读 | 备注 |
+|---|---|---|---|---|
+| 0a | 命令处理者（02 / 03 / 04 的 `ICommandHandler`、`CommandStage`） | `Emitter.PolicyId / Duty* / OnArmIncoming / AfterFiring / NeighborTakeover / Forced / TakeoverActive`（02）；`FireUnit.Engagement`（03）；`Support.PendingCalls`、`SortiesRemaining`（03）；`Civil.*`（03 `SetAlert`）；`SupportAsset.Exclusive`（03）；`DeployState`、`Relocation`、`DeployPhaseEndTick`（04）；`Emitter.ArmSilenced / ArmPending`（04 经 `ApplyArmChoice`）；`CommandState.Points`（04 `Spend`） | 实体存活、`DeployState`、`Civil.AlertOn`、`Choices`、`CommandState.Points` | `ArmSilenced` 两个写者（0a、6），见 4.2 注 1 |
+| 0b | `DeploymentStage` | `Pos`、`DeployState`、`Relocation`、`DeployPhaseEndTick`、`PendingRelocationAltId = null` | `PendingRelocationAltId`(prev 6)、`EnemyIntel.ScoutedPositions`(prev 12) | 本步 3–13 看到移动后的位置 |
+| 0c | `ChoiceStage` | `Choices`、`CommandState.Choices*` | `ArmThreatDetected`(prev 6)、`Tracks`(prev 4)、`Emitter.OnArmIncoming` | 自动二选一比来袭预警晚 1 步（04 已说明） |
+| 0d | `StoryStage` | `Waves.Injections`、`Choices`、`Civil.*`、`FiredStoryEventIds` | `PreviousStep` 的 `StructureDestroyed / PlayerUnitDestroyed / WaveStarted` | 事件触发晚 1 步（04 Q-S4） |
+| 1 | `WaveSpawnSystem` | `Threats`（新增）、`Waves.Pending / Injections / AllWavesSpawned / SpawnedThreatCount` | `Waves.Injections`（0d 本步、12 prev）；`Structure.Hp`(prev 10)；钩子读 `EnemyIntel.KnownTargets / AvoidanceGrids`(prev 12)、`Emitter.On`(prev 6，经 `ListActive`)、`Exposure`(prev 11)、`Threat.TargetUnitId / TargetPos`（分散计数） | ⚠ `AllWavesSpawned` 缓存在 12 注入后过时，A-4-03 |
+| 2 | `EnemyMovementSystem` | `Threat.Pos / AltM / VelMps / VertSpeedMps / PathArcM / Phase / ArrivedAtSec`、子弹药；`ThreatArrived / Exited / MunitionReleased`；删除离场目标 | `HomingUnitId`(prev 6，A-2-06)；我方单位 `Pos`（0b） | — |
+| 3 | `SensorSystem` | `Sensing.Detections / Delayed / WarnedKeys`；`EarlyWarning` | `Emitter.On`(prev 6)；`DeployState`（0）；`Powered`(prev 10)；`NewPositionPenalty`(prev 11)；`SuspendedUntilSec`、`RadarDestroyed`(prev 10，A-2-12)；`Threat` 位置（2） | 02 已意识到 `Emitter.On` 晚一步；⚠ 雷达被毁当步与下一步仍按"开"探测，A-2-12 要求 3.2.5 火控分支**直接**检查 `RadarDestroyed`（不经 `Emitter.On`），消除这一步滞后 |
+| 4 | `TrackFusionSystem` | `Tracks`（全部字段）；`Track*` 事件 | `Detections`（3）；`Threat` 存活 | — |
+| 5 | `ElectronicWarfareSystem` | `Threat.EwNav / EwExtraOffsetM / AccuracyTierDrop / EwPull / EwDivertPos / NationalSpoof / LinkCutState / LinkCutAtTick / EwEverCovered`；经 `ThreatRouting` 改写路径（A-2-27）；删除坠毁目标；`Ew.UrbanNavJamSec` | `Emitter.On`(prev 6)；`SupportAsset.State / CenterPos / RadiusM`(prev 9)；`NewPositionPenalty`(prev 11)；`Threat.Phase`（2） | ⚠ 对已 `Arrived` 的目标仍施加效果，A-4-06 |
+| 6 | `EmissionSystem` | `Emitter.On / FcMode / OnSinceTick / ArmSilenced / ArmPending / TakeoverActive / FiredSinceRelocation / LastShotTick`；`PendingRelocationAltId`；`Threat.ArmInitialDistM / ArmHitProbMult / HomingUnitId`；`DeceptionUnit.AttractedThreatIds`；`EmitterSwitched`、`ArmThreatDetected`、`DeceptionTriggered` | `Tracks`（4）；`Interceptors`(prev 7/8/9)；`PlayerUnitDestroyed`(prev 10)、`InterceptorLaunched / GunFired`(prev 7)（游标）；`RadarDestroyed / SuspendedUntilSec`(prev 10) | — |
+| 7 | `EngagementSystem` | `FireUnit.Weapons`、`Interceptors`（新增）、`Threat.MaxTrackQuality / ShotsTaken / HeldMask / DecoyDrained`、`EngagementState.HeldLogged`；`InterceptorLaunched / GunFired / EngagementHeld / AmmoDepleted` | `Tracks`（4）；`Emitter.On`、`PreciseHolderIds`（4、6，A-2-08）；`SupportAssets`(prev 9)；`SuspendedUntilSec / DamageEfficiencyMult`(prev 10)；`NewPositionPenalty`(prev 11) | ⚠ 未排除 `Phase == Arrived` 的目标，A-4-02 |
+| 8 | `InterceptorSystem` | 删除 `Interceptors`、删除被击落 `Threats`、`SupportAsset.KillsLeft`；`InterceptResolved / InterceptorExpired` | `Interceptors`（7 本步、9 prev）；`GunFired`（7）；`Threat.Phase / ArrivedAtSec / PathVersion`（2、5） | ⚠ 先到达后拦截、`AtSec` 越界，A-4-02、A-4-06 |
+| 9 | `ExternalSupportSystem` | `SupportAssets`、`Support.*`、战斗机 `Interceptors`、`Threat.ShotsTaken`；`CommandState.Points / RefundedTotal`（`Refund`） | `Support.PendingCalls`（0a）；`Tracks`（4）；`Interceptors`（7、8 后） | 战斗机拦截弹在下一步 8 结算 |
+| 10 | `ImpactSystem` | `Structure.Hp / LossHp / Powered`、`GridNode.*`、`Grid.*`、我方单位 `DamageEfficiencyMult / SuspendedUntilSec / LightDamaged / RadarDestroyed / Weapons / Powered`、删除 `Threats`（落地）与我方单位 | `ThreatArrived`（2）、`InterceptResolved`（8）；`Threat.AccuracyTierDrop / EwExtraOffsetM / ArmHitProbMult`（5、6）；`Civil.ShelteredFrac / ShelterQuality`(prev 13) | 03 已意识到警报效果晚一步 |
+| 11 | `ExposureSystem` | `Exposure`、`ExposurePeak`、`NewPositionPenalty`、`DeceptionUnit.SeenThrough / ReconCheckedThreatIds`；`ExposureThresholdCrossed`、`DeceptionTriggered` | `Emitter.On / FcMode`（6）；`InterceptorLaunched`（7）、`UnitDeployStateChanged`（0a/0b）（游标）；`Threat` 位置（2） | 02 已意识到读的是本步 6 的结果 |
+| 12 | `EnemyIntelSystem` | `EnemyIntel.*`、`Waves.Injections`（放行）；`KnownTarget*`、`EnemyGroupsReleased` | 本步全部事件；`Exposure`（11）；`DeceptionUnit.SeenThrough`（11）；`Threats` | 放行的组在下一步 1 生成 |
+| — | `CheckNightEnd` | `EndRequest`→`Result` | `Waves`、`Threats`、`Interceptors`、`EnemyIntel.HeldWaves`、剧情表 | ⚠ A-4-03 |
+| 13 | `ScoringSystem` | `Civil.*`（每步更新）、`Structure.UnpoweredSec / PausedSec`、`ScoringState.*`、`EndRequest` | 本步全部事件；`Exposure / ExposurePeak`（11） | — |
+| 14 | `EventLog` | `EventStreamHash` | `CurrentStep` | — |
+
+### 4.2 多写者核对（已确认可接受的，不计问题）
+
+1. `Emitter.ArmSilenced / ArmPending`：0a（`ApplyArmChoice`）与 6（`ArmScan`）。0a 的回答在同一步 6 号系统之前生效；6 号系统第 2 步只处理**新**预警航迹（`!k.ArmWarned`），不会覆盖玩家的回答；第 3 步只在导弹全部消失后清除。可接受，在 02 2.2 表注明两个写者。
+2. `CommandState.Points`：0a（`Spend`）与 9（`Refund`）——04 2.4 已注明。
+3. `Waves.Injections`：0d 与 12（都是 04），1 号系统消费后清空——一致。
+4. `Threat` 路径：01（第 2 步推进、`ApplyHoming`）与 02（第 5 步经 `ThreatRouting`）——统一经 01 的接口，可接受。
+5. `Threats` 删除：2（离场）、5（坠毁）、8（击落）、10（落地）——均为标记删除，后续系统 `TryGet` 失败；但需要"终结事件"不变量，见 A-4-04。
+6. `Civil.*`：0a / 0d（`SetAlert`）与 13（每步更新）——不同字段子集，可接受。
+
+### A-4-02 同一步内"先到达、后拦截"与已到达目标被再次交战
+- 位置：01 3.2.5、8.3 B3（"若 03 的拦截时刻早于 `ArrivedAtSec`，应由 03 判定拦截优先；`Phase == Arrived` 的目标不得再被选为新的交战目标"）；03 3.2.3 C（候选不检查 `Phase`）、3.3.1（不比较 `ArrivedAtSec`）、5 #4（"系统 8 先于 10：拦截判定在先"）。
+- 问题：03 无条件让拦截优先，即使拦截时刻晚于落地时刻（例如被电子战改航后提前到达）；已落地、等待系统 10 结算的目标还会被系统 7 选中开火（身管射击在系统 8 结算，可在落地后"击落"它）。
+- 建议：03 3.2.3 C 追加 `if t.Phase == ThreatPhase.Arrived: continue`；3.3.1 在 `TryGet` 成功后追加：`if t.Phase == Arrived && t.ArrivedAtSec < ic.InterceptAtSec − Eps → emit InterceptorExpired { Cause = TargetArrived }; Remove(ic); continue`（不掷骰）。5 #4 改为"拦截时刻 ≤ 到达时刻：拦截在先；否则落地在先"。
+- 分级：T1。
+
+### A-4-03 `AllWavesSpawned` 是缓存值，系统 12 放行注入后同一步可能误判 `AllClear`
+- 位置：01 2.3（`AllWavesSpawned` 只在 `WaveSpawnSystem.Execute` 末尾重算）；04 3.3.3 `EvaluateHeldWaves`（第 12 步 `Injections.Add` 后立即 `HeldWaves.Remove`）；00 3.5 `AllClear`（在系统 13 之后读 `AllWavesSpawned`）。
+- 问题：第 T 步系统 12 放行被推迟的组：`HeldWaves` 变空、`Injections` 非空，但 `AllWavesSpawned` 仍是系统 1 算出的 `true`；若场上恰好没有存活目标，`CheckNightEnd` 判 `AllClear` 结束夜晚，被推迟的主力永远不生成。
+- 建议：00 3.5 `AllClear()` 改为直接计算 `State.Waves.Pending.Count == 0 && State.Waves.Injections.Count == 0`（不读缓存）；`AllWavesSpawned` 保留为快照字段。→ 与 P41 一并应用。
+- 分级：T1。
+
+### A-4-04 目标被移除但没有终结事件；`ThreatsSpawned` 漏计子弹药
+- 位置：02 3.4.6 `HoverTimeout`（"`Threats.Remove`（不再发事件）"）、链路中断坠毁（只发 `EwLinkCut`）；03 3.8.1（`ThreatsSpawned` 只数 `ThreatSpawned`，不数 `MunitionReleased`；不处理 `EwLinkCut`）；01 6 #10（`SpawnedThreatCount` 两者都数）；05 2.4.2 `KillsByEnemy`（"含电子战致坠"）。
+- 问题：(1) 悬停超时坠落的目标在事件流中"凭空消失"，06 无法移除图标（只能等快照）、03 / 05 无法统计；(2) 03 的生成数与 01 不一致，`ThreatsSpawned ≠ Intercepted + Impacted + Exited + 坠毁`。
+- 建议：02 `HoverTimeout` 移除前发 `EwLinkCut { ThreatId, SourceId = 原链路中断单位, Outcome = Crash, DefId }`（需在 `Threat` 上记 `LinkCutSourceId`，或在 `HoverTimeout` 中令 `SourceId = 0`——推荐后者，不增字段）；`EwLinkCut` 追加 `string DefId`（→ 1.8）。03 3.8.1：`ThreatSpawned` 与 `MunitionReleased` 都计入 `ThreatsSpawned`；新增 `ThreatsEwDowned`（`EwLinkCut{Crash}`）。00 6.1 追加不变量："每个被移除的 `Threat` 在其移除步恰有一个终结事件：`ThreatExited`、`InterceptResolved{Hit}`、`ThreatImpacted`（`SubIndex == 0`）或 `EwLinkCut{Crash}`"。
+- 分级：T1。
+
+### A-4-05 `SimWorld.Create` 中 `CarryIn` 的应用时机与发射架创建时机冲突
+- 位置：00 3.2 第 7–9 步；03 3.2.1（"第 7 步由 `FireUnitFactory.Init` 填 2.2 字段……第 8 步 `CarryIn` 覆盖 `RoundsLeft`"，但 `w.Launchers.Add(...)` 写在**第 9 步** `EngagementSystem.Initialize` 的弹药池分配循环里）、3.5.1（保护目标 HP 在第 9 步 `Initialize` 中读 `CarryIn`）；05 2.4.1（`CarryIn.Units` 按 `RosterId` 匹配）。
+- 问题：第 8 步要覆盖的发射架此时尚不存在；而第 9 步的分配又会无视已覆盖的值从池中扣弹。各规格对"谁在第 8 步、谁在第 9 步读 `CarryIn`"没有统一约定。
+- 建议：按 P36 / P37：第 7 步 `FireUnitFactory.Init` 只建立 `Weapons`（空 `Launchers`）；第 8 步只写 `PlayerUnitCommon` 与 `FireUnit` 的标量（暴露度、受损、班组）；03 3.2.1 的分配循环改为：`uc = CarryIn.Units 中 RosterId == unit.RosterId 的项`；若 `uc` 给出该武器的 `LauncherRounds`，按其建立 `Launchers`（不扣池）；否则按现有规则从池中取。保护目标、警报响应度、已知目标、欺骗单位寿命均在所属系统的 `Initialize` 中读取（现状即如此，补一句明文）。
+- 分级：T1。
+
+### A-4-06 拦截判定事件的 `AtSec` 可能落在 `(Tick−1, Tick]` 之外；电子战作用于已到达目标
+- 位置：00 4.2（`AtSec` 必须满足 `(Tick−1)·StepSec < AtSec ≤ Tick·StepSec`）；03 3.3.1（`AtSec = min(ic.InterceptAtSec, now)`）、3.4.3（战斗机拦截弹在**第 9 步**创建，若拦截时刻落在本步内，只能在下一步第 8 步结算）；02 3.4.2（遍历全部存活目标，不排除 `Phase == Arrived`）。
+- 问题：(1) 战斗机近距离发射的拦截弹在下一步结算时 `InterceptAtSec ≤ (Tick−1)·StepSec`，事件违反 00 约束（`CheckInvariants` 会失败）；(2) 第 2 步已到达、等待第 10 步结算的目标，第 5 步仍可能被链路中断"坠毁"（使落地消失）或被施加落点偏移。
+- 建议：(1) 03 3.3.1 改为 `AtSec = ic.InterceptAtSec > (ctx.Tick − 1) × StepSec ? ic.InterceptAtSec : null`（与 01 `EvAt` 相同写法）。(2) 02 3.4.2 循环开头追加 `if t.Phase == ThreatPhase.Arrived: continue`。
+- 分级：T1。
+
+---
+
+## 5. 随机数子流
+
+### 5.1 核对结果
+
+| 子流 | 实际使用者 | 每步消耗是否确定 | 结论 |
+|---|---|---|---|
+| `setup` | 无（01 / 02 / 03 / 04 的 `Initialize` 均不消耗；04 `SaturationSpawnTimes` 在 01 `Initialize` 中调用，不用随机数） | 0 | ✔ |
+| `command` | 无（04 K10） | 0 | ✔ 用途改"预留"（P 1.7） |
+| `spawn` | 01 `WeightedStructure`（每次 1 `NextDouble`）、`ChooseLoadout`（每挂载位 1 `NextInt`）；04 钩子 `SelectWeighted`（有候选时 1 次） | 由数据与状态决定，可复现 | ✔ 04 代码使用 01 传入的 `spawn`——符合 00 3.1.4 第 1 条（宿主子流），需在用途列登记（已列入 1.7） |
+| `movement` | 01 `InitProfile`（每目标 0 或 1 次） | 确定 | ✔ |
+| `sensor` | 02 误报（每个有误报能力的工作中单位每步恰 1 次 `Chance`，命中后 2 次或 `NextInt` + ≤16 次） | 确定 | ✔ |
+| `fusion` | 02 诱饵甄别（每质量等级至多 1 次） | 确定 | ✔ |
+| `ew` | 02 第 5 步（每目标每类效果至多 1 次 `Chance`，链路中断成功再 1 次） | 确定 | ✔（A-4-06 排除已到达目标后次数会变，属于有意修改） |
+| `emission` | 无 | 0 | ✔ 00 用途"反辐射导弹规避判定"删去（1.7） |
+| `engagement` | 无 | 0 | ✔ |
+| `intercept` | 03 每个到期拦截弹 1 次（`TargetGone` / 新增 `TargetArrived` / `TargetManeuvered` 不掷）、每个目标仍在的 `GunFired` 1 次 | 确定 | ✔ |
+| `support` | 03 大空袭夜每个战斗机呼叫 1 次 | 确定 | ✔ |
+| `impact` | 03 落点 2 次 / 次落地、民用损毁 `RollInclusive`、部件 1 次、反辐射 1 次（含碎片的 `ApplyDamageAt`） | 确定（`RollInclusive` 的拒绝采样次数由种子决定） | ✔ |
+| `exposure` | 02 假发射车识破 | 确定 | ✔ 00 用途由"预留"改为实际用途（1.7） |
+| `enemy_ai` | 无 | 0 | ✔ |
+| `scoring` / `civil` | 无 | 0 | ✔ |
+| `environment` / `crew` | 无 | 0 | ✔ |
+
+未发现系统使用别人的子流（除登记在案的"宿主子流"：04 钩子用 `spawn`、碎片用 `impact`、欺骗单位在 6 / 11 号系统中用宿主子流）。
+
+### A-5-01 战役层随机数名与夜晚种子的派生名需要隔离
+- 位置：05 0.4 第 4 条（`new SimRandom(SimRandom.ChildSeed(RunSeed, <名字>))`）、3.1.2 名字表；00 3.1.3 `NightSeed`（`runSeed ^ Fnv1a64("night:<levelId>:<n>")`）。
+- 问题：二者都从同一 `runSeed` 用 FNV 名字派生；若 05 的名字表中出现形如 `night:…` 的名字，会与夜晚种子完全重合（同一序列）。目前没有冲突，但没有规则防止。
+- 建议：05 3.1.2 规定战役层名字一律以 `campaign:` 开头（如 `campaign:cards:<level>`），并在 `CampaignDataLoader` / 单元测试中断言名字表不含 `night:` 前缀；00 3.1.5 注明 `night:` 前缀保留给 `NightSeed`。
+- 分级：T1。
+
+---
+
+## 6. 汇总
+
+### 6.1 计数
+
+| 分级 | 数量 | 编号 |
+|---|---|---|
+| T1 | 46 | 第 1 节补丁表（1 项整体）；A-2-02 – 08、A-2-10 – 30（28）；A-3-01 – 11（11）；A-4-02 – 06（5）；A-5-01（1）；另 A-2-01 中的改名部分 |
+| T2 | 2 | A-2-01（模糊航迹按 UAV 外观进入身管交战）、A-2-09（目标机动使在飞拦截弹失效） |
+| T3 | 0 | 接口层面没有需要逐条决定的玩法选择；相关玩法分歧已由 B 的 B-T3-08（电子战口径）、B-T2-01 / 02 / 03 / 06 / 08 覆盖 |
+
+（T1 合计：1 + 28 + 11 + 5 + 1 = 46 条；A-2-01 计为 T2，但其中"`PerceivedTag` → `Tag` 改名"部分按 T1 直接执行。）
+
+### 6.2 最严重的问题（实现前必须先改）
+
+1. **A-2-08 导弹发射资格**：03 只检查本单位雷达开机，不检查 `PreciseHolderIds`，让"精确是火力单元私有"（02 D2、数值表 1.3）失效——无雷达单兵导弹、被山挡住的雷达都能借别人的精确航迹开火；同时 5 个依赖字段在 02 中不存在。
+2. **A-4-03 `AllClear` 读缓存**：压制波放行与 `AllClear` 同一步发生时，夜晚提前结束、被推迟的主力永远不生成——04 的"先压制后突击"会在最常见的场景下被吞掉。
+3. **A-2-27 / A-2-06 电子战与反辐射的移动后果无人实现**：02 等 01 读 `EwDivertPos` / `LinkCutState`，01 等 02 调 `ThreatRouting`；`HomingUnitId` 01 / 04 都说由 02 写，02 没写——"把 Shahed 引到空地"、链路中断悬停 / 返航、反辐射归航全部不会发生。
+
+### 6.3 次严重（影响测试或数据）
+
+- A-2-02：悬停平台永远打不到（`AtPathEnd` 被当作"已到达"）。
+- A-2-01：模糊航迹被 03 全部排除，高炮 ×0.5 规则失效。
+- A-4-05：`CarryIn` 的逐架余弹在发射架创建之前应用，跨夜弹药会被重复扣池。
+- 第 1 节：6 个新规则文件的加载序与 `LoadedFiles.Count` 在 01 / 03 / 04 中互相冲突，按 1.1 统一为 21–26 / 35。
