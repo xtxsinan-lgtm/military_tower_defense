@@ -1861,7 +1861,7 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 
 ## 7. 测试用例
 
-> 预期值由 `/Users/xtxsinan/.gemini/antigravity/brain/5a8f59a4-9bf6-4338-93e4-2e1d1a05cb62/scratch/spec03_calc.py` 计算。浮点断言：标“==”的逐位相等；其余容差 `1e-9`（时间、坐标）或 `1e-12`（概率、比例）。
+> 预期值由 [`tools/spec_calc/03/calc_03.py`](file:///Users/xtxsinan/.gemini/antigravity/scratch/military_tower_defense/tools/spec_calc/03/calc_03.py) 计算并验证（`C-T1-02`）。浮点断言：标“==”的逐位相等；其余容差 `1e-9`（时间、坐标）或 `1e-12`（概率、比例）。
 
 ### 7.0 测试约定（`sim.tests/Engagement*`、`Impact*`、`Support*`、`Civil*`、`Scoring*`）
 
@@ -1870,41 +1870,41 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 - **TI（`rules/intercept.json` 夹具）**：`decoyUsesColumn: UAV`；`classes: { k: { UAV 0.8, CM 0.7, BM 0.5 }, g: { UAV 0.25, GB 0.05 }, d: { UAV 0.6 }, f: { UAV 0.7, CM 0.7 } }`；修正项取正式数据的值（`trackVague.gunProbMult 0.5`、`trackApproximateCued 1.0`、`noCueSelfSearch 1.5`、`newPositionFirstNight 0.7`、`crewFatigue {3, 0.85}`、`aceCrew 1.15`、`restrictedEngagement 1.3`、`interceptorDroneInFriendlyEw 0.6`、`evasiveTargetVsInterceptorDrone { 0.6, from "2025-09", enemies ["e_uav"] }`）。
 - **TD（`rules/damage.json` 夹具）**：正式数据的 5 个 band 与 `splashFalloff`，另加 `unitFootprintCells 0.05`（→ 50 m）、`componentRadarChance 0.5`。
 - **TA（`rules/accuracy.json`）**：正式数据（A 0/0+1，B 0–1/+1，C 0–2/+2，D 1–3/+2，`spotterTierBoost 1`）。**TDb**：正式 `debris.json`。**TS**：正式 `support.json`。
-- **TCv（`rules/civil.json` 夹具）**：`grid { unitConnectRadiusCells 1, unitCategoriesOnGrid ["sensor","ew"], unpoweredShelterProtectionMult 0.5 }`、`alert { shelterGameSec 2, protectionFrac 0.8, populationStructureTypes ["residential"], freeRaisesPerNight 2, fatiguePerExtraRaise 0.1, minResponsiveness 0.3 }`、`scoring { lossMusdPerDamageLevel 1, platformPotentialLossMusd 10, highThreatDamageLevel 7 }`。
+- **TCv（`rules/civil.json` 夹具）**：`grid { unitConnectRadiusCells 1, unitCategoriesOnGrid ["sensor","ew"], unpoweredShelterProtectionMult 0.5 }`、`alert { availableFromLevel 6, shelterGameSec 2, protectionFrac 0.8, populationStructureTypes ["residential"], freeRaisesPerNight 2, fatiguePerExtraRaise 0.1, minResponsiveness 0.3 }`、`scoring { lossMusdBase 0.1, platformPotentialLossMusd 10, highThreatDamageLevel 7 }`（`B-T3-01`、`C-T2-04`）。
 - **武器夹具**：`m1 { kind missile, interceptClass k, rangeKm 10, ceilingKm 5, shotCostMusd 0.4, magazine 2, launchers 1, targets [UAV, CM, BM] }`；`g1 { kind gun, interceptClass g, rangeKm 2, ceilingKm 2, shotCostMusd 0.001, magazine null, magazineRounds 25, targets [UAV, DECOY, GB], barrelCooldown true }`；`d1 { kind interceptor_drone, interceptClass d, rangeKm 20, ceilingKm 3, shotCostMusd 0.003, magazine 3, targets [UAV, DECOY] }`。单位 `uF { mobility vehicle, fireOnMove no, weapons [m1] }`、`uG { mobility vehicle, fireOnMove partial, weapons [g1] }`、`uD { mobility vehicle, fireOnMove no, weapons [d1] }`。
-- **敌方夹具**：`e_uav { tag UAV, interceptable true, hp 2, damageLevel 3, splashCells 1, accuracy C, costMusd 0.05 }`、`e_cm { tag CM, hp 5, damageLevel 7, splashCells 2, accuracy A, costMusd 13 }`、`e_bm { tag BM, hp 8, damageLevel 8, splashCells 2, accuracy A, interceptProbMult 0.7 }`、`e_decoy { tag DECOY, hp 1, damageLevel 1, splashCells 0, accuracy D }`、`e_arm { tag SCM, damageLevel 4, splashCells 1, accuracy A, tracksEmittingRadarOnly true }`、`e_sub { tag HBM, interceptable false, hp null, damageLevel 6, splashCells 1, submunitions { count 3, damageLevel 6, splashCells 1 }, accuracy C }`、`e_lancet { tag UAV, damageLevel 2, vehicleDamageMult 3, splashCells 0, accuracy A }`；平台 `p_spot { tag UAV, hp 1, whileAlive { enemyAccuracyTierBoost 1 } }`。
+- **敌方夹具**：`e_uav { tag UAV, interceptable true, hp 2, damageLevel 3, splashCells 1, accuracy C, costMusd 0.05 }`、`e_cm { tag CM, hp 5, damageLevel 7, splashCells 2, accuracy A, costMusd 13 }`、`e_bm { tag BM, hp 8, damageLevel 8, splashCells 2, accuracy A, interceptProbMult 0.7 }`、`e_decoy { tag DECOY, hp 1, damageLevel 1, splashCells 0, accuracy D }`、`e_arm { tag SCM, damageLevel 4, splashCells 1, accuracy A, tracksEmittingRadarOnly true }`、`e_sub { tag HBM, interceptable false, hp null, damageLevel 6, splashCells 1, submunitions { count 3, damageLevel 6, splashCells 1 }, accuracy C }`、`e_lancet { tag UAV, damageLevel 2, vehicleDamageMult 3, splashCells 0, accuracy A }`；平台 `p_spot { tag UAV, hp 1, behavior spotter, whileAlive { enemyAccuracyTierBoost 1 } }`。
 - **替身系统**（经 `SimWorld.CreateForTest` 按 Order 替换）：
-  - `ScriptedMover`（Order 2）：每个目标按脚本 `(p0, v, alt)` 在第 `k` 步置 `Pos = p0 + v·k`、`AltM = alt`、`VelMps = v`；脚本可指定“第 `k` 步发出 `ThreatArrived{Pos}`”。
-  - `ScriptedTracks`（Order 4）：每步为脚本中的目标维护航迹，字段 `Quality`、`PerceivedTag`、`Cued`、`DecoyIdentified` 由脚本给定。
-  - `ScriptedEmission`（Order 6）：每步按脚本写 `FireControlActive`、`EmissionSilentHold`、`EmissionReactionMult`。
+  - `ScriptedMover`（Order 2）：每个目标按脚本 `(p0, v, alt)` 在第 `k` 步置 `Pos = p0 + v·k`、`AltM = alt`、`VelMps = v`、`MaxSpeed3DMps = |v|`；脚本可指定“第 `k` 步置 `Phase = Arrived` 并发出 `ThreatArrived{Pos}`”或“发出 `ThreatManeuvered`”。
+  - `ScriptedTracks`（Order 4）：每步为脚本中的目标维护航迹，字段 `Quality`、`Tag`（兼容别名 `PerceivedTag`）、`Cued`、`DecoyIdentified` 由脚本给定。
+  - `ScriptedEmission`（Order 6）：每步按脚本为 `IFireControlQueries` 提供 `IsFireControlActive`、`HasFireControlRadar`、`ReactionTimeMult`、`IsEmissionSilentHold`（并同步写回 `FireUnit` 镜像字段）。
   - Order 3、5、11、12 用空替身。
-- **桩接口**：`EngagementSystem`、`ExternalSupportSystem` 提供 `internal` 构造函数注入 `IThreatPredictor`（测试用 `LinearPredictor`：`Predict(t, dt) = (t.Pos + t.VelMps·dt, t.AltM, Arrived = 脚本到达步 ≤ now + dt)`）与 `IEwQueries`（测试用 `FixedEwQueries(bool)`）。
+- **桩接口**：`EngagementSystem`、`ExternalSupportSystem`、`ImpactSystem` 提供 `internal` 构造函数注入 `IThreatPredictor`（测试用 `LinearPredictor`：`Predict(t, dt) = (t.Pos + t.VelMps·dt, t.AltM, Arrived = 脚本到达步 ≤ now + dt)`）、`IEwQueries`（测试用 `FixedEwQueries(bool friendlyJamming, double shieldMult = 1.0)`）与 `IFireControlQueries`。
 - **随机数**：`SimConfig.RandomOverride` 对 `intercept` / `impact` / `support` 子流返回 `ScriptedRandom`（`NextDouble` 序列记为 `D[...]`，`NextUInt32` 序列记为 `U[...]`）；序列多余或不足都使测试失败（用以断言消耗次数）。
-- 关卡日期默认 `2022-11-15`；`EndWhenClear = false`；除注明外部署方案中的单位 `DeployState = Deployed`。
+- 关卡日期默认 `2022-11-15`；`EndWhenClear = false`；除注明外部署方案中的单位 `DeployState = Deployed`；未专门测试指挥点的用例中指挥点替身 `CostOf = 0`、`CanSpend = true`。
 
-### 7.1 解析拦截（`InterceptSolver`，WS01-010）
+### 7.1 解析拦截（`InterceptSolver`，32 次二分迭代 `C-T2-10`，WS01-010）
 
 **T-03-01 迎头目标**
 `Solve(origin (0,0), speed 900, range 20000, ceiling 5000, predict = 线性 (10000,0) + (−100,0)·dt，alt 1000，不到达, sampleSec 1)`。
-预期：非 null；`TimeSec = 10.055419054594015`（闭式解 10.055419054595014，容差 1e-9）；`Pos = (8994.458094540598, 0)`（容差 1e-6）；`AltM = 1000`。
+预期：非 null；`TimeSec = 10.055419054813683`（闭式解 `10.055419054595014`，容差 `1e-9`）；`Pos = (8994.458094518632, 0)`（容差 `1e-6`）；`AltM = 1000`。
 
 **T-03-02 横穿目标**
 `origin (0,0), speed 1000, range 30000, ceiling 10000`，目标 `(−8000, 6000) + (250, 0)·dt`，alt 2000。
-预期：`TimeSec = 8.61303556245775`（闭式 8.613035562458604，容差 1e-9），`Pos.X = −5846.741109385563`（容差 1e-6），`Pos.Y = 6000`。
+预期：`TimeSec = 8.613035562681034`（闭式 `8.613035562458604`，容差 `1e-9`），`Pos.X = −5846.741109329741`（容差 `1e-6`），`Pos.Y = 6000`。
 
 **T-03-03 追不上 → null**
 `speed 200`，目标 `(5000,0) + (300,0)·dt`，alt 500，`range 20000, ceiling 5000` → `null`。
 
 **T-03-04 最早可达点在射程外 → null；进入包络后有解**
-- 目标 `(10000,0) + (−100,0)·dt`，alt 1000，`speed 900, range 5000, ceiling 5000` → `null`（`t* ≈ 10.06`，拦截点 x ≈ 8994 > 5000）。
-- 同参数，目标起点改为 `(5500, 0)` → `TimeSec = 5.600198804013072`，`Pos.X = 4939.980119598693`（容差 1e-6）。
+- 目标 `(10000,0) + (−100,0)·dt`，alt 1000，`speed 900, range 5000, ceiling 5000` → `null`（`t* ≈ 10.06`，拦截点 `x ≈ 8994 > 5000`）。
+- 同参数，目标起点改为 `(5500, 0)` → `TimeSec = 5.600198804168031`，`Pos.X = 4939.980119583197`（容差 `1e-6`）。
 
 **T-03-05 目标先落地 / 超射高 → null**
 - 目标 `(3000,0) + (−50,0)·dt`，alt 100，脚本 5.0 s 后到达；`speed 100, range 20000, ceiling 5000` → `null`（第 1–5 个采样点不可达，第 6 个采样点 `Arrived`）。
 - 目标同 T-03-01 但 alt 6000、`ceiling 5000` → `null`。
 
 **T-03-06 拦截无人机（慢速）**
-`speed 100, range 20000, ceiling 3000`：目标 `(5000,0) + (−50,0)·dt`，alt 500 → `TimeSec = 33.582866332942416`，`Pos.X = 3320.8566833528794`；目标 `(1000,0) + (120,0)·dt`（远离、比拦截无人机快）→ `null`。
+`speed 100, range 20000, ceiling 3000`：目标 `(5000,0) + (−50,0)·dt`，alt 500 → `TimeSec = 33.582866332959384`，`Pos.X = 3320.856683352031`；目标 `(1000,0) + (120,0)·dt`（远离、比拦截无人机快）→ `null`。
 
 ### 7.2 拦截概率与反应时间（WS01-010）
 
@@ -1913,12 +1913,12 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 
 **T-03-08 修正链顺序与乘积**
 类 `d`（`UAV 0.6`），武器 `d1`（`InterceptorDrone`），真实目标 `e_uav`，航迹 `Precise`；单位 `NewPositionFirstNight = true`、`CrewConsecutiveNights = 3`、`AceCrew = true`、`DamageEfficiencyMult = 0.8`；`FixedEwQueries(true)`；关卡日期 `2025-09-01`（规避修正生效，`e_uav ∈ enemies`）。
-预期：`0.6 × 1.0 × 0.7 × 0.85 × 1.15 × 0.6 × 0.6 × 1.0 × 0.8` 从左到右 = `0.1182384`（==）。关卡日期改为 `2025-08-31` → 规避项为 1.0，结果 `0.197064`（= 上式去掉一个 0.6，容差 1e-12）。
+预期：`0.6 × 1.0 × 0.7 × 0.85 × 1.15 × 0.6 × 0.6 × 1.0 × 0.8` 从左到右 = `0.1182384`（==）。关卡日期改为 `2025-08-31` → 规避项为 1.0，结果 `0.197064`（= 上式去掉一个 0.6，容差 `1e-12`）。
 
-**T-03-09 截断与航迹质量**
+**T-03-09 截断与航迹质量（`C-T1-02`）**
 - 类 `k`，自定义 `classes.k.UAV = 0.95`，`AceCrew = true` → 原始 `1.0924999999999998`，返回 `1.0`。
 - 武器 `g1` 打 `e_uav`，航迹 `Vague` → `0.25 × 0.5 = 0.125`；航迹 `Approximate` 且 `Cued` → `0.25`。
-- 武器 `m1` 打 `e_bm`（`interceptProbMult 0.7`）→ `0.5 × 0.7 = 0.5249999999999999`（==）。
+- 武器 `m1` 打 `e_bm`（`classes.k.BM = 0.5`，`interceptProbMult = 0.7`）→ `0.5 × 0.7 = 0.35`（==，`C-T1-02`）。
 
 **T-03-10 反应时间**
 `ReactionSecFor`，武器 `m1`（基准 3.0 s）：
@@ -1928,15 +1928,15 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 
 ### 7.3 交战判定与交战规则（WS01-009）
 
-> 本节场景：部署 `uF` 于 `(0,0)`（`FireControlActive = true`、`EmissionReactionMult = 1`），目标脚本 `(10000, 0) + (−100, 0)·k`、alt 1000；航迹 `Precise`、`Cued`，`PerceivedTag` = 真实标签（另有说明除外）。`intercept` 子流 `ScriptedRandom`。
+> 本节场景：部署 `uF` 于 `(0,0)`（`FireControlActive = true`、`EmissionReactionMult = 1`），目标脚本 `(10000, 0) + (−100, 0)·k`、alt 1000；航迹 `Precise`、`Cued`，`Tag` = 真实标签（另有说明除外）。`intercept` 子流 `ScriptedRandom`。
 
 **T-03-11 完整交战时间线（反应 → 发射 → 命中）**
 目标 `e_uav`。`D[0.5]`。
 - 第 1 步：无 `InterceptorLaunched`；`Weapons[0].TargetTrackId` = 该航迹，`ReadyAtSec = 4.0`。
 - 第 2、3 步：不发射。
-- 第 4 步：恰好 1 个 `InterceptorLaunched{FireUnitId = uF, LauncherIndex 0, WeaponId "m1", ThreatId, SupportAssetId 0}`；新拦截弹 `InterceptAtSec = 13.657716150276645`（容差 1e-9）、`InterceptPos.X = 8634.228384972335`（容差 1e-6）、`HitProbability = 0.8`；`Launchers[0].RoundsLeft = 1`；`NextShotAtSec = 19.0`。
+- 第 4 步：恰好 1 个 `InterceptorLaunched{FireUnitId = uF, LauncherIndex 0, WeaponId "m1", ThreatId, SupportAssetId 0}`；新拦截弹 `InterceptAtSec = 13.657716150395572`（容差 `1e-9`）、`InterceptPos.X = 8634.228384960443`（容差 `1e-6`）、`HitProbability = 0.8`；`Launchers[0].RoundsLeft = 1`；`NextShotAtSec = 19.0`。
 - 第 5–13 步：无新的发射（射击-观察-射击：目标已被占用）。
-- 第 14 步：`InterceptResolved{Hit = true, Probability 0.8, AtSec = 13.657716150276645, InterceptorId = 该拦截弹, FireUnitId = uF, WeaponId "m1"}`；目标被删除；拦截弹被删除；`D` 恰好用尽。
+- 第 14 步：`InterceptResolved{Hit = true, Probability 0.8, AtSec = 13.657716150395572, InterceptorId = 该拦截弹, FireUnitId = uF, WeaponId "m1"}`；目标被删除；拦截弹被删除；`D` 恰好用尽。
 
 **T-03-12 未命中后再射（射击间隔约束）**
 同 T-03-11，`D[0.9, 0.1]`。第 14 步 `Hit = false`；第 15–18 步不发射（`NextShotAtSec = 19`）；第 19 步发射第 2 枚（不重新计反应时间，`TargetTrackId` 未变）；之后 `RoundsLeft = 0` 并在同一步发出 `AmmoDepleted{uF, "m1"}`（全夜仅 1 次）。
@@ -1948,9 +1948,9 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 **T-03-14 武器不能打的标签不算“有目标”**
 武器 `m1`（targets 不含 `GB`），目标标签 `GB`（自定义 `e_gb`）。整夜无发射、无 `EngagementHeld`，`HeldMask == 0`。
 
-**T-03-15 航迹质量门槛**
+**T-03-15 航迹质量门槛与 `Vague` 标签回退（`A-2-10`、`B-T3-06`）**
 - `m1` 对 `Approximate` 航迹 → `EngagementHeld{TrackQualityTooLow}`，不发射。
-- `uG` 于 `(0,0)`，目标 `e_uav` 起点 `(1900, 0)`、速度 0，航迹 `Vague`：第 1 步选定，`ReadyAtSec = 1 + 3.0 × 1.5 = 5.5`（未 `Cued`）；第 6 步（`now = 6 ≥ 5.5`）发出 `GunFired{Probability = 0.125, RoundsUsed = 10}`，同一步 `InterceptResolved{InterceptorId = null, AtSec = null}`。
+- `uG` 于 `(0,0)`，目标 `e_uav` 起点 `(1900, 0)`、速度 0，航迹 `Vague`（`Track.Tag == null`）：3.2.4 回退取真实标签 `UAV` 匹配 `g1.targets`（`A-2-10`）；第 1 步选定，`ReadyAtSec = 1 + 3.0 × 1.5 = 5.5`（未 `Cued`）；第 6 步（`now = 6 ≥ 5.5`）发出 `GunFired{Probability = 0.125, RoundsUsed = 10}`，同一步 `InterceptResolved{InterceptorId = null, AtSec = null}`。
 
 **T-03-16 火控未开：静默 vs 火控失效**
 `FireControlActive = false`：`EmissionSilentHold = true` → `EngagementHeld{EmissionSilent}`；`EmissionSilentHold = false` → `EngagementHeld{FireControlOff}`。两种情况都不发射。
@@ -1965,12 +1965,16 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 **T-03-19 限定敌方型号**
 `m1` 加 `restrictToEnemies ["e_cm"]`。目标 `e_uav`（精确航迹）→ 不发射、无 `EngagementHeld`；目标 `e_cm` 航迹 `Approximate` → 不发射；`Precise` → 发射。
 
-**T-03-20 多火力单元分配（不重复射击）**
-`uF`（ID 小）在 `(0,0)`，第二个 `uF'` 在 `(2000,0)`，一个目标 `e_uav`。`D[0.9, …]`。
-- 第 1 步两者都锁定，`ReadyAtSec = 4`。
-- 第 4 步：ID 小者发射；ID 大者处理时该目标已被占用（`Covered`）→ 无合格目标 → `TargetTrackId = 0`，不标记。
-- 第 14 步该拦截弹未命中。第 15 步：ID 小者仍锁定该目标但 `NextShotAtSec = 19` 未到；ID 大者重新锁定，`ReadyAtSec = 18`。
-- 第 18 步：ID 大者发射（拦截点 x = 7571.096255672538，`InterceptAtSec = 18 + 6.289037443274623`）。第 19 步：ID 小者因目标被占用不发射。
+**T-03-20 多火力单元分配（期望单发成本优先 + 反应期礼让，`B-T3-02`、`C-T1-14`）**
+- **子场景 A（同成本并列按 ID 升序）**：`uF`（ID 小）在 `(0,0)`，第二个 `uF'`（ID 大）在 `(2000,0)`，两者均 `AceCrew = false`（期望单发成本同为 `0.4 / 0.8 = 0.5 M$`），一个目标 `e_uav`。`D[0.9, …]`。
+  - 第 1 步两者都锁定，`ReadyAtSec = 4`。
+  - 第 4 步：ID 小者发射；ID 大者处理时该目标已被占用（`Covered`）→ 无合格目标 → `TargetTrackId = 0`，不标记。
+  - 第 14 步该拦截弹未命中。第 15 步：ID 小者仍锁定该目标但 `NextShotAtSec = 19` 未到；ID 大者重新锁定，`ReadyAtSec = 18`。
+  - 第 18 步：ID 大者发射（拦截点 `x = 7571.096255653538`，`InterceptAtSec = 18 + 6.289037443464622 = 24.289037443464622`）。第 19 步：ID 小者因目标被占用不发射。
+- **子场景 B（更低期望单发成本优先，`B-T3-02`）**：同上但令 `uF'`（ID 大）`AceCrew = true`（`p = 0.8 × 1.15 = 0.92`，期望单发成本 `0.4 / 0.92 ≈ 0.4347826 M$ < 0.5 M$`）。
+  - 第 4 步：`uF'`（ID 大，期望成本更低）优先发射（拦截点 `x = 8832.721042796038`，`InterceptAtSec = 4 + 7.672789572039619 = 11.672789572039619`）；`uF`（ID 小）因目标已被占用让出（`TargetTrackId = 0`）。
+  - 第 12 步该拦截弹未命中（`D[0.99]`）；第 13 步 `uF'` 处于 `NextShotAtSec = 19` 冷却，`uF`（ID 小）重新锁定（`ReadyAtSec = 16`）并在第 16 步发射。
+- **子场景 C（反应期礼让与来不及补射保护，`C-T1-14`）**：`uF`（`m1` 成本 `0.4`）在第 4 步已就绪（`ReadyAtSec = 4`），而 `uD`（`d1` 成本 `0.003`）在第 3 步刚锁定同一目标（`ReadyAtSec = 6`）：若目标到达时间充裕（`uD` 在 `t = 6` 发射后拦截时刻 `+ 15 s` 前目标未到达），`uF` 在第 4、5 步礼让不开火，第 6 步由 `uD` 发射；若目标将在 `uD` 预计拦截时刻后 `< 15 s` 内到达（来不及补射），`uF` 在第 4 步不礼让、立即发射。
 
 **T-03-21 齐射与“射射”**
 规则 `SalvoSize = 2, ShootLookShoot = false`；`m1` 改 `magazine 1, launchers 2`。第 4 步一次发出 2 个 `InterceptorLaunched`（`LauncherIndex` 依次为 0、1），二者 `InterceptAtSec` 相同；`D[0.5]`：第 14 步第一枚（ID 小）命中，第二枚 `InterceptorExpired{TargetGone}`（只消耗 1 个 `NextDouble`）。
@@ -1991,8 +1995,8 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 `DeployState = Moving`：`uG`（`partial`，身管）照常射击；`uF`（`no`）不射击、不发 `EngagementHeld`、`TargetTrackId = 0`。`DeployState = Packing` 的 `uG` 不射击。
 
 **T-03-26 禁止交战区与限制交战区**
-`layers.restrictedZones = [{ id z1, polygonM [[8000,-1000],[9500,-1000],[9500,1000],[8000,1000]], rule no_engagement }]`，T-03-11 场景：第 1–11 步的最早可达拦截点 x 都在 `[8000, 9500]` 内 → 不锁定、不发射，第 1 步发出 `EngagementHeld{NoEngagementZone}`（整夜 1 次）；第 12 步拦截点 x = 7913.7068704443445 离开 z1 → 锁定，`ReadyAtSec = 15`；第 15 步发射，`InterceptPos.X = 7643.486237439419`，`InterceptAtSec = 23.565137625605814`（容差 1e-9）。
-把 `rule` 改为 `restricted_engagement`：航迹 `Precise` → 反应 `3.0 × 1.3 = 3.9000000000000004`，`ReadyAtSec = 4.9`（容差 1e-12），第 5 步发射；`uG` 近距场景（T-03-15 第二条，但航迹 `Approximate`，目标在限制区内）→ `EngagementHeld{NotConfirmedHostile}`。
+`layers.restrictedZones = [{ id z1, polygonM [[8000,-1000],[9500,-1000],[9500,1000],[8000,1000]], rule no_engagement }]`，T-03-11 场景：第 1–11 步的最早可达拦截点 x 都在 `[8000, 9500]` 内 → 不锁定、不发射，第 1 步发出 `EngagementHeld{NoEngagementZone}`（整夜 1 次）；第 12 步拦截点 `x = 7913.70687042363` 离开 z1 → 锁定，`ReadyAtSec = 15`；第 15 步发射，`InterceptPos.X = 7643.486237432808`，`InterceptAtSec = 23.565137625671923`（容差 `1e-9`）。
+把 `rule` 改为 `restricted_engagement`：航迹 `Precise` → 反应 `3.0 × 1.3 = 3.9000000000000004`，`ReadyAtSec = 4.9`（容差 `1e-12`），第 5 步发射；`uG` 近距场景（T-03-15 第二条，但航迹 `Approximate`，目标在限制区内）→ `EngagementHeld{NotConfirmedHostile}`。
 
 **T-03-27 战斗机专区**
 在 T-03-11 场景中预置一个 `Active` 的 `fighter_area_patrol` 支援实体（`Pos (8000,0)`, `RadiusM 5000`）：
@@ -2035,12 +2039,12 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 
 **T-03-34 战斗机交战与架次击落上限**
 自定义支援 `s_hunt { effect uav_hunt, fighterRef fighter, fighterWeaponRef fw, targets [UAV], killsPerSortie 2, delay { kind instant }, duration { kind game_sec, gameSec 20 }, cost { commandPoints 1 } }`，战斗机武器 `fw { kind rocket, interceptClass f, rangeKm 5, shotCostMusd 0.025, loadout 14, targets [UAV] }`，`fighter.ceilingKm 15`。呼叫点 `(0,0)`；三个静止 `e_uav` 位于 `(1000,0)`、`(2000,0)`、`(3000,0)`，alt 500，航迹 `Approximate`。`intercept` 子流 `D[0.1, 0.1]`。
-预期：第 1 步到位（`instant`）并锁定 `(1000,0)` 的目标，`ReadyAtSec = 4`；第 4 步发射第 1 发（`FireUnitId 0`、`SupportAssetId` = 实体，`InterceptAtSec = 4 + 1.2422599874987732`）；第 6 步命中，`KillsLeft = 1`；第 6 步系统 9 锁定 `(2000,0)`，`ReadyAtSec = 9`，但 `NextShotAtSec = 19`；第 19 步发射（`InterceptAtSec = 19 + 2.2906142364531448`）；第 22 步命中 → `KillsLeft = 0`，**同一步**系统 9 发出 `SupportEnded{KillsReached}`；`NightResult.Support.Kills = 2`；`(3000,0)` 的目标未被射击。
+预期：第 1 步到位（`instant`）并锁定 `(1000,0)` 的目标，`ReadyAtSec = 4`；第 4 步发射第 1 发（`FireUnitId 0`、`SupportAssetId` = 实体，`InterceptAtSec = 4 + 1.24225998762995`）；第 6 步命中，`KillsLeft = 1`；第 6 步系统 9 锁定 `(2000,0)`，`ReadyAtSec = 9`，但 `NextShotAtSec = 19`；第 19 步发射（`InterceptAtSec = 19 + 2.290614236611873`）；第 22 步命中 → `KillsLeft = 0`，**同一步**系统 9 发出 `SupportEnded{KillsReached}`；`NightResult.Support.Kills = 2`；`(3000,0)` 的目标未被射击。
 
 ### 7.7 落地伤害（WS01-011、017）
 
 **T-03-35 落点偏移**
-`Offset(aim (5000,5000), tier C)`，`EwAffected = false`，`D[0.5, 0.25]` → `d = 1000`、方位 `π/2` → `P = (6000, 5000)`（容差 1e-9）。`EwAffected = true`，`D[0.5, 0.5]` → `d = 3000`、方位 `π` → `P = (5000, 2000)`（容差 1e-9）。tier D、`D[0.0, 0.0]` → `P = (5000, 6000)`。tier A、`D[0.7, 0.3]` → `P == aim`，仍消耗 2 个值。
+`Offset(aim (5000,5000), tier C)`，`EwAffected = false`，`D[0.5, 0.25]` → `d = 1000`、方位 `π/2` → `P = (6000, 5000)`（容差 `1e-9`）。`EwAffected = true`（或 `EwExtraOffsetM = 2000`），`D[0.5, 0.5]` → `d = 3000`、方位 `π` → `P = (5000, 2000)`（容差 `1e-9`）。tier D、`D[0.0, 0.0]` → `P = (5000, 6000)`。tier A、`D[0.7, 0.3]` → `P == aim`，仍消耗 2 个值。
 
 **T-03-36 溅射衰减与取整**
 `LevelRaw(7, r, 2000)` / `RoundLevel`：
@@ -2064,29 +2068,31 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 - 等级 9（`block`）→ `Hp → 0`，`StructureDamaged` + `StructureDestroyed`，不消耗随机数。
 - `s_pp`：等级 7 → `ceil(0.35 × 20 − 1e-9) = 7`，`Hp 20 → 13`，`Grid.Dirty = true`；等级 3 → `2`；等级 1 → 0（无事件、无随机数）。
 
-**T-03-38 我方单位效果**
+**T-03-38 我方单位效果与车载自卫干扰（`B-T2-52`、`A-2-05`、`A-2-20`）**
 单位 `uF`（`HasFireControlRadar = true`，`launchers 2`）在 `(0,0)`。
-- 等级 2 → `DamageEfficiencyMult = 0.8`、`LightDamaged`、`PlayerUnitDamaged{LightDamage}`；再次等级 1 → 仍 0.8（不叠乘）。
+- 等级 2 → `DamageEfficiencyMult = 0.8`、`LightDamaged`、`PlayerUnitDamaged{Category = Fire, Effect = LightDamage}`；再次等级 1 → 仍 0.8（不叠乘）。
 - 等级 4（`now = 100`）→ `SuspendedUntilSec = 1900`（`100 + 30 × 60`）。
-- 等级 5，`D[0.3]` → `RadarDestroyed = true`、`Component = Radar`；再次等级 5，`D[0.3]` → 雷达已毁，改毁发射架：`Launchers.Count 2 → 1`、`Component = Launcher`；再次等级 5、`D[0.9]` → 最后一个发射架被毁 → `PlayerUnitDestroyed`。
+- 等级 5，`D[0.3]` → `RadarDestroyed = true`、`Component = Radar`；再次等级 5，`D[0.3]` → 雷达已毁，改毁发射架：`Launchers.Count 2 → 1`、`LaunchersLost = 1`、`Component = Launcher`；再次等级 5、`D[0.9]` → 最后一个发射架被毁（`LaunchersLost = 2`）→ `PlayerUnitDestroyed{Category = Fire, Pos = (0,0)}`。
 - 探测单位受等级 5 → 直接 `PlayerUnitDestroyed`，不消耗随机数。
-- 等级 7 → 火力单元 `PlayerUnitDestroyed{SourceThreatId}`，从存储删除。
+- 等级 7 → 火力单元 `PlayerUnitDestroyed{SourceThreatId, Pos}`，从存储删除。
+- 车载自卫干扰（`B-T2-52`）：`FixedEwQueries(false, shieldMult: 0.5)`，`e_lancet` 直接命中 `uF`：`D[0.7]`（`>= 0.5`）→ 被自卫干扰偏转，无受损事件；`D[0.2, 0.3]`（`0.2 < 0.5` 命中，`0.3` 毁雷达）→ 触发 `DestroyComponent`。
 
 **T-03-39 对车辆加成与受击半径**
 `e_lancet`（等级 2、溅射 0、加成 3）落在 `(30, 0)`：车载 `uF` 于 `(0,0)`（距离 30 ≤ 受击半径 50）→ 原始 `2 × 3 = 6` → 等级 6 → 毁部件；落在 `(60, 0)` → `r = 10 > 0` → 无效果。`e_uav`（等级 3、溅射 1000）落在 `(750,0)`（`r = 700`）：车载单位 `RoundLevel(1.53 × 1) = 2`；`vehicleDamageMult` 缺省 → 不加成。
 
 **T-03-40 有效精度档**
-`e_uav`（C）：无侦察平台、`EwTierDrop 0` → C；地图上有存活 `p_spot` → B；`p_spot` + `EwTierDrop 2` → D；`e_cm`（A）+ 侦察平台 → A（截断）。`EwImmune` 的自定义弹药 + `EwTierDrop 2` → 不降档。
+`e_uav`（C）：无侦察平台、`AccuracyTierDrop 0` → C；地图上有存活 `p_spot` → B；`p_spot` + `AccuracyTierDrop 2` → D；`e_cm`（A）+ 侦察平台 → A（截断）。`EwImmune` 的自定义弹药 + `AccuracyTierDrop 2` → 不降档。
 
 **T-03-41 反辐射导弹**
-`e_arm` 到达 `(100,100)`，`ArmHitProbMult 0.2`：`D[0.5]` → `ThreatImpacted{Outcome ArmMissed, DamageLevel 0, LeakReason null}`，无伤害事件，目标删除，`ThreatsImpacted` 不增加；`D[0.1, 0.0, 0.0]` → 命中，A 档偏移 0 → 正常落地（`D` 的后两个值用于偏移）。
+`e_arm` 到达 `(100,100)`，`ArmHitProbMult 0.2`：`D[0.5]` → `ThreatImpacted{Outcome ArmMissed, DamageLevel 0, LeakReason null}`，无伤害事件，目标删除，`ThreatsImpacted` 不增加，`ThreatsArmMissed = 1`；`D[0.1, 0.0, 0.0]` → 命中，A 档偏移 0 → 正常落地（`D` 的后两个值用于偏移）。
 
 **T-03-42 子弹头**
 `e_sub` 到达 `(5000,5000)`，`D` 共 6 个值（每个子弹头 2 个）：`[0.5,0.25, 0.5,0.5, 0.0,0.0]` → 3 个 `ThreatImpacted{Outcome Submunition, SubIndex 0/1/2, Pos (6000,5000) / (5000,4000) / (5000,5000), DamageLevel 6}`；只有 `SubIndex 0` 带 `LeakReason`。
 
-**T-03-43 碎片**
-城区多边形 `[[0,0],[4000,0],[4000,4000],[0,4000]]`；保护目标 `s_res` 位于 `(2000,2000)`、`radiusM 100`、`hp 10`。
-- 拦截点 `(2050, 2000)`（城区内、在 `s_res` 半径内）命中 `e_cm`（等级 7）→ 碎片等级 `RoundLevel(7 × 0.3 = 2.1) = 2`，band 1–2 `destroyed 0–0`（消耗 `U[0]`，损失 0）→ 无 `StructureDamaged`；`DebrisFell{Pos (2050,2000), StructureId 0, DamageLevel 2}`；`InterceptResolved.OverUrban = true`。
+**T-03-43 碎片与同格判定（`C-T2-05`）**
+城区多边形 `[[0,0],[4000,0],[4000,4000],[0,4000]]`；保护目标 `s_res` 位于 `(2000,2000)`（所属 1 km 格 `(2, 2)`）、`radiusM 100`、`hp 10`；另一保护目标 `s_other` 位于 `(1950, 2000)`（所属 1 km 格 `(1, 2)`）。
+- 拦截点 `(2050, 2000)`（城区内、格 `(2, 2)`）命中 `e_cm`（等级 7）→ 碎片等级 `RoundLevel(7 × 0.3 = 2.1) = 2`；因 `urbanInterceptRadiusCells == 0`（`sameCellOnly = true`），只有同在格 `(2, 2)` 的 `s_res` 受影响（band 1–2 `destroyed 0–0`，消耗 1 次 `U[0]`，损失 0），格 `(1, 2)` 的 `s_other` 不受影响（不消耗随机数）；无 `StructureDamaged`；`DebrisFell{Pos (2050,2000), StructureId 0, DamageLevel 2}`；`InterceptResolved.OverUrban = true`。
+- 同上但命中等级 10 的弹药（碎片等级 `RoundLevel(10 × 0.3) = 3`，`destroyed 1–1`），拦截点 `(2800, 2800)`（仍在格 `(2, 2)`，距 `s_res` 超过 `radiusM` 但同格）：`U[0]` → `s_res` 损失 1 HP，`DebrisFell.StructureId = s_res.Id`。
 - 等级换算表：`RoundLevel(L × 0.3)` 对 `L = 1…10` 为 `0,1,1,1,2,2,2,2,3,3`（`3 × 0.3 = 0.8999999999999999 → 1`，`5 × 0.3 = 1.5 → 2`）。
 - 等级 1（`e_decoy`）→ 碎片等级 0：不发 `DebrisFell`。
 - 拦截点 `(5000, 2000)`（城外）→ `ruralFrac = 0`：无碎片，`OverUrban = false`。
@@ -2111,7 +2117,7 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 连续 10 次“拉响 → 解除”（每次间隔 1 步）：每次拉响后 `Responsiveness` 依次为 `1.0, 1.0, 0.9, 0.8, 0.7000000000000001, 0.6000000000000001, 0.5000000000000001, 0.40000000000000013, 0.30000000000000016, 0.3`（==；第 10 次被下限截断）。`SetAirRaidAlert{On = true}` 在已拉响时 → `InvalidState`。解除时 `ShelteredFrac` 立即为 0。
 
 **T-03-48 避难进度与损失折减**
-第 1 步拉响（`Responsiveness 1.0`，`ShelterSec 120`）。第 60 步 `ScoringSystem` 后 `ShelteredFrac = 0.5000000000000007`；第 120 步后 `0.9999999999999989`；第 121 步后 `1.0`。第 61 步（读第 60 步的值）落地使住宅 `s_res` 损失 2 HP：`Hp` 减 2，`LossHp` 增加 `2 × (1 − 0.5000000000000007 × 0.8 × 1.0) = 1.1999999999999988`（容差 1e-12）。两个避难所中一个断电 → `ShelterQuality = 0.75`；完全避难时住宅损失 3 HP → `LossHp += 1.1999999999999997`。非住宅类型不折减。`AlertActiveSec` 每步 +1；工厂 `PausedSec` 在警报期间每步 +1。
+第 1 步拉响（`Responsiveness 1.0`，`ShelterSec 120`）。第 60 步 `ScoringSystem` 后 `ShelteredFrac = 0.5000000000000007`；第 120 步后 `0.9999999999999989`；第 121 步后 `1.0`。第 61 步（读第 60 步的值）落地使住宅 `s_res` 损失 2 HP：`Hp` 减 2，`LossHp` 增加 `2 × (1 − 0.5000000000000007 × 0.8 × 1.0) = 1.1999999999999988`（容差 `1e-12`）。两个避难所中一个断电 → `ShelterQuality = 0.75`；完全避难时住宅损失 3 HP → `LossHp += 1.1999999999999997`。非住宅类型不折减。`AlertActiveSec` 每步 +1；工厂 `PausedSec` 在警报期间每步 +1。
 
 ### 7.10 评分与 `NightResult`（WS01-023）
 
@@ -2121,14 +2127,14 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 **T-03-50 失败条件顺序与明细**
 `defeat = [grid_collapse, structure_destroyed sub]`，同一步 `sub` 被毁且电网崩溃 → `Detail = "grid_collapse"`。顺序反过来 → `"structure_destroyed:sub"`。
 
-**T-03-51 交换比**
-直接向 `ScoringSystem` 投喂事件（替身 Order 7/8 按此顺序发出）：`InterceptorLaunched(m1)`、`InterceptorLaunched(m1)`、`GunFired(g1)` × 3，其后 `InterceptResolved{Hit = true}` 指向第一枚 `m1` 的目标 `e_uav`（`TargetStructureId` = `tpp`，weight 5），`g1` 三次均 `Hit = false`。
-预期：`TotalPotentialLossMusd = 3 × 1 × 5 = 15.0`；`TotalShotCostMusd = 0.803`（逐次累加：`0.4 + 0.4 + 0.001 + 0.001 + 0.001`，==）；`ExchangeRatio = 18.679950186799502`；`ByWeapon`：`g1 {Shots 3, Kills 0, Cost 0.003, Loss 0, Ratio 0.0}`、`m1 {Shots 2, Kills 1, Cost 0.8, Loss 15.0, Ratio 18.75}`（序数顺序 `g1` 在前）。命中真实诱饵 → 潜在损失 0；射向诱饵的发射计入 `DecoyShots` / `DecoyCostMusd`。一次都没开火 → `ExchangeRatio == null`。
+**T-03-51 交换比（指数潜在损失 + 敌方单价下限，`B-T3-01`）**
+直接向 `ScoringSystem` 投喂事件（替身 Order 7/8 按此顺序发出）：`InterceptorLaunched(m1)`、`InterceptorLaunched(m1)`、`GunFired(g1)` × 3，其后 `InterceptResolved{Hit = true}` 指向第一枚 `m1` 的目标 `e_uav`（`damageLevel = 3`、`costMusd = 0.05`、`TargetStructureId` = `tpp`，`weight = 5`），`g1` 三次均 `Hit = false`。
+预期：`PotentialLoss = max(0.05, 2^(3−1) × 0.1 × 5) = 2.0`；`TotalPotentialLossMusd = 2.0`；`TotalShotCostMusd = 0.803`（逐次累加：`0.4 + 0.4 + 0.001 + 0.001 + 0.001`，==）；`ExchangeRatio = 2.4906600249066`（容差 `1e-12`）；`ByWeapon`：`g1 {Shots 3, Kills 0, Cost 0.003, Loss 0, Ratio 0.0}`、`m1 {Shots 2, Kills 1, Cost 0.8, Loss 2.0, Ratio 2.5}`（序数顺序 `g1` 在前）。若目标改为 `e_cm`（`damageLevel = 7`、`costMusd = 13.0`）攻击 `water`（`weight = 2`），则 `damageValue = 64 × 0.1 × 2 = 12.8 < 13.0`，取 `PotentialLoss = 13.0`。命中真实诱饵 → 潜在损失 0；射向诱饵的发射计入 `DecoyShots` / `DecoyCostMusd`。一次都没开火 → `ExchangeRatio == null`。
 
 **T-03-52 突防原因**
 逐条构造落地目标的状态并断言 `ThreatImpacted.LeakReason` / `LeakMask`：
 
-| `MaxTrackQuality` | `ShotsTaken` | `HeldMask` 含 | `DecoyDrained` | `EwCovered` | 预期原因 | 预期掩码含 |
+| `MaxTrackQuality` | `ShotsTaken` | `HeldMask` 含 | `DecoyDrained` | `EwEverCovered` | 预期原因 | 预期掩码含 |
 |---|---|---|---|---|---|---|
 | −1 | 0 | — | false | true | `Undetected` | `Undetected`、`EwIneffective` |
 | 2 | 0 | `AmmoDepleted` | true | false | `DecoyDrain` | `DecoyDrain`、`AmmoDepleted` |
@@ -2147,136 +2153,129 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 4 次命中，其中 3 次 `OverUrban` → `UrbanInterceptRatio = 0.75`、`InterceptsOverUrban = 3`；0 次命中 → `null`；`scoreUrbanInterceptRatio = false` → `null`。
 
 **T-03-54 `NightResult` 字段齐全与序列化往返**
-迷你关卡（T-03-11 的场景加 `water` 保护目标与 1 个探测单位）跑满 30 步。`Result` 中 `Losses`、`Ammo`、`Exchange`、`Debris`、`Exposure`、`Civil`、`Support` 均非 null；`Ammo.Weapons` 含 `m1`、`RoundsRemaining = 1`；`Exposure.Units` 按单位 ID 升序含 2 项。用 3.8.6 的 `JsonSerializerOptions` 序列化 → 反序列化 → 再序列化：两次 JSON 字符串逐字节相等；反序列化对象与原对象逐字段相等（集合按序）。JSON 中不出现 `NaN`、`Infinity`；`"exchangeRatio"` 在零发射夜为 `null`；枚举为字符串（如 `"reason":"OutOfCoverage"`）；`Vec2` 为 `{"x":…,"y":…}`。
+迷你关卡（T-03-11 的场景加 `water` 保护目标与 1 个探测单位）跑满 30 步。`Result` 中 `Losses`、`Ammo`、`Exchange`、`Debris`、`Exposure`、`Civil`、`Support`、`CarryOut` 均非 null；`Ammo.Weapons` 含 `m1`、`RoundsRemaining = 1`；`Exposure.Units` 按单位 ID 升序含 2 项。用 3.8.6 的 `JsonSerializerOptions` 序列化 → 反序列化 → 再序列化：两次 JSON 字符串逐字节相等；反序列化对象与原对象逐字段相等（集合按序）。JSON 中不出现 `NaN`、`Infinity`；`"exchangeRatio"` 在零发射夜为 `null`；枚举为字符串（如 `"reason":"OutOfCoverage"`）；`Vec2` 为 `{"x":…,"y":…}`。
 
 **T-03-55 确定性**
 T-03-54 的世界跑两次（相同种子与命令）：每步 `ComputeStateHash()` 相等；`engagement`、`scoring` 子流状态 30 步后与初始相同（0 消耗）。
 
+**T-03-56 下界惰性优先队列加速与朴素全遍历逐位等价（`C-T1-05`）**
+构造含 10 个火力单元（混合 `SoonestIntercept` 与 `Nearest`、含 `TagPriority`）与 30 条同时在途航迹的密集空袭场景（以及 [`tools/spec_calc/03/calc_03.py`](file:///Users/xtxsinan/.gemini/antigravity/scratch/military_tower_defense/tools/spec_calc/03/calc_03.py) 中的 2000 组随机压力场景），对比“朴素全航迹 `Solve` 遍历”与“3.2.4 下界惰性优先队列 + 3.1.2 `k0` 采样起点裁剪”：每一步选出的 `(bestTrackId, bestTimeSec)` 与发出的事件序列 100% 逐位一致（0 差异），且 `InterceptSolver.Solve` 调用次数减少 `> 60%`。
+
+**T-03-57 目标机动与同一步落地的拦截弹失效（`A-2-09`、`A-4-02`）**
+- 在 T-03-11 场景中，第 4 步发射拦截弹（`InterceptAtSec ≈ 13.66`）；第 8 步脚本发出 `ThreatManeuvered{ThreatId, Cause = EwDiverted}` → 同一步系统 8 发出 `InterceptorExpired{InterceptorId, Cause = TargetManeuvered}` 并删除该拦截弹，不消耗 `intercept` 子流随机数；第 9 步 `uF` 可对改道后的目标重新交战。
+- 同一步落地与拦截竞态（`A-4-02`）：拦截弹 `InterceptAtSec = 10.6`，目标在第 10 步发出 `ThreatArrived{AtSec = 10.2}` 且 `Phase = Arrived` → 系统 8 判定 `10.6 > 10.2 + 1e-9`，发出 `InterceptorExpired{Cause = TargetArrived}`，目标留给系统 10 结算落地；若 `InterceptAtSec = 10.1 <= 10.2 + 1e-9`，系统 8 正常掷骰拦截，命中则删除目标、系统 10 不再结算落地。
+
+**T-03-58 邻国越界记录、警报关卡闸门与威胁守恒（`C-T2-03`、`C-T2-04`、`A-4-04`）**
+- 地图含 `restrictedZones: [{ id "nb", polygonM [[8000,-1000],[9500,-1000],[9500,1000],[8000,1000]], rule "no_engagement", neighborCountry: true }]`：拦截弹在邻国多边形内结算未命中 → `Losses.BorderViolations` 记录 `InterceptorInNeighbor`；命中 → 记录 `DebrisInNeighbor`；被导航干扰（`EwNav = Applied`）的弹药落入邻国 → 记录 `DivertedMunitionInNeighbor`。
+- 关卡 `number = 3`（`< availableFromLevel = 6`）时玩家命令 `SetAirRaidAlert{On = true}` → 拒绝原因 `NotAvailable`；剧情动作 `set_alert` 仍可正常拉响。
+- 整夜混合产生 `ThreatSpawned`、`MunitionReleased`、`InterceptResolved(Hit)`、`ThreatImpacted(Normal / ArmMissed)`、`ThreatExited`、`EwLinkCut(Crash)`，每步末尾 `CheckInvariants` 威胁守恒式 `ThreatsSpawned == Threats.AliveCount + ThreatsIntercepted + ThreatsImpacted + ThreatsArmMissed + ThreatsExited + ThreatsEwDowned` 恒成立。
+
 ---
 
-## 8. 待决问题
+## 8. 决议记录与跨规格对齐（D2 全部定稿）
 
-### 8.1 设计 / 数值待决（每条给出建议默认值；本规格正文按默认值写）
+### 8.1 设计 / 数值决议记录（全部 49 项已决议并合入正文）
 
-| # | 问题 | 背景 | 建议默认值（理由） |
+| # | 问题 | 决议编号 | 定稿结论（已合入正文） |
 |---|---|---|---|
-| Q-E1 | 拦截弹速度 | 数据中没有拦截弹速度，解析拦截必须有 | 新字段：`rules/engagement.json` 按武器类别给默认（导弹 3600 km/h、火箭 2400 km/h、拦截无人机 300 km/h），武器可用可选字段 `interceptorSpeedKmh` 覆盖。游戏化统一值，不整理真实型号参数（GDD 17.5） |
-| Q-E2 | 基准反应时间、射击间隔 | 数值表只有“反应时间 +X%”的倍率，没有基准值；没有射击间隔就无法限制发射速率 | 新字段按武器类别：反应 导弹 / 火箭 0.2、高炮 0.1、拦截无人机 0.5 游戏秒；射击间隔 导弹 / 火箭 0.25、高炮 0.5、拦截无人机 0.5 游戏秒（Shahed 穿越 5 km 高炮圈约 1.6 游戏秒 ≈ 3 次射击、累计约 58% 击落，量级合理）。WS09 批量模拟后调整 |
-| Q-E3 | 夜间是否从弹药池装填 / 发射架装填时间 | 数据只有每架弹仓与关卡配额 | 夜间不装填；配额剩余留给 05（白天补给窗口）。若需要，增加 `reloadGameSec` |
-| Q-E4 | `launchers: null`（“由关卡配置”）时的发射架数 | `level.json` 没有对应字段（Patriot、S‑300 为 null） | `engagement.defaultLaunchers = 1`；建议后续在 `level.json` 增加 `launcherOverrides[{unit, weapon, launchers}]` |
-| Q-E5 | “首发反应时间 +50%”的“首发”含义 | 可理解为每夜第一发或每个目标第一发 | 每个新锁定目标的第一次发射（火控需对每个新目标自行搜索） |
-| Q-E6 | 身管武器每次射击耗弹（`magazineRounds`） | Schema 注明“由 WS01-009 决定” | `roundsPerBurst = 34`（Gepard 680 发 ≈ 20 次射击） |
-| Q-E7 | “限制交战：只打已确认的敌方目标”中“已确认”的定义 | 模拟中没有民航 / 友机，所有空中目标都是敌方 | 航迹质量 `Precise`。地图“限制交战区”与“战斗机所在区域”用同一套效果 |
-| Q-E8 | 换枪管冷却参数 | 数据只有 `barrelCooldown: true` | 连续 5 次射击后冷却 1 游戏秒 |
-| Q-E9 | 多个火力单元的分配顺序 | 需要确定性；按单位 ID 会让“先部署的单位”优先 | 按火力单元 ID 升序贪心分配（简单、可预测）。备选：便宜武器优先（更贴合交换比压力），需要人决定 |
-| Q-E10 | `fireOnMove: partial` 的含义 | 数值表只写“部分” | 行进间只有身管武器可射击 |
-| Q-E11 | 无火控雷达的导弹（单兵防空、Strela、RBS 70 等）的航迹门槛 | 数值表：导弹需精确航迹，精确航迹来自火控雷达 | 仍要求 `Precise`；由 02 把这类单位自身的光学 / 红外瞄准视为短程“精确”来源（见 8.3 B2） |
-| Q-I1 | 拦截概率修正项的叠加方式 | 数值表只列各项倍率 | 全部相乘，固定顺序（3.3.2），最后一次截断到 [0, 1] |
-| Q-I2 | 受损单位（轻伤 −20% 效能）是否降低拦截概率 | 数值表“效能”含义未定 | 是：作为修正链第 8 项 `DamageEfficiencyMult` |
-| Q-I3 | 游戏 HP 与拦截判定的关系 | 数值表给了 HP，但 3.3 是“单发拦截概率” | 命中即击毁，HP 不参与拦截（HP 只记录）。备选：身管 / 碎片按 HP 扣减、导弹直接击毁——需要人决定 |
-| Q-I4 | 诱饵（`DECOY`）被打掉是否有潜在损失 | GDD：“打掉诱饵会浪费弹药” | 潜在损失 = 0（交换比惩罚打诱饵） |
-| Q-I5 | 解析拦截的近似（1 秒采样、AGL 高度、直线等速、发射后不修正） | WBS 01.A 只要求“解析计算拦截时刻” | 按 3.1；短于 1 秒的可达窗口会被漏掉，地形高差忽略 |
-| Q-I6 | 发射单位被毁后，飞行中的拦截弹是否失效 | 半主动制导需要照射雷达 | 照常结算（概率在发射时已定）。备选：雷达类单位被毁时其拦截弹 `InterceptorExpired` |
-| Q-D1 | 溅射衰减作用于哪个距离 | “中心 100% → 边缘 30%” | 落点到保护目标**边缘**（扣除 `radiusM`）/ 到单位扣除受击半径后的距离 |
-| Q-D2 | 衰减后的伤害等级如何取整 | 等级是整数档 | 四舍五入（`AwayFromZero`）。向下取整会让碎片几乎永远无效（Shahed 碎片 0.9 → 0） |
-| Q-D3 | 民用建筑“损毁 N 栋”与保护目标 HP 的关系；“区块损毁”的含义 | 保护目标有 HP（如电厂 20） | 每栋 = 1 HP；区块损毁 = 该保护目标 HP 归零 |
-| Q-D4 | 伤害 9–10 “波及相邻格” | 溅射已表达范围伤害 | 不追加额外效果 |
-| Q-D5 | “摧毁雷达或发射车其一”如何选 | 未给概率 | 新字段 `componentRadarChance = 0.5`；没有雷达或雷达已毁 → 毁发射架；最后一个发射架被毁 = 单位被毁 |
-| Q-D6 | Orlan 升档是全图生效还是只对其附近目标 | 数值表 2.3“存活期间敌方精度档 +1”；`accuracy._source`“标记目标时” | 全图生效，升档数取 `accuracy.spotterTierBoost`（`platforms[].whileAlive.enemyAccuracyTierBoost` 只作“是侦察平台”的标记）。两处数值重复，建议删去其一 |
-| Q-D7 | 对车辆加成适用哪些单位 | “对车辆加成 ×3” | `mobility ∈ {vehicle, towed}` 的火力单元；探测 / 电子战 / 欺骗单位数据中没有机动性字段，不加成 |
-| Q-D8 | 伤害等级表对非防空单位（探测、电子战、欺骗）的效果 | 3.2 只有“对防空单位” | 同表；“摧毁部件”对它们视为摧毁 |
-| Q-D9 | 轻伤是否叠加 | 多次轻伤 | 不叠加，取最小倍率 |
-| Q-D10 | 反辐射导弹“未命中”的结果 | 数值表只给命中率修正 | 失锁坠毁：无伤害、不算突防 |
-| Q-D11 | 我方单位受击半径 | 溅射 0 的弹药（Lancet、FPV）需要一个可命中的面积 | 新字段 `unitFootprintCells = 0.05`（50 m） |
-| Q-G1 | 电网连线是否有方向 | `links` 写的是 from / to | 视为无向（多电源网状拓扑更自然）；电力只经“可用”节点传递 |
-| Q-G2 | 断电对探测 / 电子战单位的效果大小 | GDD 8.5 “雷达断电后效能下降” | 由 02 规定；建议探测距离 ×0.5、电子战停机 |
-| Q-G3 | 哪些我方单位接入电网、如何接入 | 部署数据没有电网字段 | 探测、电子战单位接入 1 格内最近的 consumer / substation 节点；火力单元与欺骗单位不接入（自带电源） |
-| Q-G4 | 电网设施的“−10% / −35%”怎么体现 | 3.2“对电网设施”列 | 按比例扣 HP（向上取整），HP 归零 = 节点失效 |
-| Q-G5 | `grid_collapse` 的定义 | 关卡条件只写“电网崩溃” | 全部 consumer 节点断电。备选：断电 consumer 比例 ≥ 阈值（新增 `level` 条件字段 `fraction`） |
-| Q-A1 | 警报的避难效果大小、避难进入时间、疲劳规则 | GDD 8.6 只有定性描述 | `protectionFrac 0.8`、`shelterGameSec 2`、每夜前 2 次免费、之后每次 −0.1、下限 0.3；只影响住宅类保护目标的“计入损失 HP” |
-| Q-A2 | 警报疲劳是否跨夜恢复 | — | 本文件只带出 `ResponsivenessEnd`；跨夜恢复由 05 决定 |
-| Q-A3 | 避难所断电的影响 | WS01-018 列出“避难所” | 断电避难所按 0.5 计入 `ShelterQuality` |
-| Q-S1 | 1 次呼叫消耗几个“架次” | 数值表“每夜额度 0–4 架次” | 1 次呼叫 = 1 架次 |
-| Q-S2 | `offmap_auto`（场外 AI 自动）与 `onmap_support_facility` 的夜间行为 | GDD 8.9 | 夜间都按“场外呼叫”处理；自动出动的规则另行设计 |
-| Q-S3 | “定向拦截：至弹药耗尽”没有目标时何时结束 | — | 持续到夜晚结束 |
-| Q-S4 | 战斗机 `takeoffGameSec` / `rearmGameSec` / 巡逻速度 | 与 `support.delay` 重复 | 本文件只用 `support.delay`；战斗机到位后定点巡逻，不模拟航线与返航补给 |
-| Q-S5 | 国家级导航欺骗的作用半径 | 数据只有“某区域”与 `affectsSameAsEwUnit` | 取所引用电子战单位（`area_nav_jammer`）的 `radiusKm`；建议给 `support` 增加 `radiusKm` |
-| Q-S6 | “限制交战”反应时间倍率在 `intercept.json` 与 `support.json` 中重复 | 两处都是 1.3 | 统一用 `intercept.modifiers.restrictedEngagement`，加载时校验相等；建议删去 `support.airspace.restrictedEngagement.reactionTimeMult` |
-| Q-S7 | 空域协调（划设战斗机专区）是否耗指挥点 | GDD 5.2 未列 | 不耗（由 04 最终决定） |
-| Q-S8 | 大空袭夜如何标记；被拒绝时是否退还指挥点 | 数据中没有“大空袭”标记 | 新增 `waves.json nights[].bigRaid`；拒绝时退还架次与指挥点 |
-| Q-S9 | 邻近扇区覆盖（`sector_coverage`）的夜内效果 | “邻近 Patriot / SAMP/T 扇区覆盖地图边缘” | 本版不实现；建议由 05 在部署方案中加入位于地图边缘外的虚拟火力单元（需要关卡给出位置） |
-| Q-X1 | 交换比“潜在损失”的公式 | GDD 只给定义 | `伤害等级 × lossMusdPerDamageLevel(1 M$) × 目标保护目标权重`（不以保护目标为目标时权重 1）；平台按 `platformPotentialLossMusd`（10 M$）；诱饵 0。分母为全部发射的价格。备选：用敌方单价 `costMusd`（数据现成，但滑翔炸弹为 null，且无法体现“目标价值”） |
-| Q-X2 | “让高威胁目标突防但昂贵弹药仍有剩余”如何计 | GDD 9.3 第 3 条 | `HighThreatLeaksWithReserve`：伤害等级 ≥ 7 且突防掩码含 `HeldByRule` 的次数；扣分由 05 |
-| Q-X3 | 突防原因不止 GDD 列出的 5 种 | 例如“打了没打中”“交战规则不允许” | 增加 6 种补充原因（3.8.4），优先级如表 |
-| Q-X4 | 加权损失是否跨夜累计 | 多夜关卡的失败条件 | 是：`LossHp` 与 `Hp` 由 `CarryIn` 带入，失败判定用累计值 |
+| Q-E1 | 拦截弹速度 | **已决议**（`B-T2-61`） | 在 `rules/engagement.json` 按武器类别给默认（导弹 `3600` km/h、火箭 `2400` km/h、拦截无人机 `300` km/h），武器定义可用可选字段 `interceptorSpeedKmh` 覆盖（§1.2、§3.1） |
+| Q-E2 | 基准反应时间、射击间隔 | **已决议**（`B-T2-62`） | 在 `rules/engagement.json` 按武器类别定义基准值：反应时间 导弹/火箭 `0.2`、高炮 `0.1`、拦截无人机 `0.5` 游戏秒；射击间隔 导弹/火箭 `0.25`、高炮 `0.5`、拦截无人机 `0.5` 游戏秒（§1.2、§3.2.5） |
+| Q-E3 | 夜间是否从弹药池装填 / 发射架装填时间 | **已决议**（`B-T2-63`） | 夜间不从弹药池装填发射架；配额剩余留给 05 白天补给窗口（§1.3.4、§3.2.1） |
+| Q-E4 | `launchers: null`（“由关卡配置”）时的发射架数 | **已决议**（`B-T2-64`） | 先查 `level.json` 的 `launcherOverrides[{unit, weapon, launchers}]`，未配置时回退到 `engagement.defaultLaunchers = 1`（§1.3.4、§3.2.1） |
+| Q-E5 | “首发反应时间 +50%”的“首发”含义 | **已决议**（`B-T2-65`） | 指无火控指示（`!track.Cued`）时对每个新锁定目标的第一次发射（火控需对每个新目标自行搜索，§3.2.5） |
+| Q-E6 | 身管武器每次射击耗弹（`magazineRounds`） | **已决议**（`B-T2-66`） | `engagement.gun.roundsPerBurst = 34`（Gepard `680` 发 `= 20` 次点射，§1.2、§3.2.6） |
+| Q-E7 | “限制交战：只打已确认的敌方目标”中“已确认”的定义 | **已决议**（`B-T2-67`） | 定义为航迹质量 `Precise`；地图 `restricted_engagement` 区与战斗机巡逻半径内共用同一套限制交战效果（§3.0、§3.2.4） |
+| Q-E8 | 换枪管冷却参数 | **已决议**（`B-T2-68`） | `burstsBeforeCooldown = 5`、`cooldownGameSec = 1.0`（连续 5 次射击后冷却 1 游戏秒 = 60 世界秒，§1.2、§3.2.6） |
+| Q-E9 | 多个火力单元的分配顺序 | **已决议**（`B-T3-02`、`C-T1-14`） | 按武器通道期望单发成本 `shotCostMusd / max(p, 0.05)` 升序分配（并列按单位 ID、武器下标升序）；昂贵武器就绪时若更便宜武器已锁定同一目标且在反应计时中、并在目标到达前至少留有 `ShotIntervalSec` 补射余地，则昂贵武器本步礼让（§3.2.2） |
+| Q-E10 | `fireOnMove: partial` 的含义 | **已决议**（`B-T2-69`） | 行进间（`DeployState == Moving`）只有身管武器（`WeaponKind.Gun`）可射击（§3.2.2） |
+| Q-E11 | 无火控雷达的导弹（单兵防空、Strela、RBS 70 等）的航迹门槛 | **已决议**（`A-2-08`、`B-T3-05`） | 导弹统一要求 `Precise` 航迹；02 将光电/红外火控（`fireControl: optical_ir`）在自身射程内视为可产生 `Precise` 航迹并满足 `FireControlActive = true`（§3.2.4） |
+| Q-I1 | 拦截概率修正项的叠加方式 | **已决议**（`B-T2-70`） | 按 `m1..m9` 固定顺序从左到右连乘，最后一次 `Math.Clamp(p, 0.0, 1.0)`（§3.3.2） |
+| Q-I2 | 受损单位（轻伤 −20% 效能）是否降低拦截概率 | **已决议**（`B-T2-71`） | 是：作为修正链第 9 项 `m9 = u.DamageEfficiencyMult`（§3.3.2） |
+| Q-I3 | 敌方 HP 与拦截判定的关系 | **已决议**（`B-T3-03`） | 命中即击毁，敌方定义中的 `hp` 仅作百科/UI 展示，不进入模拟计算，其耐受度已折入基础拦截概率与 `interceptProbMult`（§1.3.2、§3.3.1） |
+| Q-I4 | 诱饵（`DECOY`）被打掉是否有潜在损失 | **已决议**（`B-T2-72`） | 潜在损失 `= 0`（打诱饵计入分母发射成本而不增加分子潜在损失，§3.8.3） |
+| Q-I5 | 解析拦截的近似（1 秒采样、32 次二分、直线等速、发射后不修正） | **已决议**（`B-T2-73`、`C-T2-10`） | 按 §3.1 1 世界秒步长采样（含 `k0` 距离下界裁剪）+ 32 次二分迭代；飞行途中目标若发生 `ThreatManeuvered` 则原拦截弹按 `TargetManeuvered` 失效（§3.1.2、§3.3.1） |
+| Q-I6 | 发射单位被毁后，飞行中的拦截弹是否失效 | **已决议**（`B-T2-74`） | 飞行中的拦截弹照常飞向目标并按发射时锁定的 `HitProbability` 结算（§3.3.1、§5 #12） |
+| Q-D1 | 溅射衰减作用于哪个距离 | **已决议**（`B-T2-75`） | 作用于落点到保护目标边缘（扣除 `s.RadiusM`）或到我方单位边缘（扣除 `damage.UnitFootprintM`）的距离 `r`（§3.5.5、§3.5.6） |
+| Q-D2 | 衰减后的伤害等级如何取整 | **已决议**（`B-T2-76`） | 四舍五入 `MidpointRounding.AwayFromZero` 并截断到 `[0, 10]`（§3.5.5） |
+| Q-D3 | 民用建筑“损毁 N 栋”与保护目标 HP 的关系；“区块损毁”的含义 | **已决议**（`B-T2-77`） | 每栋 `= 1 HP`（从 `[Min, Max]` 均匀掷整数骰）；`block`（区块损毁）`= 该保护目标剩余 HP 全部扣光`（§3.5.6） |
+| Q-D4 | 伤害 9–10 “波及相邻格” | **已决议**（`B-T2-12`） | 由弹药自身的 `splashCells` 溅射半径自然表达，`DestroyFireUnitAndAdjacent` 与 `DestroyFireUnit` 同义（§3.5.6） |
+| Q-D5 | “摧毁雷达或发射车其一”如何选 | **已决议**（`B-T2-13`） | 按 `damage.componentRadarChance = 0.5` 掷骰；若单位无火控雷达或雷达已毁则改毁发射架；所有发射架被毁则单位被毁（§3.5.6） |
+| Q-D6 | Orlan 升档是全图生效还是只对其附近目标 | **已决议**（`B-T2-14`） | 全图生效，升档数值唯一取自 `rules/accuracy.json` 的 `spotterTierBoost`（§3.5.3） |
+| Q-D7 | 对车辆加成适用哪些单位 | **已决议**（`B-T2-15`） | 适用于 `Mobility ∈ {Vehicle, Towed}` 的火力单元（§3.5.6） |
+| Q-D8 | 伤害等级表对非防空单位（探测、电子战、欺骗）的效果 | **已决议**（`B-T2-16`） | 共用同一张表；`DestroyComponent` 对非火力单元直接视为 `DestroyFireUnit`（§3.5.6） |
+| Q-D9 | 轻伤是否叠加 | **已决议**（`B-T2-17`） | 不叠乘，取 `Math.Min(u.DamageEfficiencyMult, band.EfficiencyMult)`（§3.5.6） |
+| Q-D10 | 反辐射导弹“未命中”的结果 | **已决议**（`B-T2-18`、`A-4-04`） | 失锁坠毁：发出 `ThreatImpacted{Outcome = ArmMissed, DamageLevel = 0}`，无伤害，计入 `ThreatsArmMissed`，不算突防（§3.5.7、§3.8.1） |
+| Q-D11 | 我方单位受击半径 | **已决议**（`B-T2-19`） | `rules/damage.json` 新增 `unitFootprintCells = 0.05`（50 m，§1.3.1、§3.5.6） |
+| Q-G1 | 电网连线是否有方向 | **已决议**（`B-T2-20`） | 连线视为无向图，电力只经 `Operational` 节点做 BFS 传播（§3.6.1、§3.6.3） |
+| Q-G2 | 断电对探测 / 电子战单位的效果大小 | **已决议**（`B-T2-78`） | 探测单位断电时探测距离 `× 0.5`（由 02 `radarRangeMultWhenUnpowered` 实现）；电子战单位自带车载电源不受电网断电影响（§3.6.4） |
+| Q-G3 | 哪些我方单位接入电网、如何接入 | **已决议**（`B-T2-78`） | `unitCategoriesOnGrid` 内的单位（默认 `sensor`、`ew`）在 `PostDeployInit` 接入 `unitConnectRadiusCells`（1 格 = 1 km）内最近的 `Consumer` / `Substation` 节点（§3.6.2） |
+| Q-G4 | 电网设施的“−10% / −35%”怎么体现 | **已决议**（`B-T2-21`） | 对 `PowerPlant` / `Substation` 保护目标按 `ceil(GridDamageFrac × MaxHp − 1e-9)` 扣减 HP，HP 归零则对应电网节点失效（§3.5.6、§3.6.3） |
+| Q-G5 | `grid_collapse` 的定义 | **已决议**（`B-T2-79`） | 默认全部 `Consumer` 节点断电（`Grid.Collapsed`）；若关卡失败条件指定 `c.Fraction`，则断电 `Consumer` 比例 `>= c.Fraction` 即触发（§3.6.3、§3.8.5） |
+| Q-A1 | 警报的避难效果大小、避难进入时间、疲劳规则 | **已决议**（`B-T2-80`、`C-T2-04`） | 第 6 关起可用（`availableFromLevel = 6`），`protectionFrac = 0.8`、`shelterGameSec = 2`、每夜前 2 次免费、之后每次响应度 `−0.1`、下限 `0.3`，折减住宅类保护目标的 `LossHp`（§1.2、§3.7） |
+| Q-A2 | 警报疲劳是否跨夜恢复 | **已决议**（`B-T2-81`） | 本文件在 `CarryOut.AlertResponsiveness` 带出夜末响应度，由 05 在两夜之间恢复 `+0.1`（上限 `1.0`，§3.8.6） |
+| Q-A3 | 避难所断电的影响 | **已决议**（`B-T2-82`） | 断电避难所按 `unpoweredShelterProtectionMult = 0.5` 计入 `ShelterQuality`（§3.7.3） |
+| Q-S1 | 1 次呼叫消耗几个“架次” | **已决议**（`B-T2-83`） | 每次战斗机类支援呼叫消耗 1 架次（§3.4.1） |
+| Q-S2 | `offmap_auto`（场外 AI 自动）与 `onmap_support_facility` 的夜间行为 | **已决议**（`B-T2-84`） | 夜间均可按场外延迟呼叫；`offmap_auto` 另由 04/05 决定是否自动触发（§3.4.1） |
+| Q-S3 | “定向拦截：至弹药耗尽”没有目标时何时结束 | **已决议**（`B-T2-85`） | 弹药未耗尽且未达击落上限时持续巡逻至夜晚结束（§3.4.3） |
+| Q-S4 | 战斗机 `takeoffGameSec` / `rearmGameSec` / 巡逻速度 | **已决议**（`B-T2-86`） | 到位延迟统一用 `support.delay`（已含起飞时间），到位后定点盘旋巡逻，不模拟航线与返航重装（§3.4.2） |
+| Q-S5 | 国家级导航欺骗的作用半径 | **已决议**（`B-T2-87`） | 优先取 `SupportDef.RadiusM`（`support.json` 的 `radiusKm`），缺省时回退取 `affectsSameAsEwUnit` 指向的电子战单位 `RadiusM`（§1.3.1、§3.4.2） |
+| Q-S6 | “限制交战”反应时间倍率在 `intercept.json` 与 `support.json` 中重复 | **已决议**（`B-T2-88`） | 统一读取 `intercept.modifiers.restrictedEngagement.reactionTimeMult`，加载器校验两处相等（§3.2.5、§8.2） |
+| Q-S7 | 空域协调（划设战斗机专区）是否耗指挥点 | **已决议**（`A-2-17`） | `SetFighterZone` 消耗 `0` 指挥点；`SetEngagementRule` 与 `SetAirRaidAlert` 默认消耗 `1` 指挥点（§3.7.1、§4.3） |
+| Q-S8 | 大空袭夜如何标记；被拒绝时是否退还指挥点 | **已决议**（`B-T2-22`） | `waves.json` 新增可选 `nights[].bigRaid`；被拒绝时退还架次与指挥点（§1.3.4、§3.4.2） |
+| Q-S9 | 邻近扇区覆盖（`sector_coverage`）的夜内效果 | **已决议**（`B-T2-89`） | 若 `CarryIn.SectorCoverageSites` 非空，在 `PostDeployInit` 生成 `IsVirtualSectorCoverage = true` 的场外虚拟火力单元（火控恒开、不受伤、不耗弹药池、不进入 `CarryOut`）（§2.1、§3.2.1） |
+| Q-X1 | 交换比“潜在损失”的公式 | **已决议**（`B-T3-01`） | `max(enemyCost, 2^(damageLevel - 1) × LossMusdBase(0.1 M$) × structureWeight)`；平台固定 `10 M$`；诱饵 `0`（§1.2、§3.8.3） |
+| Q-X2 | “让高威胁目标突防但昂贵弹药仍有剩余”如何计 | **已决议**（`B-T2-90`） | `HighThreatLeaksWithReserve` 统计 `damageLevel >= 7` 且 `LeakMask` 含 `HeldByRule` 的突防次数，交由 05 结算信任度（§3.8.1） |
+| Q-X3 | 突防原因不止 GDD 列出的 5 种 | **已决议**（`B-T2-91`） | 扩展为 11 个枚举值（`LeakReason` 0..10），按优先级取最小者为主原因并记录位掩码 `LeakMask`（§3.8.4） |
+| Q-X4 | 加权损失是否跨夜累计 | **已决议**（`B-T2-92`） | 是：`Hp` 与 `LossHp` 经 `CarryIn.Structures` / `CarryOut.Structures` 跨夜传递，失败判定使用累计加权损失（§3.5.1、§3.8.2） |
 
-### 8.2 需登记到 00_core
+### 8.2 与 `00_core` 及全局数据的对齐清单
 
 **R-ENT 实体 / 组件字段**
 
-| 表 | 建议 | 字段 |
+| 表 | 对齐项 | 字段 |
 |---|---|---|
-| 00 2.4 `PlayerUnitCommon` | 追加 3 列 | `DamageEfficiencyMult`、`SuspendedUntilSec`、`LightDamaged`（2.1） |
-| 00 2.3 `Interceptor` / `SupportAsset` / `Structure` / `GridNode` / `FireUnit` | 细化规格 = 03 | 字段见 2.2、2.5–2.7 |
-| `Threat`（01 主表） | 03 追加 4 个字段 | `MaxTrackQuality`、`ShotsTaken`、`HeldMask`、`DecoyDrained`（2.4） |
-| 00 2.5 `SimState` 单例 | 新增 `EngagementState` | 2.8；3.7.2 哈希序号建议插在 `SupportState`（序 6）之前，其后顺延；或追加为序 10（只追加，不重排） |
-| 00 2.6 `UnitSettings` | 追加属性 | `UnitEngagementSettings? Engagement`（2.3） |
-| 00 2.7 `GlobalView` | 追加 | `AlertOn`、`ShelteredFrac`、`Responsiveness`、`SortiesRemaining`、`GridCollapsed`、`WeightedLossFrac` |
+| 00 2.4 `PlayerUnitCommon` | 已对齐（`A-2-03`） | `DamageEfficiencyMult`、`SuspendedUntilSec`、`LightDamaged`、`IsVirtualSectorCoverage`（2.1） |
+| 00 2.3 `Interceptor` / `SupportAsset` / `Structure` / `GridNode` / `FireUnit` | 细化规格 = 03 | 字段见 2.2、2.5–2.7（含 `FireUnit.LaunchersLost`） |
+| `Threat`（01 主表） | 已对齐（`A-2-07`） | `MaxTrackQuality`、`ShotsTaken`、`HeldMask`、`DecoyDrained`（2.4） |
+| 00 2.5 `SimState` 单例 | 已对齐（`A-3-01`） | `EngagementState` 作为第 10 个状态块（序 9）写入状态哈希（2.8） |
+| 00 2.6 `UnitSettings` | 已对齐（`A-2-18`） | `UnitEngagementSettings? Engagement`（2.3） |
+| 00 2.7 `GlobalView` | 已对齐（`A-2-19`） | `AlertOn`、`ShelteredFrac`、`Responsiveness`、`SortiesRemaining`、`GridCollapsed`、`WeightedLossFrac` |
 
-**R-DATA 数据与加载**
+**R-DATA 数据与加载（`data/` 实际文件修改留给后续数据任务）**
 
 | 项 | 内容 |
 |---|---|
-| 新规则文件 | `rules/engagement.json`（`kind: engagement`）、`rules/civil.json`（`kind: civil`）；00 1.1 全局目录表追加第 21、22 位；`rules.schema.json` 的 `kind` 枚举追加；`RulesSet` 追加 `Engagement`、`Civil`；T-00-35 的 `LoadedFiles.Count` 由 29 变为 31 |
-| `units/air_defense.json` 武器可选字段 | `reactionGameSec`、`shotIntervalGameSec`、`interceptorSpeedKmh`（Schema 与 `WeaponDef` 追加，`Gun` 不得有 `interceptorSpeedKmh`） |
+| 新规则文件 | `rules/engagement.json`（`kind: engagement`）、`rules/civil.json`（`kind: civil`，含 `alert.availableFromLevel: 6` 与 `scoring.lossMusdBase: 0.1`）；00 1.1 全局目录表第 21、22 位 |
+| `units/air_defense.json` 武器可选字段 | `reactionGameSec`、`shotIntervalGameSec`、`interceptorSpeedKmh`（`Gun` 不得有 `interceptorSpeedKmh`） |
 | `support/fighters.json` 武器必填字段 | `kind`（`missile` / `rocket`）；`FighterWeaponDef.Kind` |
+| `support/support.json` 可选字段 | `radiusKm`（`SupportDef.RadiusM`） |
 | `rules/damage.json` 新字段 | `unitFootprintCells`、`componentRadarChance` |
 | `waves.json` 可选字段 | `nights[].bigRaid`（`bool`） |
-| 交叉引用（00 1.2 第 15 条追加） | `support[].fighterRef` ∈ 战斗机 ID（类别 `战斗机`）；`support[].fighterWeaponRef` ∈ 该战斗机武器 ID（类别 `武器`）；`support[].affectsSameAsEwUnit` ∈ 电子战单位 ID（类别 `单位`）；`support[].reinforcementUnit`、`coverageUnits[]` ∈ 防空单位 ID；`fighters[].weapons[].interceptClass` ∈ `intercept.classes` |
-| ID 唯一性（00 1.2 第 13 条追加） | 战斗机武器 ID 与防空武器 ID 不得重复（交换比按武器 ID 查价格） |
+| `level.json` 可选字段 | `launcherOverrides[{unit, weapon, launchers}]`、`restrictedZones[].neighborCountry`（`bool`）、`defeat[].fraction`（供 `grid_collapse` 使用） |
+| 交叉引用（00 1.2 第 15 条） | `support[].fighterRef` ∈ 战斗机 ID；`support[].fighterWeaponRef` ∈ 该战斗机武器 ID；`support[].affectsSameAsEwUnit` ∈ 电子战单位 ID；`support[].reinforcementUnit`、`coverageUnits[]` ∈ 防空单位 ID；`fighters[].weapons[].interceptClass` ∈ `intercept.classes` |
+| ID 唯一性（00 1.2 第 13 条） | 战斗机武器 ID 与防空武器 ID 不得重复（交换比按武器 ID 查价格） |
 | 加载校验 | `damage.bands` 覆盖 1–10 且不重叠；`defeat[]` 中出现 `survive_nights` / `survive_game_sec`、`victory[]` 中出现 `structure_destroyed` / `weighted_damage_at_least` / `grid_collapse` → `E_RANGE`；`support.airspace.restrictedEngagement.reactionTimeMult` 与 `intercept.modifiers.restrictedEngagement.reactionTimeMult` 不等 → `E_RANGE` |
-| 新 enum（00 1.2 第 8 条规则下的整数值） | `WeaponKind`、`FireOnMove`、`SupportProvider`、`SupportEffect`、`DelayKind`、`DurationKind`、`TrustCost { Small, Large }`、`UnitDamageEffect`、`CivilDamageEffect`、`TargetPriorityMode`（JSON `soonest_intercept` / `nearest`） |
 
-**R-EV 事件字段细化**（00 4.2 总表“关键字段”列按本文件 4.2 更新）
+**R-EV 事件字段与 R-CMD 命令对齐**
 
-`InterceptorLaunched` +`ThreatId, SupportAssetId`；`GunFired` +`ThreatId, Probability, RoundsUsed`；`InterceptResolved` +`Pos, AltM, OverUrban, WeaponId, FireUnitId, SupportAssetId`；`EngagementHeld` 字段 `FireUnitId, WeaponId, TrackId, ThreatId, Reason`；`ThreatImpacted` +`DefId, AimPos, Tier, Outcome, SubIndex, LeakReason, LeakMask`；`StructureDamaged` +`Cause`；`PlayerUnitDamaged` 字段 `UnitId, DefId, Kind, Effect, Component, SourceThreatId`；`PlayerUnitDestroyed` +`SourceThreatId`；`DebrisFell` +`DamageLevel, SourceThreatId`，`StructureId` 改为 `int`（0 = 无）；`SupportEnded` +`Reason`。
+- 事件 300–317 字段顺序与属性名（如 `PlayerUnitDamaged` / `PlayerUnitDestroyed` 的 `Category`、`PlayerUnitDestroyed` 末尾 `Vec2 Pos`、`InterceptorExpired` 的 `TargetGone / TargetManeuvered / TargetArrived`）按 §4.2 定稿。
+- 命令 300–303 字段、处理者、指挥点扣除接口（`CommandPointRules.CanSpend` / `Spend` / `Refund`）与拒绝原因（`NoSortiesLeft = 300`、`InRiskZone = 301`、`AirbaseUnavailable = 302`）按 §4.3 定稿。
 
-**R-CMD 命令与拒绝原因**
+### 8.3 与其他规格的接口契约汇总
 
-- 命令字段：`SetEngagementRule { int FireUnitId, string? WeaponId, EngagementRule Rule }`；`CallSupport { string SupportDefId, Vec2? TargetPos }`；`SetAirRaidAlert { bool On }`；`SetFighterZone { int SupportAssetId, bool Exclusive }`。
-- `SetAirRaidAlert` 的处理者确定为 `ScoringSystem`（00 Q5）。
-- 新拒绝原因：`NoSortiesLeft = 300`、`InRiskZone = 301`、`AirbaseUnavailable = 302`。
-
-**R-NR `NightResult`**
-
-- 03 部分的类型全部按 3.8.6；`NightResult` 追加 `CivilSummary Civil`、`SupportSummary Support` 两个属性（00 3.5 只列了 5 个）。
-- 序列化选项（camelCase、枚举字符串、无 NaN）建议写入 00 3.5，供 05 / 工具统一使用。
-
-**R-CI `CarryIn`（字段由 05 定义，本文件读取）**
-
-保护目标 `Hp` 与 `LossHp`；我方单位 `DamageEfficiencyMult`、`LightDamaged`、`Exposure`；火力单元 `NewPositionFirstNight`、`CrewConsecutiveNights`、`AceCrew`、逐武器逐发射架 `RoundsLeft`、`PerLevelUsedBefore`；`AlertResponsiveness`。
-
-**R-RNG 子流**
-
-不新增子流。`civil` 子流（00 3.1.4 序 15）：本文件的警报规则不使用随机数，保持 0 消耗；宿主为 `ScoringSystem`。`engagement` 子流保留未用。
-
-### 8.3 与其他规格的边界问题
-
-| # | 涉及 | 问题 | 本文件的处理 / 建议 |
+| # | 涉及 | 接口 / 契约 | 定稿状态 |
 |---|---|---|---|
-| B1 | 01 | `ThreatPredictor.Predict` 的签名与语义（D1）；`ThreatArrived` 后由谁删除目标（D2） | 本文件假设 01 不删除、03 在系统 10 删除；`Predict` 为纯函数、`Arrived` 标志表示提前到达。需要 01 确认 |
-| B2 | 02 | 精确航迹的来源：火力单元自身火控（含无雷达的单兵防空）必须能把航迹提升为 `Precise`（D8） | 若 02 不这样实现，本文件的导弹门槛（`MissilesAllowed`）会让无雷达导弹无法开火 |
-| B3 | 02 | `Track.PerceivedTag`（未甄别诱饵显示为 UAV）、`Track.Cued`、`Track.DecoyIdentified`、`FireUnit.FireControlActive / HasFireControlRadar / EmissionReactionMult / EmissionSilentHold`、`EwQueries.FriendlyJammingAt`、`Threat.EwTierDrop / EwAffected / EwCovered / ArmTargetUnitId / ArmHitProbMult` 的命名与写入时机 | 全部假设在系统 6 之前写好；需合并到 02 的状态表 |
-| B4 | 02 | 电子战造成的精度变化：02 写“降档数”还是直接改精度档；`ewExtraCells` 与降档是否同时生效（数值表 5.3 也写了待 WS01-015 确认） | 本文件同时支持两种钩子：`EwTierDrop`（降档）与 `EwAffected`（追加 `ewExtraCells`）；由 02 决定写哪一个，避免重复惩罚 |
-| B5 | 02 | 暴露度“发射导弹每发 +5” | 02 读取 `InterceptorLaunched` 事件；本文件不改暴露度 |
-| B6 | 02 | 国家级导航欺骗的效果 | 本文件只管呼叫流程，02 读取 `SupportAsset`（3.4.5） |
-| B7 | 02 | 被暂停（重伤）、断电、雷达被毁的探测 / 电子战 / 火力单元的雷达状态 | 02 读取 `SuspendedUntilSec`、`Powered`、`RadarDestroyed`、`DamageEfficiencyMult` 并自行决定效果（建议：暂停 = 关机；断电 = Q-G2） |
-| B8 | 02 / 04 | 反辐射导弹“优先锁定暴露度 ≥ 40 的单位”与“雷达关机命中率” | 选目标与 `ArmHitProbMult` 归 02 / 04；落地掷骰归本文件（3.5.7） |
-| B9 | 04 | 指挥点扣除 / 退还接口（D15）；`SetEngagementRule`、`SetAirRaidAlert`、`SetFighterZone`、`CallSupport` 是否耗点、耗几点 | 本文件只在 `CallSupport` 中按 `support.cost.commandPoints` 调用 04 的接口；其余命令是否耗点由 04 决定并在其处理逻辑中调用（命令处理者仍是本文件的系统，需要 04 提供可从其他处理者调用的扣点函数） |
-| B10 | 04 | 剧情动作 `set_alert` | 04 调用本文件的 `CivilRules.SetAlert(ctx, on, Story)` |
-| B11 | 04 | 部署状态（`Moving`、`Packing`……）的定义 | 本文件只读 `DeployState` 判断能否开火（3.2.2） |
-| B12 | 05 | `CarryIn` / `CarryOut` 字段 | 见 R-CI；`NightResult` 中本文件给出的计数（弹药余量、保护目标 HP、警报响应度、突防原因）供 05 生成 `CarryOut` |
-| B13 | 05 | 邻州火力组（`reinforcement`）、邻近扇区覆盖（`sector_coverage`） | 夜间不可呼叫（`NotAvailable`）；前者由 05 在部署方案中加入单位，后者见 Q-S9 |
-| B14 | 01 | 敌方平台被击落后其携带弹药的处理、Orlan 存活判断 | 01 负责；本文件只读 `Threats` 中存活平台 |
-| B15 | 00 | 碎片是否做成实体（00 Q16） | 不做：碎片在系统 10 当步结算，`Debris` 存储保持为空 |
-| B16 | 00 / 01 | `Geo.PointInPolygon` 的唯一实现 | 本文件 3.0 给出；01 的城区 / 森林判断应共用 |
+| B1 | 01 | `IThreatPredictor.Predict(t, dt)` 纯函数；`Threat.MaxSpeed3DMps` 常量上界；`Threat.Phase == Arrived` 生命周期；`ThreatManeuvered` 事件；`ThreatArrived` 在系统 10 删除 | 已与 01 对齐（`A-2-09`、`A-4-01`、`A-4-02`、`C-T1-05`） |
+| B2 | 02 | `IFireControlQueries`（含 `optical_ir` 短程精确航迹与 `FireControlActive`） | 已与 02 对齐（`A-2-08`、`B-T3-05`） |
+| B3 | 02 | `Track.Tag`（`Vague` 时为 `null`，03 回退真实标签检查武器目标集）、`Track.Cued`、`Track.DecoyIdentified`、`IEwQueries.FriendlyJammingAt` / `ShieldHitProbMult`、`Threat.AccuracyTierDrop` / `EwExtraOffsetM` / `EwEverCovered` / `TargetUnitId` / `ArmHitProbMult` | 已与 02 对齐（`A-2-07`、`A-2-10`、`B-T2-52`、`B-T3-06`、`B-T3-08`） |
+| B4 | 02 | 单位级导航干扰与国家级导航欺骗由 02 `ReconcileNavAccuracy` 统一合成写入 `AccuracyTierDrop` 与 `EwExtraOffsetM`，不双重叠加 | 已与 02 对齐（`B-T3-08`） |
+| B5 | 02 | 暴露度“发射导弹每发 +5”由 02 消费 `InterceptorLaunched` 事件更新；夜内暴露度单调不减 | 已与 02 对齐（`A-3-10`） |
+| B6 | 02 | 国家级导航欺骗由 03 管理支援实体生命周期，02 读取 `Active` 实体施加效果 | 已与 02 对齐 |
+| B7 | 02 | 探测 / 电子战 / 火力单元的暂停（`SuspendedUntilSec`）、断电（`Powered`）、雷达被毁（`RadarDestroyed`）、轻伤（`DamageEfficiencyMult`）由 03 写入、02 读取 | 已与 02 对齐 |
+| B8 | 02 / 04 | 反辐射导弹锁定的目标雷达 `TargetUnitId` 与关机折减 `ArmHitProbMult` 由 01/02 维护，落地掷骰由 03 §3.5.7 执行 | 已与 01/02 对齐（`A-2-07`） |
+| B9 | 04 | `CommandPointRules.CostOf / CanSpend / Spend / Refund` 接口供 03 在 `SetEngagementRule`、`CallSupport`、`SetAirRaidAlert` 中调用 | 已与 04 对齐（`A-2-17`） |
+| B10 | 04 | 剧情动作 `set_alert` 调用 `CivilRules.SetAlert(ctx, on, AlertCause.Story)` | 已与 04 对齐 |
+| B11 | 04 | 三阶段初始化（`Initialize` → `RestoreCarryIn` → `PostDeployInit`）：04 在阶段 1 生成单位、03 在阶段 2 恢复弹药与战损、03 在阶段 3 生成扇区覆盖虚拟单位并连接电网 | 已与 00/04/05 对齐（`A-3-09`、`A-3-10`） |
+| B12 | 05 | `CarryIn` / `CarryOut` 完整契约（含 `SectorCoverageSites`、`DestroyedUnitSnapshots`、`PlayStats`、`KillsByEnemy`、`CustomMetrics`、`StoryChoiceResults`） | 已与 05 对齐（`P42`、`A-2-20`、`A-3-10`、`B-T1-16`、`B-T2-36`、`B-T2-89`） |
+| B13 | 00 / 01 | `Geo.PointInPolygon` 半开射线法作为全库唯一多边形点包含实现 | 已与 00/01 对齐 |
+
