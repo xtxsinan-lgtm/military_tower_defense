@@ -423,41 +423,35 @@ static class SensingMath
         => (b - a).LengthSquared() <= rangeM * rangeM;
 
     // 从 p 出发、速度 v 的直线运动，第一次进入以 c 为圆心、半径 r 的圆所需时间（秒）
-    // 已在圆内（含边界）→ 0；永不进入 → null
+    // 已在圆内（含边界）→ 0；永不进入 → null。直接委托 00_core 3.8 的公共实现（A-2-23）
     public static double? TimeToEnterRadius(Vec2 p, Vec2 v, Vec2 c, double r)
-    {
-        Vec2 d = p - c;
-        double cc = d.LengthSquared() - r * r;
-        if (cc <= 0) return 0.0;
-        double a = v.LengthSquared();
-        if (a == 0) return null;
-        double b = 2 * d.Dot(v);
-        double disc = b * b - 4 * a * cc;
-        if (disc < 0) return null;
-        double t = (-b - Math.Sqrt(disc)) / (2 * a);
-        return t >= 0 ? t : null;
-    }
+        => Nightwatch.Sim.Core.Geo.FirstEntryIntoCircle(p, v, c, r);
 }
 ```
 
-- `Geo.PointInPolygon(Vec2 p, IReadOnlyList<Vec2> poly)`：交叉数法（射线向 +x），顶点按数据顺序，`(yi > p.Y) != (yj > p.Y)` 且 `p.X < (xj − xi) × (p.Y − yi) / (yj − yi) + xi` 时翻转。点恰在边上的结果未定义，测试不得依赖（建议登记到 00 的 `Geo`，03 也要用）。
-- `InUrban(p)` = 任一 `Level.Layers.Urban[i].Polygon` 包含 `p`（按数据顺序检查，找到即停）。
+- **多边形与城区判定**（A-2-23）：统一调用 `Nightwatch.Sim.Core.Geo.PointInPolygon(p, poly)` 与 `Geo.InUrban(ctx.Level, p)`（唯一实现见 [00_core.md §3.8](00_core.md)，半开交叉数法，边界点由公式确定性决定）。
+- **欧氏距离约定**（C-T1-04）：需要开方的距离计算一律写 `Math.Sqrt(dx * dx + dy * dy)`，禁止使用 `Math.Hypot`。
+- **空间网格加速**（`SpatialGrid`，C-T1-08）：3.2.4 `RangeDetect`、3.2.5 `FireControlDetect`、3.6.3 `ReconNearby`、3.7.3 `FakeLauncherRecon` 对 `Threats` 的圆形范围查询统一调用 `ctx.ThreatGrid.QueryCircle(center, r)`；3.5.3 `WarnTrack`、3.5.4 `CueAvailable` / `CueWindow` 对 `Tracks` 的圆形范围查询统一调用 `ctx.TrackGrid.QueryCircle(center, r)`。`QueryCircle` 保证返回距离 `≤ r`（比较平方）的全部存活实体且按 `Id` 严格升序排列，与全表扫描逐位等价。
+- **空步快速返回**（C-T1-16）：当 `Threats.CountAlive() == 0`、`Tracks.CountAlive() == 0`、`Sensing.Delayed.Count == 0` 且本步无到期 `WarningSchedule` 条目时，3 号系统跳过 `RangeDetect` / `CoverageDetect` / `FireControlDetect`，只执行 `FalseAlarms()`（保持 `sensor` 子流消耗对齐）；4 号系统直接返回；5 号系统跳过 `Threats` 循环，只执行 `UrbanNavJam()`。
 - **事件游标读取**（6 号、11 号系统共用）：系统需要消费"可能由更晚系统产生"的事件时，按 `Seq` 升序遍历 `ctx.Events.PreviousStep` 再遍历 `ctx.Events.CurrentStep`，只处理 `Seq > cursor` 的事件，处理完把 cursor 设为已处理的最大 `Seq`。这样每个事件恰好被处理一次，与产生它的系统序号无关。
-- **辐射源状态的时序**：3 号（探测）与 5 号（电子战）读取的 `Emitter.On` 是**上一步** 6 号系统（或 `Initialize`）的结果；11 号（暴露度）读取的是**本步** 6 号系统的结果。这是 01.B 固定顺序的直接后果，不做补偿。
+- **辐射源状态的时序**：3 号（探测）与 5 号（电子战）读取的 `Emitter.On` 是**上一步** 6 号系统（或 `Initialize`）的结果；11 号（暴露度）读取的是**本步** 6 号系统的结果。这是 01.B 固定顺序的直接后果，不做补偿。但 10 号系统写入的 `FireUnit.RadarDestroyed` 与 `SuspendedUntilSec` 在下一步第 3、5 步中由探测 / 电子战直接检查（A-2-12），不再多延迟一步。
 - 遍历顺序：实体按 ID 升序；跨实体类型时按 `EntityKind` 值升序（`FireUnit` → `SensorUnit` → `EwUnit` → `DeceptionUnit`）。
 
 ### 3.2 `SensorSystem`（Order 3，子流 `sensor`）
 
 #### 3.2.1 `Initialize`
 
-1. **自动探测单位**：对 `Catalog.Sensors` 按数据顺序，`Automatic == true` 且（`Meta.Number == null` 或 `FirstAvailable?.Level == null` 或 `FirstAvailable.Level ≤ Meta.Number`）的每个定义，`Sensors.Add` 一个实体：`DefId = Id`、`Pos = (WidthM / 2, HeightM / 2)`、`AltM = 0`、`DeployState = Deployed`、`Exposure = 0`、`Automatic = true`、`Placement = null`、`Emitter = null`（自动单位都是被动的；若数据中出现 `Automatic && Emission == Active`，加载器报 `E_RANGE`）。（Q25）
-2. **所有我方单位的本文件字段**（按 `EntityKind` 再按 ID 升序）：按 2.1–2.4 的初值填写；`Emitter` 的 `PolicyId` 若设置值不是已知策略 ID，抛 `SimSetupException`（04 的校验应已拦截）。
-3. **预警时间表** `WarningSchedule`：对本夜 `night.Waves` 按数据顺序，每个波次内按 `Groups` 数据顺序收集**首次出现**的 `EntryId`；对每个 `(wave, entryId)`：
+1. **自动探测单位**：对 `Catalog.Sensors` 按数据顺序，`Automatic == true` 且（`Meta.Number == null` 或 `FirstAvailable?.Level == null` 或 `FirstAvailable.Level ≤ Meta.Number`）的每个定义，`Sensors.Add` 一个实体：`DefId = Id`、`Pos = (WidthM / 2, HeightM / 2)`、`AltM = 0`、`DeployState = Deployed`、`Exposure = 0`、`Automatic = true`、`Placement = null`、`Emitter = null`（自动单位都是被动的；若数据中出现 `Automatic && Emission == Active`，加载器报 `E_RANGE`）。（B-T2-44）
+2. **所有我方单位的本文件字段**（按 `EntityKind` 再按 ID 升序）：按 2.1–2.4 的初值填写（其中 `DeceptionUnit.SeenThrough` 若 `RosterId != 0` 在 `CarryIn.Units` 中有对应项则取其 `SeenThrough`，R-02-2）；`Emitter` 的 `PolicyId` 若设置值不是已知策略 ID，抛 `SimSetupException`（04 的校验应已拦截）。
+3. **预警时间表** `WarningSchedule`：对本夜 `night.Waves` 按数据顺序，**跳过 `WaveSpawnRules.IsStoryOnlyWave(ctx.Level, wave.Id) == true` 的仅剧情注入波次**（01 §3.1.1、A-2-28）；其余每个波次内按 `Groups` 数据顺序收集**首次出现**的 `EntryId`；对每个 `(wave, entryId)`：
    - `entry = Waves.EntryPoints` 中该 ID；`entry.WarningSec == null` → 跳过。
    - `ExpectedAtSec = wave.AtSec`；`Tick = max(1, SecToTicksFloor(max(0, wave.AtSec − entry.WarningSec), StepSec))`。
    - `BearingRad = Geo.BearingRad(mapCenter, entry.Pos)`，`mapCenter = (WidthM / 2, HeightM / 2)`。
    - `Ballistic` = 该波次中 `EntryId == entry.Id` 的任一组，其敌方定义的 `Tag ∈ { BM, HBM }`。
    - 结果列表按 `(Tick, 波次数据下标, 入口首次出现顺序)` 排序（稳定）。
+4. **地平线视线包络预计算**（`Sensing.HorizonProfiles`，B-T2-31、C-T2-01、A-2-26）：
+   - 对每个 `SensorUnit s`（`s.Def.DetectionRangeM != null && s.Def.LineOfSight != false && s.Def.Layer != SensorLayer.National`）：`h = s.Def.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM`，`maxR = MaxPossibleRangeM(s.Def)`（含晴朗 / 月夜最大天气倍率），写入 `Sensing.HorizonProfiles[s.Id] = ctx.Terrain.BuildHorizonProfile(s.Pos, h, maxR)`。
+   - 对每个 `FireUnit f`：若 `f.Def.FireControlRadar != null`，取 `h = f.Def.FireControlRadar.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM`、`maxR = f.Def.FireControlRadar.RangeM`；否则若 `f.Def.SelfAcquisitionRangeM != null`，取 `h = Rules.Terrain.DefaultAntennaHeightM`、`maxR = MaxPossibleSelfAcqRangeM(f.Def)`；写入 `Sensing.HorizonProfiles[f.Id] = ctx.Terrain.BuildHorizonProfile(f.Pos, h, maxR)`。
 
 #### 3.2.2 `Execute` 总流程
 
@@ -478,79 +472,91 @@ DeliverDelayed()                                           # 3.2.7：把 Deliver
 
 #### 3.2.3 探测单位是否工作、有效距离
 
-`SensorActive(s)`：`s.DeployState == Deployed` 且（`s.Emitter == null` 或 `s.Emitter.On`）。
+`SensorActive(s)`：`s.DeployState == Deployed` 且 `!Suspended(s)`（A-2-12）且（`s.Emitter == null` 或 `s.Emitter.On`）。
+
+本夜季节 `season = EnvironmentResolver.SeasonFor(night, ctx.Level.Meta.DateRange.From)`（05 §3.7.6、C-T2-07）。
 
 对某个目标 `t` 的**有效探测距离**（仅 `DetectionRangeM != null` 的单位）：
 
 ```
 R = s.Def.DetectionRangeM
 if s.Def.NightRangeMult != null:                                   # 光学传感器
-    nightMult = (s.NightAids ∩ s.Def.NightPenaltyNegatedBy 非空) ? 1.0 : s.Def.NightRangeMult
-    weatherMult = night.Weather == null ? 1.0 : Detection.OpticalWeatherRangeMult[night.Weather]
+    nightMult = (night.TimeOfDay == TimeOfDay.Day or (s.NightAids ∩ s.Def.NightPenaltyNegatedBy 非空)) ? 1.0 : s.Def.NightRangeMult
+    weatherMult = night.Weather == null ? 1.0 : DetectionRules.OpticalWeatherRangeMult[night.Weather]
     R = R × nightMult × weatherMult
-if s.Emitter != null and not s.Powered:  R = R × Detection.UnpoweredActiveRangeMult
-if s.NewPositionPenalty:                 R = R × Positions.NewUnsurveyed.FirstNightEfficiencyMult
-if t.AltM < Detection.LowAltitudeBelowM:
-    R = R × Detection.LowAltitudeRangeMult[s.Def.LowAltitude]
-    if s.Def.LargeLowAltitudeBlindZone == true: R = R × Detection.LargeBlindZoneLowAltitudeRangeMult
+if s.Emitter != null and not s.Powered:         R = R × DetectionRules.UnpoweredActiveRangeMult
+if s.Emitter != null and season == Season.Winter: R = R × DetectionRules.WinterActiveRangeMult
+if s.NewPositionPenalty:                        R = R × Positions.NewUnsurveyed.FirstNightEfficiencyMult
+if t.AltM < DetectionRules.LowAltitudeBelowM:
+    R = R × DetectionRules.LowAltitudeRangeMult[s.Def.LowAltitude]
+    if s.Def.LargeLowAltitudeBlindZone == true: R = R × DetectionRules.LargeBlindZoneLowAltitudeRangeMult
 ```
 
-- 乘法按上面书写顺序逐个执行（保证二进制可复现）。
-- 夜晚：本文件把每个 `NightDef` 都视为夜间（Q26）；白天关卡由 WS01-026 引入后改为读取昼夜标记。
+- 乘法按上面书写顺序逐个执行（当某项条件不满足时不执行该次乘法，保证二进制可复现）。
+- 昼夜与季节：`night.TimeOfDay` 缺省为 `TimeOfDay.Night`；白天（`TimeOfDay.Day`）光学传感器不乘 `NightRangeMult`，但仍乘 `weatherMult`（C-T2-07、B-T2-45）。
 
 #### 3.2.4 `RangeDetect(s)`（有探测距离的单位）
 
-对每个 `Threat t`（ID 升序，Alive）：
+通过 `ctx.ThreatGrid.QueryCircle(s.Pos, R0)`（`R0` 为 3.2.3 中不含低空项的有效距离，按 `t.Id` 升序，C-T1-08）遍历候选存活 `Threat t`：
 
 1. `s.Def.OnlyDetects == RadioLinkedDrones` 且 `t` 的定义 `RadioLinked != true` → 跳过。
 2. `R` = 3.2.3；`!WithinRange(s.Pos, t.Pos, R)` → 跳过。
-3. 视线：`s.Def.LineOfSight != false` 且 `s.Def.Layer != National` 时，要求 `TerrainQuery.HasLineOfSight(s.Pos, h, t.Pos, t.AltM)`，`h = s.Def.AntennaHeightM ?? Detection.SensorHeightM`；不通 → 跳过。
+3. 视线（A-2-26、B-T2-31、C-T2-01）：`s.Def.LineOfSight != false` 且 `s.Def.Layer != National` 时，要求 `Sensing.HorizonProfiles[s.Id].HasLineOfSightAgl(t.Pos, t.AltM)`（天线高度 `h = s.Def.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM`，含等效地球曲率与地形遮挡斜率包络，见 [01 §3.3.4](01_spawn_movement_terrain.md)）；不通 → 跳过。
 4. 质量 `q = s.Def.TrackQuality`；对 `TrackQualityUpgrades` 每一项（数据顺序）：
-   - `CloseRange`：`WithinRange(s.Pos, t.Pos, R × Detection.CloseRangeFraction)` → `q = max(q, To)`；
+   - `CloseRange`：`WithinRange(s.Pos, t.Pos, R × DetectionRules.CloseRangeFraction)` → `q = max(q, To)`；
    - `LinkedDroneTypes`：`EnemyIds` 包含 `t.DefId` → `q = max(q, To)`。
-5. 上限：`q = min(q, Approximate)`（探测单位不产生"精确"，D2；现有数据中也没有输出"精确"的探测单位，Q3）；再若 `BLineApplies(s)`（3.2.7）→ `q = min(q, BLine.MaxTrackQuality)`。
-6. 误差圈 `err = Detection.ErrorRadiusM[q] × (s.Def.FastUpdate == true ? Detection.FastUpdateErrorRadiusMult : 1.0)`。
-7. `Route(new Detection(s.Id, Sensor, s.Def.Layer, t.Id, 0, t.Pos, t.AltM, t.VelMps, q, err, ctx.TimeSec), delay)`，`delay = max(s.Def.ReportDelay == true ? Detection.ReportDelaySec : 0, BLineApplies(s) ? BLine.RelayDelaySec : 0)`。
+5. 上限：`q = min(q, Approximate)`（探测单位不产生"精确"，D2 / B-T2-33）；再若 `BLineApplies(s)`（3.2.7）→ `q = min(q, BLine.MaxTrackQuality)`。
+6. 误差圈 `err = DetectionRules.ErrorRadiusM[q] × (s.Def.FastUpdate == true ? DetectionRules.FastUpdateErrorRadiusMult : 1.0)`。
+7. `Route(new Detection(s.Id, Sensor, s.Def.Layer, t.Id, 0, t.Pos, t.AltM, t.VelMps, q, err, ctx.TimeSec), delay)`，`delay = max(s.Def.ReportDelay == true ? DetectionRules.ReportDelaySec : 0, BLineApplies(s) ? BLine.RelayDelaySec : 0)`。
 
 #### 3.2.5 火控雷达与自主捕获（`FireControlDetect(f)`）
 
-- **火控雷达**：`f.Def.FireControlRadar != null` 且 `f.DeployState == Deployed` 且 `f.Emitter.On`。有效距离 `R = FireControlRadar.RangeM`，再按 3.2.3 依次乘断电倍率（`!f.Powered`）、新阵地倍率、低空倍率（用 `FireControlRadar.LowAltitude`；火控雷达没有"低空盲区大"标记）。视线必需，天线高度 `FireControlRadar.AntennaHeightM ?? Detection.SensorHeightM`。范围内、视线通的每个目标产生 `Detection(f.Id, FireControl, Local, t.Id, 0, …, Quality = Precise, err = Detection.ErrorRadiusM[Precise], ObservedAtSec = TimeSec)`，不延迟（B 线也不延迟：数值表 1.3"配属的车载雷达"）。
-- **自主捕获**（无火控雷达的单位，如单兵导弹、高炮；Q4）：`f.Def.SelfAcquisitionRangeM != null` 且（`f.DeployState == Deployed`，或 `f.DeployState == Moving` 且 `f.Def.FireOnMove != No`）。有效距离 `R = SelfAcquisitionRangeM`（不乘任何倍率），视线必需，不受低空、夜间修正。产生 `Source = SelfAcquisition`、`Quality = Precise` 的探测。被动，不是辐射源。
+- **火控雷达**：`f.Def.FireControlRadar != null` 且 `f.DeployState == Deployed` 且 `!f.RadarDestroyed` 且 `!Suspended(f)`（A-2-12）且 `f.Emitter.On`。有效距离 `R = FireControlRadar.RangeM`，再按 3.2.3 依次乘断电倍率（`!f.Powered`）、冬季倍率（`season == Season.Winter` → `× DetectionRules.WinterActiveRangeMult`）、新阵地倍率、低空倍率（用 `FireControlRadar.LowAltitude`；火控雷达没有"低空盲区大"标记）。视线必需，调用 `Sensing.HorizonProfiles[f.Id].HasLineOfSightAgl(t.Pos, t.AltM)`（天线高度 `FireControlRadar.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM`）。通过 `ctx.ThreatGrid.QueryCircle` 遍历范围内、视线通的每个目标（ID 升序），产生 `Detection(f.Id, FireControl, Local, t.Id, 0, …, Quality = Precise, err = DetectionRules.ErrorRadiusM[Precise], ObservedAtSec = TimeSec)`，不延迟（B 线也不延迟：数值表 1.3"配属的车载雷达"）。
+- **自主捕获**（无火控雷达的单位，如单兵导弹、高炮、火力组；B-T2-09、C-T2-07）：`f.Def.SelfAcquisitionRangeM != null` 且 `!Suspended(f)`（A-2-12）且（`f.DeployState == Deployed`，或 `f.DeployState == Moving` 且 `f.Def.FireOnMove != No`）。有效距离：
+  ```
+  R = f.Def.SelfAcquisitionRangeM
+  if f.Def.SelfAcquisition == SelfAcquisitionKind.Optical:
+      hasNightAid = f.Placement?.Settings.NightAids != null && f.Placement.Settings.NightAids.Count > 0
+      nightMult   = (night.TimeOfDay == TimeOfDay.Day or hasNightAid) ? 1.0 : DetectionRules.OpticalNightRangeMult
+      weatherMult = night.Weather == null ? 1.0 : DetectionRules.OpticalWeatherRangeMult[night.Weather]
+      R = R × nightMult × weatherMult
+  ```
+  视线必需，调用 `Sensing.HorizonProfiles[f.Id].HasLineOfSightAgl(t.Pos, t.AltM)`（天线高度 `Rules.Terrain.DefaultAntennaHeightM`），不受低空倍率修正。产生 `Source = SelfAcquisition`、`Quality = Precise` 的探测。被动，不是辐射源。
 - 同一火力单元两者都满足时只走火控雷达分支。
 
 #### 3.2.6 覆盖型单位（`CoverageDetect(s)`）
 
 对每个目标 `t`（ID 升序）：
 
-1. 低空：`t.AltM < LowAltitudeBelowM` 且 `s.Def.LowAltitude < Detection.CoverageLowAltitudeMinCapability`（按 enum 整数值比较）→ 跳过。
-2. `FullMap`：不检查位置（含地图外）。`UrbanAreas`：要求 `InUrban(t.Pos)`。
+1. 低空：`t.AltM < DetectionRules.LowAltitudeBelowM` 且 `s.Def.LowAltitude < DetectionRules.CoverageLowAltitudeMinCapability`（按 enum 整数值比较）→ 跳过。
+2. `FullMap`：不检查位置（含地图外）。`UrbanAreas`：要求 `Geo.InUrban(ctx.Level, t.Pos)`。
 3. `OnlyDetects`、升级规则与质量上限同 3.2.4 第 1、4、5 步（`CloseRange` 对覆盖型单位不适用，跳过）；不检查视线。
-4. 产生探测：`Layer = s.Def.Layer`，延迟规则同 3.2.4 第 7 步（民众上报 `ReportDelay == true` → 延迟 `ReportDelaySec`）。
+4. 产生探测：`Layer = s.Def.Layer`，延迟规则同 3.2.4 第 7 步（民众上报 `ReportDelay == true` → 延迟 `DetectionRules.ReportDelaySec`）。
 
 #### 3.2.7 B 线空情转发
 
 `BLineApplies(s)` = `Meta.Protagonist == B` 且 `s.Def.Layer == Regional`。（`AB` 视为 A：终章 A 直接控制区域雷达网。）
 - 效果：该单位的探测延迟 `BLine.RelayDelaySec` 送达、质量不超过 `BLine.MaxTrackQuality`。
-- `BLine.RegionalRadarDirectControl == false` 时，对这些单位的 `SetEmissionPolicy` 拒绝（`NotAvailable`，3.5.8）；它们按部署时的设置运行（关卡设计者预置）。（Q28）
+- `BLine.RegionalRadarDirectControl == false` 时，对这些单位的 `SetEmissionPolicy` 拒绝（`NotAvailable`，3.5.8）；它们按部署时的设置运行（关卡设计者预置）。（B-T2-47）
 
 `DeliverDelayed()`：取出 `Delayed` 中全部 `DeliverTick ≤ Tick` 的条目（列表已按 `(DeliverTick, Seq)` 有序），按此顺序追加到 `Detections`。延迟探测**保留观测时的位置与时刻**（`ObservedAtSec`），不外推。来源单位此后被摧毁、或目标已被移除，延迟探测照常送达（目标已移除的会在 3.3.2 被丢弃）。
 
 #### 3.2.8 国家预警 `EmitEarlyWarnings()`
 
 1. 对 `WarningSchedule` 中 `Tick ≤ ctx.Tick` 且键 `"<WaveId>|<EntryId>"` 不在 `WarnedKeys` 中的条目（按表顺序）：发出 `EarlyWarning { WaveId, EntryId, ExpectedAtSec, BearingRad, Ballistic }`，加入 `WarnedKeys`。
-2. 剧情追加的波次（不在本夜 `night.Waves` 中、由 01 运行时生成）：在 `CurrentStep` 中看到 `WaveStarted { WaveId }` 且该波次的任一 `(WaveId, EntryId)` 键未预警时，立即按第 1 步发出（`ExpectedAtSec = TimeSec`），即零提前量。（01 需在 `WaveStarted` 之后能查到该波次的 `WaveDef`；见 8.3。）
+2. 剧情或敌方 AI 注入的波次（在 3.2.1 第 3 步被跳过或延后触发）：在 `CurrentStep` 中看到 `WaveStarted { WaveId }` 时，在本夜 `night.Waves` 中按 `Id == WaveId` 查得该 `WaveDef`（所有注入波次均定义于本夜 `night.Waves` 中，A-2-28）；若该波次的任一 `(WaveId, EntryId)` 键（`entry.WarningSec != null`）不在 `WarnedKeys` 中，立即按第 1 步发出（`ExpectedAtSec = TimeSec`），即零提前量。
 3. 预警**不创建航迹**：模糊航迹只来自探测（国家预警网自动单位会在目标进入其覆盖后提供模糊探测）。
 
 #### 3.2.9 误报 `FalseAlarms()`
 
 对每个 `SensorActive` 且 `Def.FalseAlarms != null` 的探测单位（ID 升序）：
 
-1. `p = Detection.FalseAlarmsPerSec[Def.FalseAlarms] × StepSec`；`if (!rng.Chance(p)) continue;`（每个单位每步恰好消耗 1 次 `NextDouble`）。
+1. `p = DetectionRules.FalseAlarmsPerSec[Def.FalseAlarms] × StepSec`；`if (!rng.Chance(p)) continue;`（每个单位每步恰好消耗 1 次 `NextDouble`）。
 2. 位置：
    - 有探测距离：`u1 = rng.NextDouble(); u2 = rng.NextDouble()`；`r = R0 × Math.Sqrt(u1)`（`R0` = 3.2.3 中**不含低空项**的有效距离），`b = 2π × u2`；`pos = s.Pos + (r × Math.Sin(b), r × Math.Cos(b))`。
-   - `UrbanAreas`：`i = rng.NextInt(0, Urban.Count)`（`Urban.Count == 0` → 不产生误报，但第 1 步的 `Chance` 已消耗）；在该多边形的轴对齐包围盒内最多尝试 8 次：`x = minX + (maxX − minX) × rng.NextDouble()`，`y = minY + (maxY − minY) × rng.NextDouble()`，`PointInPolygon` 为真即采用；8 次都失败 → 采用顶点算术平均值。
+   - `UrbanAreas`：`i = rng.NextInt(0, Urban.Count)`（`Urban.Count == 0` → 不产生误报，但第 1 步的 `Chance` 已消耗）；在该多边形的轴对齐包围盒内最多尝试 8 次：`x = minX + (maxX − minX) × rng.NextDouble()`，`y = minY + (maxY − minY) × rng.NextDouble()`，`Geo.PointInPolygon` 为真即采用；8 次都失败 → 采用顶点算术平均值。
    - `FullMap`：（现有数据无此组合）`pos = (WidthM × rng.NextDouble(), HeightM × rng.NextDouble())`。
-3. `key = NextPhantomKey++`；`Route(new Detection(s.Id, Sensor, s.Def.Layer, 0, key, pos, AltM: 0, VelMps: (0,0), Quality: q = 3.2.4 第 5 步的上限作用于 s.Def.TrackQuality（不做升级）, err = ErrorRadiusM[q], TimeSec), delay)`（延迟规则同 3.2.4）。
+3. `key = NextPhantomKey++`；`Route(new Detection(s.Id, Sensor, s.Def.Layer, 0, key, pos, AltM: 0, VelMps: (0,0), Quality: q = 3.2.4 第 5 步的上限作用于 s.Def.TrackQuality（不做升级）, err = DetectionRules.ErrorRadiusM[q], TimeSec), delay)`（延迟规则同 3.2.4）。
 
 误报航迹只有这一次探测，之后按 3.3.2 超时丢失。
 
@@ -562,7 +568,7 @@ if t.AltM < Detection.LowAltitudeBelowM:
 
 理由：见 0.4 D1。代价是"同一目标被两个相距很远的传感器看到时，界面只显示一条航迹"——这本来就是理想的融合结果。
 
-#### 3.3.2 每步流程
+#### 3.3.2 每步流程与无分配桶分组（C-T1-17）
 
 ```
 # 1. 目标已消失的航迹立即删除
@@ -574,6 +580,8 @@ for each Track k (ID 升序): if k.ThreatId != 0 and !Threats.TryGet(k.ThreatId)
 # 5. 诱饵甄别（3.3.8）：对本步 Create / Update 过的航迹，按航迹 ID 升序
 ```
 
+- **确定性 $O(N)$ 桶分组实现约定**（C-T1-17）：`Detection` 为值类型 `readonly record struct`，存储在 `Sensing.Detections` 复用列表中。第 2 步不得使用 `Dictionary` 遍历或每步堆分配 `List<Detection>`：对真实探测（`d.ThreatId != 0 && Threats.TryGet(d.ThreatId)`），以 `d.ThreatId - minThreatId` 为桶下标，用系统内复用的整数数组 `head[]` / `next[]` 建立链式桶，按桶下标从 `0` 到 `maxThreatId - minThreatId` 顺序遍历非空桶（桶内保持 `Detections` 原始产生顺序）；对误报探测（`d.PhantomKey != 0`）同理按 `PhantomKey` 升序遍历。
+
 #### 3.3.3 融合质量
 
 对一组探测 `G`（同一键）：
@@ -584,31 +592,35 @@ preciseDets = G 中 Source ∈ {FireControl, SelfAcquisition} 的探测
 localCount  = sensorDets 中 Layer == Local 的不同 SourceId 个数
 netQ = sensorDets 为空 ? null : max(sensorDets.Quality)
 if netQ == Vague and localCount ≥ ApproximateFromLocalSensorCount: netQ = Approximate     # 交叉升级
+if "fire_team_network" ∈ CarryIn.Doctrines:                                               # 条令：火力组联网（B-T2-126）
+    optCount = preciseDets 中 Source == SelfAcquisition 且 FireUnit.Def.SelfAcquisition == Optical 的不同 SourceId 个数
+    if optCount ≥ 2: netQ = max(netQ ?? Vague, Approximate)
 Quality = max(netQ ?? Vague, preciseDets 非空 ? Precise : Vague)
 NetworkQuality = netQ
 LocalSensorCount = localCount
 PreciseHolderIds = preciseDets 的 SourceId 去重升序
 ```
 
-- 交叉升级只把"模糊"升到"大致"，不会到"精确"。国家层、区域层探测单位不计入 `localCount`；火控 / 自主捕获探测不计入。
+- 交叉升级只把"模糊"升到"大致"，不会到"精确"。国家层、区域层探测单位不计入 `localCount`；火控 / 自主捕获探测不计入 `localCount`（但解锁 `fire_team_network` 条令后，≥ 2 个光学自主捕获火力单元同时看到目标时可将 `NetworkQuality` 升为 `Approximate`）。
 - 民众上报（一个自动单位）只算 1 个本地传感器。误报探测各自独立成组，永远不会交叉升级。
 - 延迟送达的探测与当步新探测一样参与。
 
 #### 3.3.4 "精确"的含义（D2）
 
 - `Quality == Precise` ⇔ 本步至少一个火力单元的火控雷达 / 自主捕获锁定了目标。
-- **03 的约定**：火力单元 `f` 用导弹（`MissilesAllowed` 由 `Qualities[Precise]` 给出）交战航迹 `k` 的前提是 `f.Id ∈ k.PreciseHolderIds`；其他单位只能看到"这条航迹是精确的"，不能借用。（需 03 确认，Q3。）
+- **03 的约定**（已决 B-T2-33、A-2-08）：火力单元 `f` 用导弹或制导火箭（`Kind ∈ {Missile, Rocket}`）交战航迹 `k` 的前提是 `f.Id ∈ k.PreciseHolderIds`；其他单位只能看到"这条航迹是精确的"，不能借用。
 
 #### 3.3.5 位置、速度、误差圈
 
 - 选中探测 `best`：先 `preciseDets` 中 `SourceId` 最小者；没有则 `sensorDets` 中按（`Quality` 降序，`ObservedAtSec` 降序，`SourceId` 升序）的第一个。
 - `Pos = best.Pos`，`AltM = best.AltM`，`VelMps = best.VelMps`，`LastObservedAtSec = best.ObservedAtSec`。
-- `ErrorRadiusM`：若 `G` 中存在 `Quality == 航迹 Quality` 的探测 → 其中 `ErrorRadiusM` 的最小值；否则（质量来自交叉升级）→ `Detection.ErrorRadiusM[Quality]`。
+- `ErrorRadiusM`：若 `G` 中存在 `Quality == 航迹 Quality` 的探测 → 其中 `ErrorRadiusM` 的最小值；否则（质量来自交叉升级）→ `DetectionRules.ErrorRadiusM[Quality]`。
 - `LastDetectedTick = Tick`。
 
 #### 3.3.6 对外显示的标签
 
 `Tag = Quality ≥ Approximate 且 ThreatId != 0 ? DisplayTag(threat) : null`，其中 `DisplayTag = (threat.Tag == DECOY && !DecoyIdentified) ? Intercept.DecoyUsesColumn : threat.Tag`（未识别的诱饵与无人机外观相同）。甄别成功后同步更新 `Tag`。
+- 全目录统一使用 `Track.Tag`（A-2-01 / B-T1-23）；03 对 `Quality == Vague`（`Tag == null`）的航迹进行高炮交战时，按 `Intercept.DecoyUsesColumn`（无人机外观）处理。
 
 #### 3.3.7 创建、更新、外推、丢失
 
@@ -617,26 +629,28 @@ PreciseHolderIds = preciseDets 的 SourceId 去重升序
 - **Coast**（本步无探测）：
   1. `Pos += VelMps × StepSec`；`AltM`、`ErrorRadiusM` 不变；`NetworkQuality = null`；`LocalSensorCount = 0`；`PreciseHolderIds` 清空。
   2. 若 `Quality == Precise` → 改为 `Approximate`（精确需要持续锁定），发 `TrackQualityChanged`；`Tag` 按 3.3.6 重算（仍 ≥ Approximate，标签保留）。
-  3. 若 `(Tick − LastDetectedTick) × StepSec > Detection.TrackLostSec`（严格大于）→ `Remove`，发 `TrackLost { TrackId, Timeout }`（误报航迹同样走此路径）。
+  3. 若 `(Tick − LastDetectedTick) × StepSec > DetectionRules.TrackLostSec`（严格大于）→ `Remove`，发 `TrackLost { TrackId, Timeout }`（误报航迹同样走此路径）。
 - 质量**升降都立即生效**（有探测的步）：例如本地交叉的两个传感器之一失去目标，当步即从"大致"降为"模糊"。
 - 航迹丢失后目标再次被探测 → 新建航迹（新 ID，甄别状态重置）。
 
-#### 3.3.8 诱饵甄别
+#### 3.3.8 诱饵甄别（含敌情档案加成，A-2-22 / R-02-1）
 
 只对 `ThreatId != 0`、`!DecoyIdentified` 且目标 `Tag == DECOY` 的航迹（ID 升序）：
 
 ```
 q = k.Quality
 if k.DecoyCheckedQuality != null and q <= k.DecoyCheckedQuality: 跳过         # 每个质量等级最多掷一次；降级不重掷
-pNew  = Qualities[q].DecoyDiscrimination
-pPrev = k.DecoyCheckedQuality == null ? 0 : Qualities[k.DecoyCheckedQuality].DecoyDiscrimination
+add   = DossierDiscriminationAdd(ctx, threat.DefId)                           # CarryIn.Dossier 中匹配项的 DiscriminationAdd，无则 0.0
+pNew  = Qualities[q].DecoyDiscrimination <= 0 ? 0.0 : Math.Min(1.0, Qualities[q].DecoyDiscrimination + add)
+pPrev = (k.DecoyCheckedQuality == null or Qualities[k.DecoyCheckedQuality].DecoyDiscrimination <= 0)
+        ? 0.0 : Math.Min(1.0, Qualities[k.DecoyCheckedQuality].DecoyDiscrimination + add)
 k.DecoyCheckedQuality = q
-if pNew <= pPrev: 跳过（不消耗随机数）
-p = (pNew - pPrev) / (1 - pPrev)                 # 条件概率：累计识别率恰为 pNew（Q33）
+if pNew <= pPrev or pPrev >= 1.0: 跳过（不消耗随机数）
+p = (pNew - pPrev) / (1 - pPrev)                 # 条件概率：累计识别率恰为 pNew（B-T2-51）
 if rng.Chance(p): k.DecoyIdentified = true; 重算 Tag; emit DecoyIdentified{k.Id}
 ```
 
-- 模糊航迹 `pNew = 0` → 不掷（数值表：模糊不能甄别）。
+- 模糊航迹 `Qualities[Vague].DecoyDiscrimination == 0` → `pNew = 0`，不掷（数值表：模糊不能甄别，即使有敌情档案加成也不在模糊阶段甄别）。`DossierCarryIn.ClassifyTimeMult` 在本版本即时分类模型中保留未用。
 - 只掷"真诱饵"：对非诱饵目标不掷，也不会出现"把真目标误判为诱饵"。
 - 在 3.3.2 第 5 步执行，即同一步内先确定质量再甄别。
 
@@ -644,34 +658,40 @@ if rng.Chance(p): k.DecoyIdentified = true; 重算 Tag; emit DecoyIdentified{k.I
 
 #### 3.4.1 覆盖
 
-电子战单位 `u` 本步**生效**：`u.DeployState == Deployed` 且 `u.Emitter.On`（上一步结果）。
+电子战单位 `u` 本步**生效**：`u.DeployState == Deployed` 且 `!Suspended(u)`（A-2-12）且 `u.Emitter.On`（上一步结果）。
 `Covers(u, t)` = `u` 生效 且 `WithinRange(u.Pos, t.Pos, u.Def.RadiusM)`（水平距离，不看高度）且 `u.Def.EffectiveAgainst` 包含 `t.DefId` 且 `!(t 的 MunitionDef?.EwImmune == true)`。
 
 #### 3.4.2 每步流程
 
 ```
 for each Threat t (ID 升序), Alive:
-    HoverTimeout(t)            # 3.4.6：悬停到时 → 坠落移除，continue
-    NavEffect(t)               # 3.4.4
-    SpoofPull(t)               # 3.4.5
-    NationalSpoof(t)           # 3.4.6
-    LinkCut(t)                 # 3.4.6（可能移除 t）
-UrbanNavJam()                  # 3.4.8
+    if t.Phase == ThreatPhase.Arrived: continue     # 本步第 2 步已到达、待第 10 步结算落点的目标不再受电子战影响（A-4-06）
+    HoverTimeout(t)                                 # 3.4.6：悬停到时 → 发 EwLinkCut{Crash} 并移除，continue
+    if 存在 u 满足 Covers(u, t) 且 u.Def.Effect ∈ {NavJam, NavSpoof}:
+        t.EwEverCovered = true                      # 粘性覆盖标记，不掷骰、不耗随机数（A-2-07）
+    NavEffect(t)                                    # 3.4.4
+    SpoofPull(t)                                    # 3.4.5
+    NationalSpoof(t)                                # 3.4.6
+    LinkCut(t)                                      # 3.4.6（可能移除 t）
+UrbanNavJam()                                       # 3.4.8
 ```
 
 每个函数内部的随机数消耗只发生在"满足条件、需要掷骰"时，且每次掷骰恰好 1 次 `Chance`（链路中断成功后再加 1 次 `NextDouble`）。
 
 #### 3.4.3 效能概率
 
-单位 `u` 对目标 `t` 的效果概率：
+单位 `u` 对目标 `t` 的效果概率（含断电倍率 B-T2-05、冬季倍率 C-T2-07、研发加成 R-02-1）：
 
 ```
-base  = (u.Def.Effect ∈ {NavJam, NavSpoof}) ? Ew.Effectiveness.Nav : Ew.Effectiveness.CounterUas
-weak  = (u.Def.FirstAvailable?.FullStrengthLevel != null and Meta.Number != null
-         and Meta.Number < u.Def.FirstAvailable.FullStrengthLevel) ? Ew.BelowFullStrengthMult : 1.0
-newp  = u.NewPositionPenalty ? Positions.NewUnsurveyed.FirstNightEfficiencyMult : 1.0
-ai    = AiVisionMult(u, t)            # 3.4.5；非导航效果恒为 1.0
-P(u, t) = base × weak × newp × ai     # 按此顺序相乘
+base   = (u.Def.Effect ∈ {NavJam, NavSpoof}) ? Ew.Effectiveness.Nav : Ew.Effectiveness.CounterUas
+if CarryIn.ResearchEffects 含 "ew_effectiveness_add": base = Math.Clamp(base + value, 0.0, 1.0)
+weak   = (u.Def.FirstAvailable?.FullStrengthLevel != null and Meta.Number != null
+          and Meta.Number < u.Def.FirstAvailable.FullStrengthLevel) ? Ew.BelowFullStrengthMult : 1.0
+power  = u.Powered ? 1.0 : Ew.UnpoweredEffectMult
+winter = (SeasonFor(night) == Season.Winter) ? Ew.WinterEffectMult : 1.0
+newp   = u.NewPositionPenalty ? Positions.NewUnsurveyed.FirstNightEfficiencyMult : 1.0
+ai     = AiVisionMult(u, t)                                  # 3.4.5；非导航效果恒为 1.0
+P(u, t) = base × weak × power × winter × newp × ai           # 按此顺序从左到右相乘
 ```
 
 多个单位同时覆盖时取 `P` 最大者（并列取 ID 最小者）作为"生效单位"，只掷一次。
@@ -686,15 +706,38 @@ if cands 为空: return
 if p <= 0: return                                   # 状态保持 None，不掷，以后仍可能被其他单位影响
 if rng.Chance(p):
     t.EwNav = Applied
-    t.EwExtraOffsetM = Accuracy.Tiers[t 的 MunitionDef.Accuracy].EwExtraM    # 数值表 3.1（Q8）
-    t.AccuracyTierDrop += u*.Def.AccuracyTierDrop ?? 0
-    emit EwDiverted{ t.Id, u*.Id, NavJam }
+    ReconcileNavAccuracy(t)                         # B-T3-08 / A-2-07：按原精度档写 EwExtraOffsetM，不降档；若国家级欺骗也已生效则取较大者
+    emit EwDiverted { ThreatId = t.Id, SourceId = u*.Id, Kind = EwDivertKind.NavJam }
 else:
     t.EwNav = Resisted
 ```
 
+`ReconcileNavAccuracy(t)`（统一维护 `t.EwExtraOffsetM` 与 `t.AccuracyTierDrop`，在 `NavEffect` 或 `NationalSpoof` 置 `Applied` 时调用；B-T3-08、A-2-07）：
+
+```
+if t.Kind != EntityThreatKind.Munition:
+    t.EwExtraOffsetM = 0.0; t.AccuracyTierDrop = 0; return
+T0 = t 的 MunitionDef.Accuracy
+unitExtra = (t.EwNav == Applied) ? Accuracy.Tiers[T0].EwExtraM : 0.0
+natDrop   = (t.NationalSpoof == Applied) ? t.NationalSpoofDrop : 0          # national_gnss_spoof 为 2
+if natDrop == 0:
+    t.AccuracyTierDrop = 0; t.EwExtraOffsetM = unitExtra; return
+if t.EwNav != Applied:
+    t.AccuracyTierDrop = natDrop; t.EwExtraOffsetM = 0.0; return
+# 单位电子战与国家级导航欺骗同时 Applied：按期望偏移增量取较大者，不叠加（B-T3-08）
+order = Accuracy.TierOrder                                                  # [D, C, B, A]
+Tdrop = order[Math.Clamp(order.IndexOf(T0) - natDrop, 0, order.Count - 1)]
+natDelta = 0.5 * (Accuracy.Tiers[Tdrop].OffsetM.Min + Accuracy.Tiers[Tdrop].OffsetM.Max)
+         - 0.5 * (Accuracy.Tiers[T0].OffsetM.Min    + Accuracy.Tiers[T0].OffsetM.Max)
+if natDelta >= unitExtra:
+    t.AccuracyTierDrop = natDrop; t.EwExtraOffsetM = 0.0
+else:
+    t.AccuracyTierDrop = 0; t.EwExtraOffsetM = unitExtra
+```
+
+- 单位电子战只增加 `Accuracy.Tiers[T0].EwExtraM`（A/B +1 格、C/D +2 格），**不降精度档**（`EwUnitDef.AccuracyTierDrop` 不参与计算，`offsetCellsAdd` 仅界面显示；已决 B-T3-08）。
 - 平台（`PlatformDef`）没有精度档：若平台出现在 `EffectiveAgainst` 中，`Applied` 时 `EwExtraOffsetM = 0`（只记录状态）。
-- `EwExtraOffsetM` 与 `AccuracyTierDrop` 如何作用于落点由 03 规定（3.1 偏移表 + 降档）。
+- 03 在落点结算时读取 `t.AccuracyTierDrop` 与 `t.EwExtraOffsetM`（A-2-07）。
 
 #### 3.4.5 导航欺骗：诱导点 `SpoofPull(t)` 与 AI 视觉修正
 
@@ -712,35 +755,43 @@ return u.Def.AiVisionEffectMult ?? 1.0
 if t.EwNav != Applied or t.EwPull != None: return
 cands = { u : Covers(u, t) 且 u.Def.Effect == NavSpoof 且 u.LurePoint != null 且 u.Def.PullChance != null }
 if cands 为空: return
-pu = u.Def.PullChance × weak(u) × newp(u) × (t 是 AI 视觉 ? (u.Def.AiVisionEffectMult ?? 1.0) : 1.0)
+pu = u.Def.PullChance × weak(u) × power(u) × winter × newp(u) × (t 是 AI 视觉 ? (u.Def.AiVisionEffectMult ?? 1.0) : 1.0)
 (u*, p) = argmax pu（并列取 ID 最小）
 if p <= 0: return
-if rng.Chance(p): t.EwPull = Applied; t.EwDivertPos = u*.LurePoint; emit EwDiverted{ t.Id, u*.Id, NavSpoofPull }
-else: t.EwPull = Resisted
+if rng.Chance(p):
+    t.EwPull = Applied
+    t.EwDivertPos = u*.LurePoint
+    ThreatRouting.Retarget(ctx, t, u*.LurePoint.Value)                      # 01 3.2.8：立即改航向诱导点（A-2-27）
+    emit EwDiverted { ThreatId = t.Id, SourceId = u*.Id, Kind = EwDivertKind.NavSpoofPull }
+else:
+    t.EwPull = Resisted
 ```
 
 - 诱导以"导航已被干扰"为前提（同一步内先 `NavEffect` 后 `SpoofPull`，两次掷骰）。`PullChance` 不再乘时期效能（已在 `NavEffect` 中计入，避免重复）。
-- **01 的要求**：`EwDivertPos != null` 的目标改为飞向该点，并在该点落地（`ThreatArrived` 的 `Pos` 为该点）；03 在该点结算伤害（数值表 3.6：落入城区仍全额伤害）。
+- 改航通过调用 01 的 `ThreatRouting.Retarget(ctx, t, u*.LurePoint.Value)` 立即生效（A-2-27）；`EwDivertPos` 保留在 `Threat` 上供 03 与复盘记录读取。
 
 #### 3.4.6 国家级导航欺骗、链路中断、悬停
 
-**国家级导航欺骗**（外部支援的效果；呼叫、延迟、持续时间由 03 的 `ExternalSupportSystem` 管理）：
+**国家级导航欺骗**（外部支援的效果；呼叫、延迟、持续时间由 03 的 `ExternalSupportSystem` 管理；A-2-21、B-T2-04、B-T3-08）：
 
 ```
 if t.NationalSpoof != None or (t 的 MunitionDef?.EwImmune == true): return
-for each SupportAsset a (ID 升序), Alive, a.Active, a 的 SupportDef.Effect == AccuracyDrop:
+for each SupportAsset a (ID 升序), Alive, a.State == SupportAssetState.Active, a.Effect == SupportEffect.AccuracyDrop:
+    def = Catalog.GetSupport(a.DefId)
     ref = Catalog.GetEwUnit(def.AffectsSameAsEwUnitId)
-    if ref.EffectiveAgainst 不含 t.DefId or !WithinRange(a.CenterPos, t.Pos, def.RadiusM): continue
+    if ref.EffectiveAgainst 不含 t.DefId or !WithinRange(a.CenterPos, t.Pos, a.RadiusM): continue
     p = Ew.Effectiveness.Nav × ((t 是 AI 视觉 且 NavTerminalIneffectiveVsAiVision) ? 0 : 1)
     if p <= 0: return
-    if rng.Chance(p): t.NationalSpoof = Applied; t.AccuracyTierDrop += def.AccuracyTierDrop ?? 0; emit EwDiverted{ t.Id, a.Id, NationalSpoof }
-    else: t.NationalSpoof = Resisted
-    return                     # 只取第一个覆盖它的支援实体
+    if rng.Chance(p):
+        t.NationalSpoof = Applied
+        ReconcileNavAccuracy(t)                                             # B-T3-08：降 2 档，与单位电子战取较大者、不叠加
+        emit EwDiverted { ThreatId = t.Id, SourceId = a.Id, Kind = EwDivertKind.NationalSpoof }
+    else:
+        t.NationalSpoof = Resisted
+    return                                                                  # 只取第一个覆盖它的支援实体
 ```
 
-（`SupportAsset.Active`、`CenterPos` 由 03 定义，见 8.3。）
-
-**链路中断** `LinkCut(t)`：
+**链路中断** `LinkCut(t)`（A-2-27、A-3-07、A-4-04）：
 
 ```
 if t.LinkCutState != None: return
@@ -753,15 +804,23 @@ outcomes = u*.Def.LinkCutOutcomes（数据顺序）；w_i = Ew.LinkCutOutcomeWei
 if W <= 0: t.LinkCutState = Resisted; return            # 数据错误兜底；加载器应保证 W > 0
 x = rng.NextDouble() × W；依次累加 w_i，取第一个满足 x < 累计和 的 outcome（全部不满足时取最后一个）
 switch outcome:
-    Crash:  emit EwLinkCut{ t.Id, u*.Id, Crash }; Threats.Remove(t.Id)          # 坠毁，不造成伤害（Q10）
-    Hover:  t.LinkCutState = Hover; t.LinkCutAtTick = Tick; emit EwLinkCut{…, Hover}
-    Return: t.LinkCutState = Return; emit EwLinkCut{…, Return}
+    Crash:
+        emit EwLinkCut { ThreatId = t.Id, SourceId = u*.Id, Outcome = LinkCutOutcome.Crash, DefId = t.DefId }
+        Threats.Remove(t.Id)                            # 坠毁，不造成地面伤害（B-T3-08）
+    Hover:
+        t.LinkCutState = Hover; t.LinkCutAtTick = Tick
+        ThreatRouting.Hover(ctx, t)                     # 01 3.2.8：原地悬停（A-2-27）
+        emit EwLinkCut { ThreatId = t.Id, SourceId = u*.Id, Outcome = LinkCutOutcome.Hover, DefId = t.DefId }
+    Return:
+        t.LinkCutState = Return
+        ThreatRouting.BeginEgress(ctx, t)               # 01 3.2.8：掉头飞向最近地图边离开（A-2-27）
+        emit EwLinkCut { ThreatId = t.Id, SourceId = u*.Id, Outcome = LinkCutOutcome.Return, DefId = t.DefId }
 ```
 
-- `LinkCutDirectional`（单兵反无人机枪）按全向处理（Q35）。
-- **01 的要求**：`LinkCutState == Hover` 的目标原地不动（`VelMps = (0,0)`，高度不变）；`Return` 的目标飞回其进入点并在到达后按"离开地图"处理（`ThreatExited`）。两者都仍可被拦截。
+- `LinkCutDirectional`（单兵反无人机枪）按全向处理（B-T2-53）。
+- 悬停与返航通过调用 01 的 `ThreatRouting.Hover(ctx, t)` 与 `ThreatRouting.BeginEgress(ctx, t)` 落地（A-2-27），两者在移除前仍可被拦截。
 
-`HoverTimeout(t)`：`t.LinkCutState == Hover` 且 `Tick ≥ t.LinkCutAtTick + SecToTicksCeil(Ew.HoverBeforeCrashSec, StepSec)` → `Threats.Remove(t.Id)`（不再发事件），`continue`。
+`HoverTimeout(t)`（A-4-04）：`t.LinkCutState == Hover` 且 `Tick ≥ t.LinkCutAtTick + SecToTicksCeil(Ew.HoverBeforeCrashSec, StepSec)` → 先发出终止事件 `EwLinkCut { ThreatId = t.Id, SourceId = 0, Outcome = LinkCutOutcome.Crash, DefId = t.DefId }`（`SourceId = 0` 表示悬停超时坠毁，满足 00 6.1 #9"每个被移除的 `Threat` 都有终止事件"，并供 03 `ScoringSystem` 计入 `KillsByEnemy`），再 `Threats.Remove(t.Id)`，`continue`。
 
 #### 3.4.7 车载防护罩与友军干扰（查询函数，不改状态）
 
@@ -776,13 +835,13 @@ public static class EwQueries
 ```
 
 - `ShieldHitProbMult`：目标单位存在且 `EquipmentEwIds` 中有 `Effect == SelfProtection` 且 `EffectiveAgainst` 含 `threatDefId` 的定义 `d`（多个取第一个）、且目标单位 `DeployState != Packed`、且威胁不是 `EwImmune` → 返回 `1 − (1 − d.HitProbMult) × Ew.Effectiveness.CounterUas`；否则 `1.0`。
-- `IsInFriendlyEwZone`：存在生效的 `EwUnit u`（3.4.1，不检查目标），`u.Def.Effect ∈ {NavJam, NavSpoof, LinkCut, LinkCutDirectional}` 且 `WithinRange(u.Pos, pos, u.Def.RadiusM)`。倍率本身由 03 从 `rules/intercept.json` 的 `interceptorDroneInFriendlyEw` 读取（与 `rules/ew.json` 的 `friendlyInterceptorDroneMult` 重复，Q15）。
-- `sideEffects.ownDroneLinkCut`：数值表未给概率，本版本不实现（Q15）。
+- `IsInFriendlyEwZone`：存在生效的 `EwUnit u`（3.4.1，不检查目标），`u.Def.Effect ∈ {NavJam, NavSpoof, LinkCut, LinkCutDirectional}` 且 `WithinRange(u.Pos, pos, u.Def.RadiusM)`。倍率本身由 03 从 `rules/intercept.json` 的 `interceptorDroneInFriendlyEw` 读取（`rules/ew.json` 的 `friendlyInterceptorDroneMult` 仅界面显示或删除，B-T1-08）。
+- `sideEffects.ownDroneLinkCut`：数值表未给概率，本版本不实现（B-T1-08）。
 
 #### 3.4.8 城区导航干扰
 
-`UrbanNavJam()`：若存在生效的 `EwUnit u`，`u.Def.Effect ∈ {NavJam, NavSpoof}` 且 `InUrban(u.Pos)` → `Ew.UrbanNavJamSec += StepSec`（每步至多加一次，与单位个数无关）。
-夜晚结束时由 03 / 05 判定：`UrbanNavJamSec ≥ Ew.UrbanNavJamMinSec` → 城市韧性变化 `SideEffects.UrbanNavJamCityResiliencePerNight`（Q14）。
+`UrbanNavJam()`：若存在生效的 `EwUnit u`，`u.Def.Effect ∈ {NavJam, NavSpoof}` 且 `Geo.InUrban(ctx.Level, u.Pos)` → `Ew.UrbanNavJamSec += StepSec`（每步至多加一次，与单位个数无关）。
+夜晚结束时由 03 / 05 判定：`UrbanNavJamSec ≥ Ew.UrbanNavJamMinSec` → 本夜触发一次（05 将城市资源 `CityResource −= 1`，B-T2-36）。
 
 ### 3.5 `EmissionSystem`（Order 6，子流 `emission`——本文件规则不消耗随机数）
 
@@ -790,7 +849,7 @@ public static class EwQueries
 
 ```
 ProcessEvents()                    # 3.5.6：游标读取 PlayerUnitDestroyed、InterceptorLaunched、GunFired
-ArmScan()                          # 3.5.5 第 1–3 步：初始距离、来袭识别、ArmSilenced
+ArmScan()                          # 3.5.5 第 0–3 步：HomingUnitId 维护、初始距离、来袭识别、ArmSilenced
 DeceptionAttractScan()             # 3.7.1
 for each 辐射源 e（FireUnit → SensorUnit → EwUnit → DeceptionUnit，各自 ID 升序）:
     (on, cause) = Desired(e)       # 3.5.3
@@ -799,24 +858,26 @@ for each 辐射源 e（FireUnit → SensorUnit → EwUnit → DeceptionUnit，�
 AfterFiringScan()                  # 3.5.6
 ```
 
-`Switch(e, on, cause)`：`e.Emitter.On = on`；`on` → `OnSinceTick = Tick`，否则 `OnSinceTick = −1`；发出 `EmitterSwitched { UnitId, On, Cause }`；若 `on == false` → `ArmShutdownEffect(e)`（3.5.5 第 4 步）；若 `on == true` → `ArmReacquire(e)`。
+`Switch(e, on, cause)`：`e.Emitter.On = on`；`on` → `OnSinceTick = Tick`，否则 `OnSinceTick = −2`（表示当前关机但本夜曾开机；从未开机过的单位保持初值 `−1`）；发出 `EmitterSwitched { UnitId, On, Cause }`；若 `on == false` → `ArmShutdownEffect(e)`（3.5.5 第 4 步）；若 `on == true` → `ArmReacquire(e)`。
 
-#### 3.5.2 策略可用性 `EmissionPolicyRules.CheckAvailable(unit, strategy, level) : CommandRejectReason?`
+#### 3.5.2 策略可用性 `EmissionPolicyRules.CheckAvailable(string unitDefId, EmissionStrategyDef strategy, LevelData level) : CommandRejectReason?`
 
-按顺序检查，第一个不满足的返回：
+参数为定义 ID `unitDefId`（供 04 `DeploymentValidator` 在实体创建前直接调用，命令处理时传入 `unit.DefId`；A-2-25）。按顺序检查，第一个不满足的返回：
 
-1. `strategy.Activation == LastMoment`（静默待机）：单位必须是带火控雷达的 `FireUnit` → 否则 `WrongEntityKind`。
-2. `strategy.WesternSystemsOnly == true`：`FireControlRadar.Origin == Western`（非火力单元视为不满足）→ 否则 `NotAvailable`。
-3. `strategy.AvailableFromLevel != null` 且 `Meta.Number != null` 且 `Meta.Number < AvailableFromLevel` → `NotAvailable`。（`Meta.Number == null` 的测试关卡不受限。）
+1. `strategy.Activation == LastMoment`（静默待机）：`unitDefId` 必须是 `level.Catalog.AirDefenseUnits` 中 `FireControlRadar != null` 的定义 → 否则 `WrongEntityKind`。
+2. `strategy.WesternSystemsOnly == true`：`unitDefId` 是 `AirDefenseUnitDef` 且 `FireControlRadar?.Origin == SystemOrigin.Western`（其他定义视为不满足）→ 否则 `NotAvailable`。
+3. `strategy.AvailableFromLevel != null` 且 `level.Meta.Number != null` 且 `level.Meta.Number < AvailableFromLevel` → `NotAvailable`。（`Meta.Number == null` 的测试关卡不受限。）
 4. `Requires` 中的 `ApproximateTrack`、`Network`、`Decoy` 是**运行时条件**（3.5.3），不在此检查。
 
 #### 3.5.3 期望状态 `Desired(e)`
 
-按顺序，第一个命中的决定结果：
+按顺序，第一个命中的决定结果（含雷达被毁与重伤暂停，A-2-12）：
 
 | # | 条件 | 结果 | `Cause` |
 |---|---|---|---|
 | 1 | `e.DeployState != Deployed` | 关 | `NotDeployed` |
+| 1a | `e is FireUnit f && f.RadarDestroyed` | 关 | `RadarDestroyed` |
+| 1b | `Suspended(e)`（`e.SuspendedUntilSec > ctx.TimeSec + 1e-9`） | 关 | `Suspended` |
 | 2 | `Forced == Silence` | 关 | `SectorSilence` |
 | 3 | `Forced == ForceOn` | 开 | `SectorForceOn` |
 | 4 | `ArmSilenced` | 关 | `ArmShutdown` |
@@ -826,7 +887,7 @@ AfterFiringScan()                  # 3.5.6
 | `Activation` | 开机条件 |
 |---|---|
 | `Always` | 恒开 |
-| `ApproximateWarning` | `WarnTrack(e)`：存在航迹 `k`，`k.Quality ≥ Approximate` 且 `WithinRange(e.Pos, k.Pos, RefRange(e))` |
+| `ApproximateWarning` | `WarnTrack(e)`：通过 `ctx.TrackGrid.QueryCircle(e.Pos, RefRange(e))` 检查存在航迹 `k`，`k.Quality ≥ Approximate` 且 `WithinRange(e.Pos, k.Pos, RefRange(e))` |
 | `DutyCycle` | `onT = SecToTicksCeil(DutyOnSec)`，`offT = SecToTicksCeil(DutyOffSec)`（两者 ≥ 1，见 3.5.8），`phase = (Tick − DutyPhaseStartTick) mod (onT + offT)`；`phase < onT` 为开 |
 | `LastMoment` | `CueWindow(e)`（3.5.4）；非火力单元恒关 |
 | `AfterDecoy` | 若场上**不存在**任何存活的 `FakeEmitter` / `SacrificialEmitter` 欺骗单位 → 等同 `ApproximateWarning`；否则 `WarnTrack(e)` 且存在这样的欺骗单位 `d`：`d.Emitter.On` 且 `d.Emitter.OnSinceTick ≥ 0` 且 `(Tick − d.Emitter.OnSinceTick) × StepSec ≥ DecoyLeadSec` |
@@ -836,32 +897,54 @@ AfterFiringScan()                  # 3.5.6
 - 遍历顺序使诱饵（`DeceptionUnit`）在本步晚于其他辐射源被评估："诱饵配合"读取的是诱饵**上一步**的开关状态。这是有意的（诱饵"先"开机）。
 - `WarnTrack` 使用的航迹包含本单位自己的贡献（雷达开机后自己维持"大致"，目标离开范围或航迹丢失才关机）。
 
-#### 3.5.4 火控指示联动（WS01-014）
+#### 3.5.4 火控指示联动与查询接口（WS01-014，A-2-08、A-2-30、B-T2-01）
 
 对带火控雷达的火力单元 `f`：
 
 ```
-CueAvailable(f) = 存在航迹 k：k.NetworkQuality != null 且 k.NetworkQuality ≥ Cueing.Cued.MinTrackQuality
+CueAvailable(f) = 存在航迹 k（经 ctx.TrackGrid.QueryCircle(f.Pos, f.Def.FireControlRadar.RangeM)）：
+                  FireControlQueries.Cued(k, Rules.Tracks)
                   且 WithinRange(f.Pos, k.Pos, f.Def.FireControlRadar.RangeM)
 
 CueWindow(f) = Cueing.Cued.FireControlOnlyLastReactionTime 且 存在航迹 k：
-      k.NetworkQuality != null 且 k.NetworkQuality ≥ Cueing.Cued.MinTrackQuality
-      且 k.Tag != null 且 存在武器 w ∈ f 的武器：w.Targets 含 k.Tag 且 k.AltM ≤ w.CeilingM
-      且 τ = TimeToEnterRadius(k.Pos, k.VelMps, f.Pos, Rw) != null 且 τ ≤ ReactionEff(f)
-  其中 Rw = w.RangeByTagM?[k.Tag] ?? w.RangeM，对每个满足条件的 w 分别计算，任一满足即可
-  ReactionEff(f) = (f.Def.ReactionSec ?? 0) × 当前策略的 ReactionTimeMult
+      FireControlQueries.Cued(k, Rules.Tracks)
+      且 k.Tag != null 且 存在武器 w ∈ f 的武器：w.Targets 含 k.Tag.Value 且 k.AltM ≤ w.CeilingM
+      且 τ = SensingMath.TimeToEnterRadius(k.Pos, k.VelMps, f.Pos, Rw) != null 且 τ ≤ ReactionEff(f, w)
+  其中 Rw = WeaponParams.RangeFor(w, k.Tag.Value)
+       ReactionEff(f, w) = WeaponParams.ReactionSec(w, Rules.Engagement) × FireControlQueries.ReactionMult(f, Rules.Emission)
+  （对每个满足条件的武器 w 分别计算 Rw 与 ReactionEff(f, w)，任一满足即可）
+```
+
+供 03 与本文件共用的只读火控查询工具（`Nightwatch.Sim.Sensing.FireControlQueries`，A-2-08）：
+
+```csharp
+public static class FireControlQueries
+{
+    public static bool Cued(Track k, TrackRulesDef rules)
+        => k.NetworkQuality != null && k.NetworkQuality >= rules.Cueing.Cued.MinTrackQuality;
+
+    public static bool HasFireControlRadar(FireUnit f)
+        => f.Def.FireControlRadar != null;
+
+    public static double ReactionMult(FireUnit f, EmissionRulesDef rules)
+        => f.Emitter == null ? 1.0 : rules.GetStrategy(f.Emitter.PolicyId).ReactionTimeMult;
+
+    public static bool SilentHold(FireUnit f, double timeSec)
+        => f.Emitter != null && !f.Emitter.On && f.DeployState == UnitDeployState.Deployed
+           && !f.RadarDestroyed && f.SuspendedUntilSec <= timeSec + 1e-9;
+}
 ```
 
 - `NetworkQuality` 只统计探测单位（"网络"），**不含**火力单元自己的精确探测，因此火控雷达开机后不会因为自己的锁定而"自我指示"。
 - 静默待机的"需'大致'航迹 + 网络"即：没有网络提供的"大致"航迹时，`CueWindow` 恒为假，雷达保持关机（因而无法发射导弹）。
-- `FcMode`：开机时 `CueAvailable` 为真 → `Cued`（暴露速率 `FireControlCued`），否则 `SelfSearch`（暴露速率 `FireControlSelfSearch`，03 据此把首发反应时间乘 `Cueing.Uncued.FirstShotReactionTimeMult`）。`FcMode` 与策略无关：常开的火控雷达在有网络覆盖时也按 `Cued` 计（Q6）。
-- 反应时间字段 `reactionGameSec` 目前数据中**没有**，需新增（8.2、Q5）。
+- `FcMode`：开机时 `CueAvailable` 为真 → `Cued`（暴露速率 `FireControlCued`），否则 `SelfSearch`（暴露速率 `FireControlSelfSearch`）。`FcMode` 只用于本文件的暴露速率计算；03 的"无指示自搜首发反应时间 ×1.5"按逐条航迹的 `FireControlQueries.Cued(track, Rules.Tracks)` 判定并读取 `intercept.modifiers.noCueSelfSearch.firstShotReactionTimeMult`（A-2-08）。
 
 #### 3.5.5 反辐射导弹与关机时机
 
 反辐射导弹 = `MunitionDef.TracksEmittingRadarOnly == true` 的目标。
 
-1. **初始距离**：对每个存活的反辐射导弹 `m`（ID 升序），若 `m.ArmInitialDistM == 0` 且 `m.TargetUnitId != 0` 且目标单位存活 → `m.ArmInitialDistM = |m.Pos − target.Pos|`（水平），若结果为 0 则取 `1e-9`（避免再次进入此分支）。（"射程"的解释见 Q16。）
+0. **归航目标维护**（`HomingUnitId`，A-2-06）：对每个存活的反辐射导弹 `m`（ID 升序），令 `U` 为 `Id == m.TargetUnitId` 的存活辐射源单位；置 `m.HomingUnitId = (U != null && U.Emitter != null && U.Emitter.On) ? U.Id : 0`（本步第 6 步写入，下一步第 2 步由 01 `ApplyHoming` 读取：雷达关机后 `HomingUnitId == 0`，导弹飞向关机前最后记录的位置）。
+1. **初始距离**：对每个存活的反辐射导弹 `m`（ID 升序），若 `m.ArmInitialDistM == 0` 且 `m.TargetUnitId != 0` 且目标单位存活 → `m.ArmInitialDistM = |m.Pos − target.Pos|`（水平），若结果为 0 则取 `1e-9`（避免再次进入此分支）。（已决 B-T2-37。）
 2. **来袭识别**：对每条航迹 `k`（ID 升序）：`k.ThreatId` 对应反辐射导弹 `m`、`k.Quality ≥ Approximate`、`m.TargetUnitId` 是存活的辐射源单位 `U`、`!k.ArmWarned` → `k.ArmWarned = true`，发出 `ArmThreatDetected { TrackId = k.Id, TargetUnitId = U.Id }`，并按 `U.Emitter.OnArmIncoming` 处理：
    - `ShutdownImmediately` → `U.Emitter.ArmSilenced = true`。
    - `ShutdownAfterCurrentIntercept` → 若 `U` 是火力单元且存在存活的 `Interceptor` 其 `FireUnitId == U.Id` → `U.Emitter.ArmPending = true`；否则同上立即 `ArmSilenced = true`。
@@ -876,23 +959,36 @@ CueWindow(f) = Cueing.Cued.FireControlOnlyLastReactionTime 且 存在航迹 k：
    m.ArmHitProbMult = Emission.ShutdownTiming 中按数据顺序第一个满足 f > ArmDistanceFractionAbove 的档位的 ArmHitProbMult；都不满足 → 1.0
    ```
 5. `ArmReacquire(U)`（`U` 由关转开时）：对 `TargetUnitId == U.Id` 的存活反辐射导弹，`ArmHitProbMult = null`（重新锁定，之前的关机效果作废）。
-6. 反辐射导弹的**目标选择**（包括被诱饵吸引、暴露度 ≥ 40 优先）不在本文件，由 01 / 04 写 `TargetUnitId`；命中判定时由 03 乘 `ArmHitProbMult`（`null` 视为 1.0）。
+6. 反辐射导弹的**目标选择**（包括被诱饵吸引、暴露度 ≥ 40 优先）不在本文件，由 01（调 04 钩子）唯一写 `TargetUnitId`（A-2-04）；对单位伤害判定时由 03 乘 `ArmHitProbMult ?? 1.0`（A-2-07）。
+7. **二选一落地接口**（供 04 `ChoiceStage` 在玩家回答或超时默认时调用，A-2-11）：
+   ```csharp
+   namespace Nightwatch.Sim.Sensing;
+   public static class EmissionChoiceEffects
+   {
+       public static void ApplyArmChoice(SimState s, int unitId, bool silence)
+       {
+           if (!s.FireUnits.TryGet(unitId, out var u) || u.Emitter == null) return;
+           u.Emitter.ArmSilenced = silence;
+           u.Emitter.ArmPending = false;
+       }
+   }
+   ```
 
 #### 3.5.6 事件消费：开火后转移、主雷达被毁
 
 `ProcessEvents()`（游标 `EmissionEventCursor`，3.1）：
 
 - `InterceptorLaunched { FireUnitId }` / `GunFired { FireUnitId }`：若该火力单元存活且有 `Emitter`（无火控雷达的火力单元没有 `Emitter`，见下注）→ `FiredSinceRelocation = true`，`LastShotTick = 事件.Tick`。
-- `PlayerUnitDestroyed { UnitId, Kind, Pos }`：若被毁单位是辐射源型探测单位（`SensorUnit` 且 `Emission == Active`）或带火控雷达的火力单元（依据 `DefId` 查定义判断）→ 对每个存活的辐射源 `U`（ID 升序），`U.Emitter.NeighborTakeover && !U.Emitter.TakeoverActive && WithinRange(U.Pos, 事件.Pos, RefRange(U))` → `U.Emitter.TakeoverActive = true`（本夜一直保持；玩家可用 `SetEmissionPolicy` 清除，3.5.8）。
+- `PlayerUnitDestroyed { UnitId, DefId, Category, SourceThreatId, Pos }`（A-2-05、A-3-05）：若被毁单位是辐射源型探测单位（`Category == SensorUnit` 且 `Emission == Active`）或带火控雷达的火力单元（依据 `DefId` 查定义判断）→ 对每个存活的辐射源 `U`（ID 升序），`U.Emitter.NeighborTakeover && !U.Emitter.TakeoverActive && WithinRange(U.Pos, 事件.Pos, RefRange(U))` → `U.Emitter.TakeoverActive = true`（本夜一直保持；玩家可用 `SetEmissionPolicy` 清除，3.5.8）。
 
-> 注："开火后转移"设置只对拥有 `Emitter` 的火力单元有效。无火控雷达的火力单元（单兵导弹等）的开火后转移若需要，属于 04 的机动规则（Q19）。
+> 注："开火后转移"触发规则只对拥有 `Emitter` 的火力单元有效，**不受展开时间档位（`DeployTier`）限制且不消耗指挥点**（若小时档单位配置了"开火后转移"，夜间触发后会撤收并在当夜剩余时间失去战斗力；已决 B-T3-06）。
 
 `AfterFiringScan()`：对每个有 `Emitter` 的火力单元 `f`（ID 升序）：
 `AfterFiring == RelocateToAlternate` 且 `FiredSinceRelocation` 且 `LastShotTick ≤ Tick − 2`（至少一个整步未开火）且没有存活的自家拦截弹 且 `f.Placement?.AlternatePositionId != null` 且 `f.PendingRelocationAltId == null` → `f.PendingRelocationAltId = f.Placement.AlternatePositionId`，`FiredSinceRelocation = false`。由 04 的部署状态机执行转移并清空该字段。
 
 #### 3.5.7 `Initialize`
 
-对每个辐射源（3.5.1 的顺序）：按 3.5.3 求初值，但此时没有航迹、没有反辐射导弹：`Always` → 开；`DutyCycle` → `phase = 0` → 开；其他 → 关。`DeployState != Deployed` → 关。**不发事件**（`NightStarted` 必须是 `Seq 1`）。开 → `OnSinceTick = 0`；`FcMode`：开 → `SelfSearch`（无航迹），关 → `Off`。
+对每个辐射源（3.5.1 的顺序）：按 3.5.3 求初值，但此时没有航迹、没有反辐射导弹：`Always` → 开；`DutyCycle` → `phase = 0` → 开；其他 → 关。`DeployState != Deployed`、`RadarDestroyed` 或 `Suspended` → 关。**不发事件**（`NightStarted` 必须是 `Seq 1`）。开 → `OnSinceTick = 0`，关 → `OnSinceTick = −1`；`FcMode`：开 → `SelfSearch`（无航迹），关 → `Off`。
 
 #### 3.5.8 命令
 
@@ -903,15 +999,22 @@ CueWindow(f) = Cueing.Cued.FireControlOnlyLastReactionTime 且 存在航迹 k：
 1. `UnitId` 不存在（四类我方存储中都 `TryGet` 失败）→ `UnknownEntity`。
 2. 单位没有 `Emitter` → `WrongEntityKind`。
 3. `PolicyId` 不是已知策略 → `InvalidArgument`。
-4. `CheckAvailable`（3.5.2）失败 → 其返回值。
+4. `EmissionPolicyRules.CheckAvailable(unit.DefId, strategy, ctx.Level)`（3.5.2）失败 → 其返回值。
 5. `DutyOnSec` / `DutyOffSec` 给出但 `≤ 0`、非有限值、或 `SecToTicksCeil` 结果 < 1 → `InvalidArgument`。
 6. 单位是 `SensorUnit` 且 `BLineApplies` 且 `!BLine.RegionalRadarDirectControl` → `NotAvailable`。
+7. `!CommandPointRules.CanSpend(ctx, CommandPointRules.CostOf(ctx.Level, cmd.Type))` → `NoCommandPoints`（A-2-17）。
 
-**应用**：`PolicyId` 赋值；可空字段非 null 时覆盖对应 `Emitter` 字段；若新策略 `Activation == DutyCycle` → `DutyPhaseStartTick = ctx.Tick`；`TakeoverActive = false`（玩家重新接管）。开关机在本步 6 号系统中按新策略生效。
+**应用**：第一步调用 `CommandPointRules.Spend(ctx, CommandPointRules.CostOf(ctx.Level, cmd.Type), cmd.Type)`（A-2-17）；`PolicyId` 赋值；可空字段非 null 时覆盖对应 `Emitter` 字段；若新策略 `Activation == DutyCycle` → `DutyPhaseStartTick = ctx.Tick`；`TakeoverActive = false`（玩家重新接管）。开关机在本步 6 号系统中按新策略生效。
 
-**`SectorEmissionOverride` 校验**：`RadiusM` 非有限值或 `≤ 0` → `InvalidArgument`；`Center` 分量非有限值 → `InvalidArgument`。扇区内没有任何辐射源也接受（无操作）。
+**`SectorEmissionOverride` 校验**（按顺序，第一个失败的返回）：
 
-**应用**：对全部存活辐射源（3.5.1 顺序），`WithinRange(Center, e.Pos, RadiusM)` → `Forced = Mode 对应值`（`Silence` / `ForceOn` / `Cancel → None`）。生效对象在命令应用时确定，单位之后移动出扇区仍保持。指挥点扣除由 04 规定。
+1. `RadiusM` 非有限值或 `≤ 0` → `InvalidArgument`。
+2. `Center` 分量非有限值 → `InvalidArgument`。
+3. `!CommandPointRules.CanSpend(ctx, CommandPointRules.CostOf(ctx.Level, cmd.Type))` → `NoCommandPoints`（A-2-17）。
+
+扇区内没有任何辐射源也接受（无操作）。
+
+**应用**：第一步调用 `CommandPointRules.Spend(ctx, CommandPointRules.CostOf(ctx.Level, cmd.Type), cmd.Type)`（A-2-17）；对全部存活辐射源（3.5.1 顺序），`WithinRange(Center, e.Pos, RadiusM)` → `Forced = Mode 对应值`（`Silence` / `ForceOn` / `Cancel → None`）。生效对象在命令应用时确定，单位之后移动出扇区仍保持。
 
 ### 3.6 `ExposureSystem`（Order 11，子流 `exposure`）
 
@@ -923,20 +1026,26 @@ for each 我方单位 u（FireUnit → SensorUnit → EwUnit → DeceptionUnit�
     if u 是 SensorUnit 且 u.Automatic: continue          # 自动单位不累积暴露度
     old = u.Exposure
     e = old
-    if u 本步完成转移: e = Relocated(e, 事件)            # 3.6.3
+    if u 本步完成转移: e = Relocated(u, e, 事件)         # 3.6.3（含重算 HorizonProfile）
     emit  = EmitRate(u)                                  # 3.6.2，每秒
     recon = ReconNearby(u) ? Exposure.RatesPerSec.EnemyReconNearby : 0
+    if "forward_ambush" ∈ CarryIn.Doctrines and u.Emitter != null and not u.Emitter.On and u.Emitter.OnSinceTick == -1:
+        recon = 0                                        # 条令：前推伏击——首次开机前不累积侦察暴露（B-T2-126）
     n     = u 本步的导弹发射次数
     rate  = emit + recon
-    if emit == 0 and recon == 0 and n == 0: rate = Exposure.RatesPerSec.Silent
-    e = Clamp(e + rate × StepSec + n × Exposure.PerMissileLaunched, Exposure.Min, Exposure.Max)
+    if emit == 0 and recon == 0 and n == 0:
+        delta = Exposure.RatesPerSec.Silent × StepSec
+    else:
+        delta = rate × StepSec + n × Exposure.PerMissileLaunched
+        if CarryIn.AutoResolve != null: delta = delta × CarryIn.AutoResolve.ExposureGainMult   # 自动结算正增量乘子（A-2-22）
+    e = Clamp(e + delta, Exposure.Min, Exposure.Max)
     u.Exposure = e
     u.ExposurePeak = max(u.ExposurePeak, e)
     Thresholds(u, old, e)                                # 3.6.4
-FakeLauncherRecon()                                       # 3.7.3（唯一消耗 exposure 子流的地方）
+FakeLauncherRecon()                                      # 3.7.3（唯一消耗 exposure 子流的地方）
 ```
 
-加法顺序固定为：`e + rate × StepSec`，再 `+ n × PerMissileLaunched`，最后夹取一次。
+当 `CarryIn.AutoResolve == null` 时，加法顺序固定为：`e + (rate × StepSec + n × PerMissileLaunched)`（与 `e + rate × StepSec + n × PerMissileLaunched` 在 `delta` 处计算后加到 `e`），最后夹取一次。
 
 #### 3.6.2 辐射速率 `EmitRate(u)`
 
@@ -946,19 +1055,22 @@ FakeLauncherRecon()                                       # 3.7.3（唯一消耗
 | `FireUnit`（有火控） | `Emitter.On` | `FcMode == Cued` → `RatesPerSec.FireControlCued`；`SelfSearch` → `RatesPerSec.FireControlSelfSearch` |
 | `EwUnit` | `Emitter.On` | `EwExposureLevelRatesPerSec[Def.EmissionExposure]` |
 | `DeceptionUnit`（诱饵辐射源 / 牺牲雷达） | `Emitter.On` | `SensorExposureLevelRatesPerSec[Positions.Deception.DecoyEmitterExposureLevel]` |
-| 任意单位（追加项） | `EquipmentEwIds` 中每个装备定义 `d`，且单位 `DeployState != Packed` | `+ EwExposureLevelRatesPerSec[d.EmissionExposure]`（防护罩常开，Q34） |
+| 任意单位（追加项） | `EquipmentEwIds` 中每个装备定义 `d`，且单位 `DeployState != Packed` | `+ EwExposureLevelRatesPerSec[d.EmissionExposure]`（防护罩常开，B-T2-52） |
 | 其他 | | 0 |
 
-策略的 `ExposureMult` 与 `cueing.*.exposureMult` **不相乘**（D5、Q6）。
+策略的 `ExposureMult` 与 `cueing.*.exposureMult` **不在运行时相乘**（它们作为平衡验证的目标平均暴露系数，实测偏差容忍 ±0.15；已决 B-T3-10）。
 
 #### 3.6.3 侦察、发射、转移
 
-- `ReconNearby(u)`：存在存活的 `Threat t`，`t.Kind == Platform` 且其 `PlatformDef.Behavior ∈ { Spotter, ArmedRecon }`（Q21），`WithinRange(u.Pos, t.Pos, Exposure.EnemyReconRadiusM)`。多架侦察机只计一次。
-- 发射次数 `n`：本步处理的 `InterceptorLaunched { FireUnitId == u.Id }` 中，`WeaponDef.Kind == Missile` 的个数（`Rocket`、`InterceptorDrone`、`GunFired` 不计，Q36）。
-- 转移完成：`UnitDeployStateChanged { UnitId == u.Id, To == Deployed, CompletedRelocation == true }`（字段见 8.3）：
+- `ReconNearby(u)`：通过 `ctx.ThreatGrid.QueryCircle(u.Pos, Exposure.EnemyReconRadiusM)` 检查存在存活的 `Threat t`，`t.Kind == Platform` 且其 `PlatformDef.Behavior ∈ { Spotter, ArmedRecon }`（B-T2-41），`WithinRange(u.Pos, t.Pos, Exposure.EnemyReconRadiusM)`。多架侦察机只计一次。
+- 发射次数 `n`：本步处理的 `InterceptorLaunched { FireUnitId == u.Id }` 中，`WeaponDef.Kind == Missile` 的个数（`Rocket`、`InterceptorDrone`、`GunFired` 不计，B-T2-54）。
+- 转移完成：`UnitDeployStateChanged { UnitId == u.Id, To == Deployed, CompletedRelocation == true }`：
   ```
-  Relocated(e, ev) = ev.DestinationScouted ? e × OnRelocate.ToScoutedPositionMult : OnRelocate.ResetTo
-  u.NewPositionPenalty = !(ev.DestinationAlternatePositionId != null 且 该备用阵地 Surveyed == true)
+  Relocated(u, e, ev):
+      u.NewPositionPenalty = !(ev.DestinationAlternatePositionId != null 且 该备用阵地 Surveyed == true)
+      if Sensing.HorizonProfiles.ContainsKey(u.Id):
+          按 3.2.1 第 4 步在新位置 u.Pos 重新计算 Sensing.HorizonProfiles[u.Id]      # B-T2-31 / C-T2-01
+      return ev.DestinationScouted ? e × OnRelocate.ToScoutedPositionMult : OnRelocate.ResetTo
   ```
 - 本步事件只处理一次（游标）；一个单位一步内多次转移完成（不应发生）按事件顺序依次应用。
 
@@ -968,14 +1080,14 @@ FakeLauncherRecon()                                       # 3.7.3（唯一消耗
 - 上穿：`old < th.AtLeast ≤ e` 的每个 `th`，**按升序**发出 `ExposureThresholdCrossed { UnitId, Threshold = th.AtLeast, Consequence, Rising = true }`。
 - 下穿：`e < th.AtLeast ≤ old` 的每个 `th`，**按降序**发出 `Rising = false`。
 - 只比较本步开始与结束的值（转移归零造成的下穿也在此产生）。`Initialize` / `CarryIn` 带入的高暴露度**不**发事件（04 直接读 `Exposure`）。
-- 阈值的后果（反辐射导弹优先、次夜已知目标清单、当夜定点打击）由 04 消费；本文件只产生事件并维护 `ExposurePeak`。
+- 阈值的后果（≥ 40 反辐射导弹优先、≥ 70 次夜已知目标清单、100 当夜改派 25% 未生成 `weighted_random` 打击或次夜标优先；已决 B-T3-05）由 04 / 01 消费；本文件只产生事件并维护 `ExposurePeak`（同时供 03 `NightResult.Exposure` 汇总读取，A-3-10）。
 
 ### 3.7 欺骗单位与阵地（WS01-016）
 
 #### 3.7.1 诱饵辐射源、牺牲雷达
 
 - 二者都是辐射源（2.1），按辐射策略开关机（缺省 `DefaultStrategyId`），开机时按 3.6.2 累积暴露度——高暴露度让它们成为反辐射导弹 / 侦察的优先目标（目标选择在 04 / 01）。
-- 它们**不产生探测**（牺牲雷达不作为真实传感器，Q22）。
+- 它们**不产生探测**（牺牲雷达不作为真实传感器，B-T2-42）。
 - `DeceptionAttractScan()`（6 号系统）：对每个存活的 `Threat t`（ID 升序），`t.TargetUnitId` 指向存活的 `DeceptionUnit d` 且 `t.Id ∉ d.AttractedThreatIds` → 插入（保持升序），发出 `DeceptionTriggered { UnitId = d.Id, ThreatId = t.Id, Outcome = Attracted }`。假发射车同样适用。
 - 被命中即销毁（一次性）由 03 的伤害规则处理；`Duration` 的跨夜含义由 05 处理。
 
@@ -987,15 +1099,16 @@ public static class EmitterQueries
     // 当前开机的辐射源（FireUnit → SensorUnit → EwUnit → DeceptionUnit，各自 ID 升序）
     public static IReadOnlyList<ActiveEmitter> ListActive(SimState s);
 }
-public readonly record struct ActiveEmitter(int UnitId, EntityKind Kind, Vec2 Pos, double Exposure, bool IsDecoy);
+public readonly record struct ActiveEmitter(int UnitId, EntityKind EntityKind, Vec2 Pos, double Exposure, bool IsDecoy);
 ```
 
-供 04 / 01 实现"只追踪开机雷达"与"诱饵吸引"。`IsDecoy` 对 04 的选择逻辑**不可见**（敌方不知道哪个是诱饵）——仅用于复盘统计；04 必须只依据 `Pos`、`Exposure` 选择。
+（字段名由 `Kind` 改为 `EntityKind`，以免与 `PlayerUnitCategory` 混淆；A-3-05。）
+供 04 / 01 实现"只追踪开机雷达"与"诱饵吸引"。`IsDecoy` 对 04 的选择逻辑**不可见**（敌方不知道哪个是诱饵，见 B-T3-05）——仅用于复盘统计；04 必须只依据 `Pos`、`Exposure` 选择。
 
 #### 3.7.3 假发射车 `FakeLauncherRecon()`
 
 对每个存活的 `DeceptionUnit d`（ID 升序），`d.Def.Effect == FakeLauncher` 且 `d.Def.SeeThroughByReconQuality == true` 且 `!d.SeenThrough`：
-对每个存活的侦察平台 `t`（3.6.3 的判定，ID 升序），`WithinRange(d.Pos, t.Pos, Exposure.EnemyReconRadiusM)` 且 `t.Id ∉ d.ReconCheckedThreatIds`：
+通过 `ctx.ThreatGrid.QueryCircle(d.Pos, Exposure.EnemyReconRadiusM)` 遍历每个存活的侦察平台 `t`（3.6.3 的判定，ID 升序），`WithinRange(d.Pos, t.Pos, Exposure.EnemyReconRadiusM)` 且 `t.Id ∉ d.ReconCheckedThreatIds`：
 
 ```
 插入 t.Id 到 ReconCheckedThreatIds（保持升序）
@@ -1005,13 +1118,44 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 ```
 
 - 每架侦察机对每个假发射车最多掷一次；识破后不再掷。
-- 未识破时，假发射车与真单位一样累积侦察暴露度（3.6.3），从而进入 04 的已知目标清单、吸引伊斯坎德尔 / Lancet；识破后 04 应将其排除（`SeenThrough`）。
+- 未识破时，假发射车与真单位一样累积侦察暴露度（3.6.3），从而进入 04 的已知目标清单、吸引伊斯坎德尔 / Lancet（敌方绕行估计其威胁半径按 `fakeLauncherAssumedRangeKm = 10`，B-T3-05）；识破后 04 将其排除（`SeenThrough`）。
 
 #### 3.7.4 备用阵地 / 新阵地
 
-- `NewPositionPenalty` 的来源：开局 `Placement.FirstNightAtNewPosition`（05 在白天转移到未勘察阵地后置 true）；夜间转移完成时按 3.6.3 重算。
-- 效果：本文件中——探测单位与火控雷达的有效距离（3.2.3、3.2.5）、电子战效能概率（3.4.3）乘 `NewUnsurveyed.FirstNightEfficiencyMult`；火力单元的拦截概率由 03 乘 `intercept.modifiers.newPositionFirstNight`（Q23）。
+- `NewPositionPenalty` 的来源：开局 `Placement.FirstNightAtNewPosition`（05 在白天转移到未勘察阵地或中途增援放到未勘察阵地后置 true，A-2-13 / B-T2-06）；夜间转移完成时按 3.6.3 重算。
+- 效果：本文件中——探测单位与火控雷达的有效距离（3.2.3、3.2.5）、电子战效能概率（3.4.3）乘 `NewUnsurveyed.FirstNightEfficiencyMult`；火力单元的拦截概率由 03 读取同一个 `unit.NewPositionPenalty` 字段并乘 `intercept.modifiers.newPositionFirstNight`（A-2-13、B-T2-06）。
 - `preparedAlternate.deployTimeMult`（展开时间 −50%）由 04 的部署状态机使用。
+
+### 3.8 覆盖预计算查询（`CoverageQuery`，只读供客户端，A-2-16 / C-T1-12）
+
+供客户端部署阶段与夜间覆盖层（06 §3.9.6、§8.3 D-02-1）在后台线程计算单个单位的探测 / 火控 / 武器覆盖网格；**不读 `SimState`、无副作用、线程安全**：
+
+```csharp
+namespace Nightwatch.Sim.Sensing;
+
+public readonly record struct CoverageGridSpec(double MinX, double MaxY, double CellM, int Cols, int Rows);
+
+public static class CoverageQuery
+{
+    // 返回 Rows × Cols（行主序，r = 0 对应北侧 MaxY）的 byte[]：1 = 覆盖，0 = 不覆盖；
+    // 该单位无覆盖圈（如欺骗单位、覆盖型自动单位）返回 null。
+    public static byte[]? ComputeGrid(
+        LevelData level, TerrainModel terrain, int nightIndex, PlacedUnit unit,
+        double targetAglM, CoverageGridSpec grid);
+}
+```
+
+计算规则（与 3.2.3–3.2.5 完全同源，禁止另写一套公式，C-T1-12）：
+
+1. 取 `night = level.Waves.Nights` 中 `Night == nightIndex` 的项（无则取 `Nights[0]`），`season = EnvironmentResolver.SeasonFor(night, level.Meta.DateRange.From)`。
+2. 按 `unit.UnitDefId` 在 `level.Catalog` 中查找定义：
+   - **`SensorUnit`**（`DetectionRangeM != null`）：按 3.2.3 计算目标高度 `AltM = targetAglM` 下的有效探测距离 `R`（其中 `Powered = true`、`NewPositionPenalty = unit.FirstNightAtNewPosition`、`NightAids = unit.Settings?.NightAids`）；若 `LineOfSight != false && Layer != National`，用 `terrain.BuildHorizonProfile(unit.Pos, AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM, R)` 检查每个格心 `p` 的 `HasLineOfSightAgl(p, targetAglM)`。
+   - **`FireUnit`**：
+     - 若 `FireControlRadar != null`：按 3.2.5 火控雷达分支计算 `R`（`Powered = true`、`NewPositionPenalty = unit.FirstNightAtNewPosition`、含冬季与 `targetAglM` 低空倍率），并用 `terrain.BuildHorizonProfile(unit.Pos, FireControlRadar.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM, R)` 检查 `HasLineOfSightAgl(p, targetAglM)`；
+     - 否则若 `SelfAcquisitionRangeM != null`：按 3.2.5 自主捕获分支计算 `R`（含 `SelfAcquisition == Optical` 的昼夜与天气倍率），并用 `terrain.BuildHorizonProfile(unit.Pos, Rules.Terrain.DefaultAntennaHeightM, R)` 检查 `HasLineOfSightAgl(p, targetAglM)`。
+   - **`EwUnit`**（`EquipmentSlot != true`）：`R = def.RadiusM`，不检查视线与高度。
+   - 其他定义：返回 `null`。
+3. 对每个格子 `(r, c)`（`0 ≤ r < grid.Rows`、`0 ≤ c < grid.Cols`），格心 `p = (grid.MinX + (c + 0.5) * grid.CellM, grid.MaxY - (r + 0.5) * grid.CellM)`；满足 `WithinRange(unit.Pos, p, R)` 且（需要视线时）`HasLineOfSightAgl(p, targetAglM) == true` 则置 `result[r * grid.Cols + c] = 1`，否则 `0`。
 
 ---
 
@@ -1026,10 +1170,10 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 | 202 | `TrackQualityChanged` | `int TrackId, TrackQuality From, TrackQuality To` | 4 | 3.3.7（含外推时精确降为大致） |
 | 203 | `TrackLost` | `int TrackId, TrackLostCause Cause`；`TrackLostCause { Timeout = 0, ThreatGone = 1 }` | 4 | 3.3.2、3.3.7 |
 | 204 | `DecoyIdentified` | `int TrackId` | 4 | 3.3.8 |
-| 205 | `EmitterSwitched` | `int UnitId, bool On, EmitterSwitchCause Cause`；`EmitterSwitchCause { Policy = 0, SectorSilence = 1, SectorForceOn = 2, ArmShutdown = 3, Takeover = 4, NotDeployed = 5 }` | 6 | 3.5.1（`Initialize` 不发） |
+| 205 | `EmitterSwitched` | `int UnitId, bool On, EmitterSwitchCause Cause`；`EmitterSwitchCause { Policy = 0, SectorSilence = 1, SectorForceOn = 2, ArmShutdown = 3, Takeover = 4, NotDeployed = 5, RadarDestroyed = 6, Suspended = 7 }`（A-2-12） | 6 | 3.5.1（`Initialize` 不发） |
 | 206 | `ArmThreatDetected` | `int TrackId, int TargetUnitId` | 6 | 3.5.5 第 2 步，每条航迹一次 |
-| 207 | `EwDiverted` | `int ThreatId, int EwUnitId, EwDivertKind Kind`；`EwDivertKind { NavJam = 0, NavSpoofPull = 1, NationalSpoof = 2 }`；`NationalSpoof` 时 `EwUnitId` 为 `SupportAsset` 的实体 ID | 5 | 3.4.4–3.4.6，只在成功时 |
-| 208 | `EwLinkCut` | `int ThreatId, int EwUnitId, LinkCutOutcome Outcome` | 5 | 3.4.6，只在成功时 |
+| 207 | `EwDiverted` | `int ThreatId, int SourceId, EwDivertKind Kind`；`EwDivertKind { NavJam = 0, NavSpoofPull = 1, NationalSpoof = 2 }`；`NationalSpoof` 时 `SourceId` 为 `SupportAsset` 的实体 ID，其余为 `EwUnit` 的实体 ID（A-3-07） | 5 | 3.4.4–3.4.6，只在成功时 |
+| 208 | `EwLinkCut` | `int ThreatId, int SourceId, LinkCutOutcome Outcome, string DefId`；悬停超时坠毁时 `SourceId = 0, Outcome = Crash`（A-3-07、A-4-04） | 5 | 3.4.6，成功时及悬停超时移除前 |
 | 209 | `ExposureThresholdCrossed` | `int UnitId, double Threshold, ExposureConsequence Consequence, bool Rising` | 11 | 3.6.4 |
 | 210 | `DeceptionTriggered` | `int UnitId, int ThreatId, DeceptionOutcome Outcome`；`DeceptionOutcome { Attracted = 0, SeenThrough = 1 }` | 6（Attracted）、11（SeenThrough） | 3.7.1、3.7.3 |
 
@@ -1042,19 +1186,20 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 | 200 | `SetEmissionPolicy` | `int UnitId, string PolicyId, double? DutyOnSec, double? DutyOffSec, ArmResponse? OnArmIncoming, AfterFiringAction? AfterFiring, bool? NeighborTakeover` | 3.5.8 | `EffectiveTick` 的阶段 0；当步 6 号系统按新策略决定开关 |
 | 201 | `SectorEmissionOverride` | `Vec2 Center, double RadiusM, SectorOverrideMode Mode`；`SectorOverrideMode { Silence = 0, ForceOn = 1, Cancel = 2 }` | 3.5.8 | 同上 |
 
-拒绝原因只使用 00 的公共原因（`UnknownEntity`、`WrongEntityKind`、`InvalidArgument`、`NotAvailable`）。是否消耗指挥点、消耗多少由 04 规定（处理者在 `Apply` 前调用 04 提供的扣点接口；本文件不定义）。
+拒绝原因使用 00 的公共原因：`UnknownEntity`、`WrongEntityKind`、`InvalidArgument`、`NotAvailable`、`NoCommandPoints`。两条命令在 `Validate` 最后一步检查 `CommandPointRules.CanSpend(ctx, CommandPointRules.CostOf(ctx.Level, cmd.Type))`，在 `Apply` 第一步调用 `CommandPointRules.Spend`（A-2-17）。
 
 ### 4.3 本文件消费的其他事件 / 字段
 
 | 来源 | 事件 / 字段 | 用途 |
 |---|---|---|
-| 01 | `WaveStarted { WaveId }` | 剧情追加波次的零提前量预警（3.2.8） |
+| 01 | `WaveStarted { WaveId }` | 注入波次的零提前量预警（3.2.8，在 `night.Waves` 中按 `Id` 查找，A-2-28） |
 | 03 | `InterceptorLaunched { FireUnitId, WeaponId }`、`GunFired { FireUnitId }` | 开火后转移（3.5.6）、发射暴露（3.6.3） |
-| 03 | `PlayerUnitDestroyed { UnitId, DefId, Kind, Pos }`（`Pos` 需追加，8.3） | 邻近雷达接替（3.5.6） |
-| 04 | `UnitDeployStateChanged { UnitId, From, To, CompletedRelocation, DestinationScouted, DestinationAlternatePositionId }`（后三个字段需追加，8.3） | 转移归零 / 减半、新阵地标记（3.6.3） |
+| 03 | `PlayerUnitDestroyed { UnitId, DefId, Category, SourceThreatId, Pos }` | 邻近雷达接替（3.5.6，A-2-05 / A-3-05） |
+| 04 | `UnitDeployStateChanged { UnitId, From, To, CompletedRelocation, DestinationScouted, DestinationAlternatePositionId }` | 转移归零 / 减半、新阵地标记与重算地平线包络（3.6.3） |
 | 03 | `Interceptor.FireUnitId`（字段） | "完成当前拦截后关机"、开火后转移 |
-| 03 | `SupportAsset.Active`、`SupportAsset.CenterPos`（字段） | 国家级导航欺骗（3.4.6） |
-| 01 / 04 | `Threat.TargetUnitId`（字段） | 反辐射导弹来袭、诱饵吸引 |
+| 03 | `FireUnit.RadarDestroyed`、`PlayerUnitCommon.SuspendedUntilSec`（字段） | 雷达被毁与重伤暂停时停止探测 / 电子战并关机（3.2.3、3.2.5、3.4.1、3.5.3，A-2-12） |
+| 03 | `SupportAsset.State`（`SupportAssetState.Active`）、`CenterPos`、`RadiusM`（字段） | 国家级导航欺骗（3.4.6，A-2-21） |
+| 01 | `Threat.TargetUnitId`（字段，01 唯一写入，A-2-04） | 反辐射导弹来袭与归航目标维护、诱饵吸引 |
 
 ---
 
@@ -1064,12 +1209,12 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 |---|---|---|
 | 1 | 目标恰在探测距离上（`d == R`） | 探测到（`≤`）。电子战半径、侦察半径、扇区半径、参考距离同样含边界 |
 | 2 | 目标高度恰等于 `LowAltitudeBelowM` | 不算低空（`AltM <` 才算） |
-| 3 | 雷达本步刚关机 | 本步 3 号系统仍按上一步"开"产生探测；下一步起不再探测（3.1 时序） |
-| 4 | 探测单位处于展开 / 撤收 / 移动中 | 不探测；辐射源强制关机（`NotDeployed`）；暴露度照常结算（静默衰减、侦察、转移） |
+| 3 | 雷达本步刚关机 | 本步 3 号系统仍按上一步"开"产生探测；下一步起不再探测（3.1 时序）。但 10 号系统造成的 `RadarDestroyed` / `SuspendedUntilSec` 在下一步第 3、5 步直接拦截，无额外 1 步滞后（A-2-12） |
+| 4 | 探测单位处于展开 / 撤收 / 移动中或重伤暂停中 | 不探测；辐射源强制关机（`NotDeployed` / `Suspended`）；暴露度照常结算（静默衰减、侦察、转移） |
 | 5 | 延迟探测送达时来源单位已被摧毁 | 照常送达 |
 | 6 | 延迟探测送达时目标已被移除 | 在融合第 2 步丢弃，不创建航迹 |
 | 7 | 目标被拦截 / 落地 / 离开 / 坠毁 | 下一步融合第 1 步删除航迹（`ThreatGone`）。同一步内 03 仍可能看到该航迹，须用 `TryGet(ThreatId)` 判断 |
-| 8 | 误报航迹（`ThreatId == 0`） | 质量恒为来源单位的输出质量（实际数据中为模糊），不交叉升级、不甄别、按超时丢失；03 必须把 `ThreatId == 0` 的航迹视为"无可拦截目标"（不得发射；Q27） |
+| 8 | 误报航迹（`ThreatId == 0`） | 质量恒为来源单位的输出质量（实际数据中为模糊），不交叉升级、不甄别、按超时丢失；03 必须把 `ThreatId == 0` 的航迹视为"无可拦截目标"（不得发射；B-T2-46） |
 | 9 | 同一目标同时被火控雷达和网络看到 | `Quality = Precise`，`NetworkQuality` = 网络部分；位置取火控探测 |
 | 10 | 航迹外推期间目标又被探测到 | 正常 Update；外推期间降级的"精确"在重新锁定时恢复 |
 | 11 | 诱饵航迹被甄别后丢失、再次出现 | 新航迹重新从未甄别开始 |
@@ -1079,17 +1224,17 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 | 15 | AI 视觉目标只被区域导航干扰站覆盖（末段无效时期） | 概率 0，不掷，状态保持 `None`；之后被导航欺骗站覆盖时仍可判定 |
 | 16 | 导航欺骗站未设诱导点 | 只有落点偏移，无诱导 |
 | 17 | `EwImmune` 目标误列在 `EffectiveAgainst` 中 | 免疫优先，不掷 |
-| 18 | 链路中断结果为坠落 | 同一步内移除目标；本步后续系统 `TryGet` 失败；不造成地面伤害 |
+| 18 | 链路中断结果为坠落，或悬停超时坠落 | 同一步内发出 `EwLinkCut { ..., Outcome = Crash, DefId }`（悬停超时 `SourceId = 0`）并移除目标；本步后续系统 `TryGet` 失败；不造成地面伤害（A-4-04、B-T3-08） |
 | 19 | 悬停目标被拦截 | 由 03 正常结算；悬停计时随之失效 |
 | 20 | 电子战单位本步关机 | 本步 5 号系统仍按上一步"开"生效（时序） |
 | 21 | `SetEmissionPolicy` 指向已被摧毁的单位 | `UnknownEntity` |
 | 22 | `SetEmissionPolicy` 指向非辐射源（声学哨、单兵导弹、假发射车） | `WrongEntityKind` |
 | 23 | 静默待机设给苏制火控 / 第 5 关 | `NotAvailable`（3.5.2）；部署方案中出现时由 04 的校验报错 |
 | 24 | 静默待机但没有网络"大致"航迹 | 雷达一直关机；单位无法获得精确航迹，不能发射导弹 |
-| 25 | 扇区强制开机覆盖了"反辐射来袭立即关机" | 强制开机优先（玩家明确命令，3.5.3 第 3 行先于第 4 行） |
+| 25 | 扇区强制开机覆盖了"反辐射来袭立即关机" | 强制开机优先（玩家明确命令，3.5.3 第 3 行先于第 4 行）；但 `NotDeployed`、`RadarDestroyed`、`Suspended` 仍高于强制开机 |
 | 26 | 扇区命令之后单位移出扇区 | 保持强制状态，直到 `Cancel` 或新的扇区命令覆盖 |
-| 27 | 反辐射导弹没有 `TargetUnitId`，或目标不是辐射源 | 不触发来袭处置；不设初始距离 |
-| 28 | 反辐射导弹在雷达关机后、雷达重新开机 | `ArmHitProbMult` 清空（3.5.5 第 5 步），下次关机重新计算 |
+| 27 | 反辐射导弹没有 `TargetUnitId`，或目标不是辐射源 | 不触发来袭处置；不设初始距离；`HomingUnitId = 0` |
+| 28 | 反辐射导弹在雷达关机后、雷达重新开机 | `ArmHitProbMult` 清空（3.5.5 第 5 步），`HomingUnitId` 在下一步恢复为目标单位 ID，下次关机重新计算 |
 | 29 | 反辐射导弹距离比 `f` 恰等于 0.5 / 0.25 | 不满足"> 0.5"，取下一档（0.25 档 → 0.5；0 档 → 0.8） |
 | 30 | `f == 0`（导弹已在雷达正上方） | 三档都不满足，倍率 1.0 |
 | 31 | 主雷达被毁时邻近单位处于强制静默 | `TakeoverActive` 置 true，但强制静默优先（第 2 行），保持关机 |
@@ -1102,6 +1247,8 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 | 38 | 两个波次同一步预警 | 按波次数据顺序 |
 | 39 | 同一辐射源一步内多个原因 | 只按 3.5.3 第一个命中的原因发一个事件；状态未变不发事件 |
 | 40 | 假发射车被识破后仍有侦察机经过 | 不再掷；暴露度照常累积（04 依据 `SeenThrough` 排除） |
+| 41 | 目标在本步第 2 步已到达（`Phase == Arrived`） | 第 5 步电子战直接跳过，不在落地结算前改写或坠毁该目标（A-4-06） |
+| 42 | 同一目标同时使单位电子战与国家级导航欺骗 `Applied` | `ReconcileNavAccuracy` 比较期望偏移增量，取较大者，不叠加（B-T3-08） |
 
 ---
 
@@ -1110,7 +1257,7 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 `SimConfig.CheckInvariants = true` 时每步末尾检查（追加到 00 的 6.1）：
 
 1. 对所有我方单位：`Min ≤ Exposure ≤ Max`；`ExposurePeak ≥ Exposure`；`ExposurePeak ≤ Max`。
-2. 辐射源的 `Emitter.On == true` ⇒ `DeployState == Deployed`。
+2. 辐射源的 `Emitter.On == true` ⇒ `DeployState == Deployed && !Suspended(u) && !(u is FireUnit f && f.RadarDestroyed)`。
 3. `Emitter.On == true` ⇔ `Emitter.OnSinceTick ≥ 0`；`OnSinceTick ≤ Tick`。
 4. `FcMode != Off` ⇔（实体是 `FireUnit` 且 `Emitter.On`）。
 5. 每个存活 `Track`：`(ThreatId == 0) != (PhantomKey == 0)`；`ThreatId != 0` ⇒ 不存在另一条存活航迹具有相同 `ThreatId`；`PhantomKey` 同理。
@@ -1119,10 +1266,10 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 8. `ErrorRadiusM ≥ 0`；`LastDetectedTick ≤ Tick`；`(Tick − LastDetectedTick) × StepSec ≤ TrackLostSec`。
 9. `Sensing.Delayed` 按 `(DeliverTick, Seq)` 严格升序且全部 `DeliverTick > Tick`（已到期的已送达）。
 10. `Threat.EwPull == Applied` ⇒ `EwNav == Applied` 且 `EwDivertPos != null`；`EwDivertPos != null` ⇒ `EwPull == Applied`。
-11. `Threat.AccuracyTierDrop ≥ 0`；`EwExtraOffsetM ≥ 0`；`ArmHitProbMult == null || ArmHitProbMult ≥ 0`。
+11. `Threat.AccuracyTierDrop ≥ 0`；`EwExtraOffsetM ≥ 0`；`!(Threat.AccuracyTierDrop > 0 && Threat.EwExtraOffsetM > 0)`（国家级降档与单位电子战额外偏移不叠加，B-T3-08）；`ArmHitProbMult == null || ArmHitProbMult ≥ 0`。
 12. `DeceptionUnit.ReconCheckedThreatIds`、`AttractedThreatIds` 严格升序。
 13. `Ew.UrbanNavJamSec` 非递减、`≤ Tick × StepSec`。
-14. `Sensing.WarnedKeys` 中的键数 ≤ 预警时间表条目数 + 剧情追加波次键数。
+14. `Sensing.WarnedKeys` 中的键数 ≤ 预警时间表条目数 + 注入波次键数。
 
 ---
 
