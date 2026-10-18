@@ -185,8 +185,8 @@ def compute_trust_for_night(world: SimWorld, res: Any) -> Dict[str, Any]:
         w_waste_cnt = int(waste_by_w.get(wid, 0))
         raw_val = float(raw_cost_by_w.get(wid, 0.0))
         w_raw_ratio = raw_val / max(1e-9, shots * avg_cost)
-        if w_waste_cnt > 0 or w_raw_ratio < float(ww_cfg.get("maxRatio", 0.2)):
-            w_shots += max(w_waste_cnt, int(shots))
+        if w_raw_ratio < float(ww_cfg.get("maxRatio", 0.2)):
+            w_shots += w_waste_cnt if w_waste_cnt > 0 else int(shots)
             wasted_weapons.append(wid)
     d_waste = -min(w_shots * float(ww_cfg.get("penaltyPerShot", 3.0)), float(ww_cfg.get("maxPenaltyPerNight", 9.0)))
 
@@ -1116,14 +1116,14 @@ def _run_h05_night_optical(args: Tuple[str, int]) -> Dict[str, Any]:
                 }
             ]
 
-    aids = ["searchlight"] if "searchlight" in cond_name else []
+    aids = ["searchlight"] if "with_searchlight" in cond_name else []
     settings = {"nightAids": aids} if aids else {}
-    # Entry_east is (26000, 14000) -> TPP is (13500, 7000). Line passes through (18500, 9800), (17250, 9100), (16000, 8400), (14750, 7700)
+    # Entry_east is (26000, 14000) -> TPP is (13500, 7000). Stagger MFT lateral offsets (0m, 610m, 1003m, 1440m) to test optical sight radii
     units = [
         PlacedUnit("mobile_fire_team", Vec2(18500.0, 9800.0), settings=dict(settings), roster_id=1),
-        PlacedUnit("mobile_fire_team", Vec2(17250.0, 9100.0), settings=dict(settings), roster_id=2),
-        PlacedUnit("mobile_fire_team", Vec2(16000.0, 8400.0), settings=dict(settings), roster_id=3),
-        PlacedUnit("mobile_fire_team", Vec2(14750.0, 7700.0), settings=dict(settings), roster_id=4),
+        PlacedUnit("mobile_fire_team", Vec2(17250.0, 9800.0), settings=dict(settings), roster_id=2),
+        PlacedUnit("mobile_fire_team", Vec2(16000.0, 9550.0), settings=dict(settings), roster_id=3),
+        PlacedUnit("mobile_fire_team", Vec2(14750.0, 9350.0), settings=dict(settings), roster_id=4),
     ]
     if "with_radar" in cond_name:
         units.append(PlacedUnit("soviet_mid_range_radar", Vec2(13500.0, 7500.0), roster_id=7))
@@ -1188,7 +1188,6 @@ def _run_h07_decoy(args: Tuple[str, int]) -> Dict[str, Any]:
         units.append(PlacedUnit("soviet_mid_range_radar", Vec2(18000.0, 9500.0), roster_id=7))
     elif cond_name == "no_radar_vague_only":
         units.append(PlacedUnit("acoustic_post", Vec2(19500.0, 10360.0), roster_id=8))
-        units.append(PlacedUnit("visual_observer", Vec2(18500.0, 9800.0), roster_id=14))
 
     w = SimWorld(lvl, seed, SimConfig(night_index=1, deployment=build_validated_plan(lvl, units), end_when_clear=True))
     res = w.run_to_end(PassiveBot())
@@ -1231,23 +1230,30 @@ def _run_h10_probe_avoidance(args: Tuple[str, int]) -> Dict[str, Any]:
     for u in plan.units:
         if u.unit_def_id == "iris_t_sls":
             u.pos = Vec2(17250.0, 9100.0)
+            u.settings["emissionPolicyId"] = "silent_standby"
         elif u.unit_def_id == "soviet_mid_range_radar":
             u.pos = Vec2(16500.0, 8680.0)
+            u.settings["emissionPolicyId"] = "blink"
+            u.settings["dutyOnSec"] = 36.0
+            u.settings["dutyOffSec"] = 84.0
         elif u.unit_def_id == "nasams":
             u.pos = Vec2(14750.0, 7700.0)
+            u.settings["emissionPolicyId"] = "silent_standby"
     plan = build_validated_plan(lvl, plan.units)
 
     class SilentDuringProbeBot(TacticalBot):
         name = "silent_during_probe"
 
         def decide(self, world: SimWorld) -> List[SimCommand]:
-            should_emit = world.state.tick >= 4000
+            should_active = world.state.tick >= 4000
             for s in world.state.sensors.alive_list():
-                if s.emitter is not None:
-                    s.emitter.on = should_emit
+                if s.emitter is not None and not should_active:
+                    s.emitter.on = False
             for fu in world.state.fire_units.alive_list():
-                if fu.emitter is not None:
-                    fu.emitter.on = should_emit
+                if fu.emitter is not None and not should_active:
+                    fu.emitter.on = False
+                for wslot in fu.weapons:
+                    wslot.rule = 0 if should_active else 2
             return []
 
     use_bot: TacticalBot = SilentDuringProbeBot() if cond_name == "probe_silent_during_w1" else PassiveBot()
@@ -1681,7 +1687,7 @@ def _run_h13_bt3_07_autoresolve(args: Tuple[float, int]) -> Dict[str, Any]:
     res_auto = w_auto.run_to_end(PassiveBot())
     m_auto = extract_night_metrics(w_auto, res_auto)
 
-    # Active hand-played command bot on test_01: uses CP to manage emission, ammo reserve unlock for Kh-101, and relocation
+    # Active hand-played command bot on test_01: uses CP to manage emission, ammo reserve unlock for Kh-101, and priority targeting
     class ActiveCommanderBot(TacticalBot):
         name = "active_commander"
 
@@ -1689,6 +1695,7 @@ def _run_h13_bt3_07_autoresolve(args: Tuple[float, int]) -> Dict[str, Any]:
             super().__init__()
             self.init_done = False
             self.unlocked_cm = False
+            self.inner_bot = DefaultBot()
 
         def decide(self, world: SimWorld) -> List[SimCommand]:
             if not self.init_done:
@@ -1704,7 +1711,7 @@ def _run_h13_bt3_07_autoresolve(args: Tuple[float, int]) -> Dict[str, Any]:
                 for fu in world.state.fire_units.alive_list():
                     for wslot in fu.weapons:
                         wslot.ammo_reserve = 0
-            return SmartBlinkBot().decide(world) + RelocatorBot().decide(world)
+            return self.inner_bot.decide(world)
 
     w_act = SimWorld(base_lvl, seed, SimConfig(night_index=1, end_when_clear=True))
     res_act = w_act.run_to_end(ActiveCommanderBot())
@@ -2371,10 +2378,10 @@ def main() -> None:
                     }
 
         # H-13 & B-T3-07: AutoResolve vs Active Command
-        h13_tasks = [(pm, s) for pm in (1.0, 0.95) for s in seeds]
+        h13_tasks = [(pm, s) for pm in (1.0, 0.95, 0.85) for s in seeds]
         h13_raw = list(pool.map(_run_h13_bt3_07_autoresolve, h13_tasks))
         exp3["H13_BT3_07_autoresolve"] = {}
-        for pm in (1.0, 0.95):
+        for pm in (1.0, 0.95, 0.85):
             sub = [r for r in h13_raw if abs(r["prob_mult"] - pm) < 1e-6]
             exp3["H13_BT3_07_autoresolve"][f"mult_{pm}"] = {
                 "auto_weighted_loss": summarize_metric([r["auto_weighted_loss"] for r in sub]),

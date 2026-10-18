@@ -398,6 +398,24 @@ class EngagementSystem:
                         continue
 
                     eff_range_m = float(wp["range_by_tag_m"].get(th.tag.name, wp["range_m"])) if th.tag is not None else wp["range_m"]
+                    fdef_u = ctx.level.catalog.air_defense_units.get(fu.def_id or "", {})
+                    if fdef_u.get("selfAcquisition") == "optical" and fdef_u.get("fireControlRadar") is None:
+                        night_obj = ctx.sensor_system._get_night(ctx) if hasattr(ctx, "sensor_system") else {}
+                        tod = night_obj.get("timeOfDay", "night")
+                        if tod != "day":
+                            u_set = (fu.placement.settings if fu.placement else {}) or {}
+                            aids = set(u_set.get("nightAids") or [])
+                            det_rules = ctx.level.catalog.rules.get("tracks", {}).get("detectionRules", {})
+                            if not tr.cued:
+                                if "thermal" in aids:
+                                    opt_mult = 1.0
+                                elif "searchlight" in aids:
+                                    opt_mult = float(det_rules.get("opticalSearchlightRangeMult", 0.7))
+                                else:
+                                    opt_mult = float(det_rules.get("opticalNightRangeMult", 0.3))
+                                eff_range_m *= opt_mult
+                            elif not any(s.emitter is not None and s.emitter.on for s in ctx.state.sensors.alive_list()):
+                                eff_range_m *= 0.95 if ("searchlight" in aids or "thermal" in aids) else 0.60
                     sol = InterceptSolver.solve_threat(
                         fu.pos, wp["speed_mps"], eff_range_m, wp["ceiling_m"], th, ctx.time_sec
                     )

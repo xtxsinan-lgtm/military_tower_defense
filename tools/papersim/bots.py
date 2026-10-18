@@ -38,7 +38,7 @@ class PassiveBot(TacticalBot):
 
 
 class DefaultBot(TacticalBot):
-    """Balanced baseline bot: manages civil air-raid alert, answers choices, and calls fighter support."""
+    """Balanced baseline bot: manages civil air-raid alert, answers choices, reserves expensive SAMs for CM/BM, and calls fighter support."""
 
     name = "default"
 
@@ -46,6 +46,15 @@ class DefaultBot(TacticalBot):
         cmds: List[SimCommand] = []
         st = world.state
         tick = st.tick + 1
+
+        if not self._initialized:
+            self._initialized = True
+            cat = world.level.catalog
+            for fu in st.fire_units.alive_list():
+                for wslot in fu.weapons:
+                    wdef = cat.weapons.get(wslot.weapon_id, {})
+                    if float(wdef.get("shotCostMusd", 0.0) or 0.0) >= 0.80:
+                        wslot.ammo_reserve = 3
 
         # 1. Answer any pending choices immediately with default option
         for ch in st.choices.alive_list():
@@ -142,7 +151,7 @@ class NeverEmitBot(TacticalBot):
 
 
 class SmartBlinkBot(TacticalBot):
-    """Uses blink/intermittent emission, shuts down on ARM, and relocates at exposure >= 70."""
+    """Uses blink/intermittent emission, reserves expensive SAMs for CM/BM, shuts down on ARM, and relocates at exposure >= 70."""
 
     name = "smart_blink"
 
@@ -152,6 +161,12 @@ class SmartBlinkBot(TacticalBot):
         tick = st.tick + 1
         if not self._initialized:
             self._initialized = True
+            cat = world.level.catalog
+            for fu in st.fire_units.alive_list():
+                for wslot in fu.weapons:
+                    wdef = cat.weapons.get(wslot.weapon_id, {})
+                    if float(wdef.get("shotCostMusd", 0.0) or 0.0) >= 0.80:
+                        wslot.ammo_reserve = 3
             for store in (st.fire_units, st.sensors):
                 for u in store.alive_list():
                     if u.emitter is not None and not getattr(u, "automatic", False):
@@ -206,6 +221,7 @@ class WastefulBot(TacticalBot):
             for fu in st.fire_units.alive_list():
                 for wslot in fu.weapons:
                     wslot.rule = 0  # Any
+                    wslot.ammo_reserve = 0
                 if fu.emitter is not None:
                     fu.emitter.policy_id = "continuous"
                     fu.emitter.on = True
@@ -213,7 +229,7 @@ class WastefulBot(TacticalBot):
 
 
 class RelocatorBot(TacticalBot):
-    """Aggressively relocates mobile units as soon as exposure reaches 40."""
+    """Aggressively relocates mobile units as soon as exposure reaches 40 and reserves expensive SAMs."""
 
     name = "relocator"
 
@@ -221,6 +237,14 @@ class RelocatorBot(TacticalBot):
         cmds: List[SimCommand] = []
         st = world.state
         tick = st.tick + 1
+        if not self._initialized:
+            self._initialized = True
+            cat = world.level.catalog
+            for fu in st.fire_units.alive_list():
+                for wslot in fu.weapons:
+                    wdef = cat.weapons.get(wslot.weapon_id, {})
+                    if float(wdef.get("shotCostMusd", 0.0) or 0.0) >= 0.80:
+                        wslot.ammo_reserve = 3
         if st.commands.command_points >= 1:
             cmd = _try_relocate_exposed_unit(world, threshold=40.0, relocated_set=self._relocated_units, tick=tick)
             if cmd is not None:

@@ -506,3 +506,93 @@ python3 tools/papersim/experiments/run_d4_analysis.py
 ```
 
 生成的结构化原始数据位于 [`tools/papersim/experiments/d4_results.json`](../../../tools/papersim/experiments/d4_results.json)。
+
+---
+
+## 7. T-01..T-09 应用后复测验证结果（Task D4-①b）
+
+在用户审阅并批准第 5 章全部 9 项调优建议（`T-01`..`T-09`）及第 3 章的 2 项机制细节修正（`H-07` 诱饵识别率与 `fastUpdate` 挂钩、`H-10` 试探波已知目标采集的暴露度与探测半径扩展）后，我们已按文档层级完成了 **`data/` → `docs/spec/` → 上位文档（`GDD` / `塔防数值表`） → `tools/papersim/`** 的四层全量同步，并在相同确定性种子（`1..12`）下重跑了全部四大实验矩阵。
+
+### 7.1 落地项与四层同步总览
+
+| 调优编号 | 核心修正内容 | 同步落地的 `data/` 与 `docs/` 文件 | `tools/papersim/` 实现与测试验证 |
+|---|---|---|---|
+| **T-01**<br>（对应 §3.11 `H-11`、§3.14 `H-14`） | 1. 修复 `loader.py` 对嵌套字典 `*GameSec*`（`reactionGameSecByClass`）的 `×60` 世界秒转换；<br>2. 将现代反导/防空反应时间调优为：`pac3: 0.033`（**2.0s**）、`pac2: 0.033`（**2.0s**）、`samp_t: 0.05`（**3.0s**）、`s300: 0.08`（**4.8s**）、`iris_t: 0.08`（**4.8s**）、`nasams: 0.08`（**4.8s**）、`buk_m1: 0.12`（**7.2s**）、`s200: 0.20`（**12.0s**）；<br>3. `byWeaponKind.missile.shotIntervalGameSec` 降至 `0.033`（**2.0s**），`pac3_mse` 专属射击间隔设为 `0.02`（**1.2s**）。 | [`data/rules/engagement.json`](../../../data/rules/engagement.json)<br>[`data/units/air_defense.json`](../../../data/units/air_defense.json)<br>[`docs/spec/03_engagement_impact_scoring.md`](../03_engagement_impact_scoring.md) §3.1.2, §3.1.4<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §2.1, §9.19 | [`loader.py`](../../../tools/papersim/loader.py)<br>[`engagement.py`](../../../tools/papersim/engagement.py)<br>单测 + `H11`/`H14` 复测通过 |
+| **T-02**<br>（对应 §3.6 `H-06`、§5 `T-03`） | 拆分 `damage.json` Band 1：`Level 1` 维持 `gridDamagePct: 0, civilDestroyed: {0, 1}`；新增 **`Level 2`**（`gridDamagePct: 10` 即 **1 HP**，`civilDestroyed: {1, 1}`）；且明确 `DECOY` 标签残骸不造成建筑与结构伤害。 | [`data/rules/damage.json`](../../../data/rules/damage.json)<br>[`docs/spec/03_engagement_impact_scoring.md`](../03_engagement_impact_scoring.md) §3.7.2<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §9.4 | [`engagement.py`](../../../tools/papersim/engagement.py)<br>`H06` 复测通过 |
+| **T-03**<br>（对应 §3.9 `H-09`、§3.12 `H-12`、§5 `T-08`） | 1. 将 `test_01` 的 `substation_central.hp` 从 `10` 提升至 **`15`**，并将 `gridCollapseThresholdPct` 从 `50` 下调为 **`40`**；<br>2. 在 `test_01/waves.json` 第 1 夜 `w2_mixed` 与第 2 夜 `n2_w1` 中分流 Shahed-136 集群瞄准 `city_west`，激活平民区防空警报（`SetAlert`）减伤收益。 | [`data/levels/test_01/level.json`](../../../data/levels/test_01/level.json)<br>[`data/levels/test_01/waves.json`](../../../data/levels/test_01/waves.json)<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §11.1<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §10.1 | [`run_d4_analysis.py`](../../../tools/papersim/experiments/run_d4_analysis.py)<br>`H09`/`H12` 复测通过 |
+| **T-04**<br>（对应 §3.4 `H-04`、§3.8 `H-08`、`B-T3-01`） | 1. 分离宏观效费比与单发浪费判定：`wastefulWeapon` 改按**纯造价交换比** `EnemyCost / ShotCost < maxExchangeRatio (0.20)` 判定，不再混入结构损失潜在价值 `0.2·L·w`；<br>2. 将 `minShotCostMusd` 从 `2.0` 下调为 **`0.80`**，并新增 `minAvgShotCostMusd: 0.80`（涵盖 `nasams 0.85 M$` 与 `s300 0.80 M$` 打无人机）。 | [`data/rules/scoring.json`](../../../data/rules/scoring.json)<br>[`data/schema/rules.schema.json`](../../../data/schema/rules.schema.json)<br>[`docs/spec/03_engagement_impact_scoring.md`](../03_engagement_impact_scoring.md) §3.8.2<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §9.6<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §8.2, §9.15 | [`scoring.py`](../../../tools/papersim/scoring.py)<br>[`bots.py`](../../../tools/papersim/bots.py)<br>`H04`/`H08` 复测通过 |
+| **T-05**<br>（对应 §3.3 `H-03`、`B-T3-05`、`B-T3-10`） | 1. `on_warning` 策略仅在战场存在已探测航迹或预警威胁时开启雷达，且开启期间被动暴露速率乘以 `0.70`；<br>2. `decoy_coordinated` 在 `3 km` 内存在开启的假雷达（`decoy_radar`）时，每台假雷达分流削减真实雷达被动暴露速率（1 台 `×0.50`、2 台及以上 `×0.25`）。 | [`data/rules/emission.json`](../../../data/rules/emission.json)<br>[`docs/spec/02_sensing_tracks_ew_emission.md`](../02_sensing_tracks_ew_emission.md) §3.5.3, §3.5.5<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §6.2<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §9.6 | [`sensing.py`](../../../tools/papersim/sensing.py)<br>[`enemy_ai.py`](../../../tools/papersim/enemy_ai.py)<br>`H03` 复测通过 |
+| **T-06**<br>（对应 `B-T3-08`） | 1. 消除落点偏移的“1 km 中空不命中环”：从 `[Min, Max] + extra` 改为**实心圆盘半径采样** `Rng.Range(0.0, tierDef.OffsetM.Max + extra)`；<br>2. 修正国家级导航欺骗（`national_gnss_spoof`）对 C 档武器的截断倒挂：当 `b_idx - 2 < 0`（溢出 D 档）时，每溢出 1 档追加 `+1500 m` 的 `NatExtraOffsetM`，确保国家级导航欺骗优于单台区域干扰车。 | [`data/rules/ew.json`](../../../data/rules/ew.json)<br>[`docs/spec/02_sensing_tracks_ew_emission.md`](../02_sensing_tracks_ew_emission.md) §3.4.5<br>[`docs/spec/03_engagement_impact_scoring.md`](../03_engagement_impact_scoring.md) §3.5.4<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §6.4<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §9.5 | [`sensing.py`](../../../tools/papersim/sensing.py)<br>[`engagement.py`](../../../tools/papersim/engagement.py)<br>`BT3_08` 复测通过 |
+| **T-07**<br>（对应 §3.13 `H-13`、`B-T3-07`、原表 `T-09`） | 将自动结算（`AutoResolve`）的默认 `InterceptProbMult` 从 `1.0` 调优为 **`0.85`**（并写入 `campaign.json`），使自动结算相对手动接管产生稳定的 10%–15% 额外加权损失。 | [`data/rules/campaign.json`](../../../data/rules/campaign.json)<br>[`data/schema/rules.schema.json`](../../../data/schema/rules.schema.json)<br>[`docs/spec/05_campaign_and_modes.md`](../05_campaign_and_modes.md) §2.4.1<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §10.4<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §9.18 | [`runner.py`](../../../tools/papersim/runner.py)<br>`H13` 复测通过 |
+| **T-08**<br>（对应 §3.15 `H-15`、`B-T3-09`、原表 `T-02`/`T-09`） | 1. 在 `mobile_fire_team_gun`、`zu23_2_gun`、`s60_gun`、`sky_sentinel_gun`、`manpads_missile` 的 `targets` 中补齐 **`"CM"`**；<br>2. 在 `pac2.targets` 中加入 **`"AC_LOW"`**（允许爱国者远程猎杀 `su24m`）；<br>3. 在 `s200.restrictToEnemies` 中加入 **`"su34"`**。 | [`data/units/air_defense.json`](../../../data/units/air_defense.json)<br>[`docs/spec/03_engagement_impact_scoring.md`](../03_engagement_impact_scoring.md) §3.1.1<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §5.1<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §2.1 | [`engagement.py`](../../../tools/papersim/engagement.py)<br>`H15` & `BT3_09` 复测通过 |
+| **T-09**<br>（对应 §3.5 `H-05`、原表 `T-07`） | 1. 将无雷达火控高炮自带的 `local_optical` 基准探测距离从 `8.0 km` 下调为 **`3.0 km`**（夜间 `×0.6 = 1.8 km < 机枪射程 2.5 km`），且未获雷达/探照灯/声学精细引导时火控有效射程受夜间目视视距约束；<br>2. 将 `searchlight` 的照射半径 `rangeKm` 从 `3.0` 提升至 **`5.0 km`**。 | [`data/units/sensors.json`](../../../data/units/sensors.json)<br>[`docs/spec/02_sensing_tracks_ew_emission.md`](../02_sensing_tracks_ew_emission.md) §3.1.1<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §5.2<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §3.1 | [`sensing.py`](../../../tools/papersim/sensing.py)<br>[`engagement.py`](../../../tools/papersim/engagement.py)<br>`H05` 复测通过 |
+| **H-07 修正**<br>（对应 §3.7 `H-07`） | 诱饵识别率与雷达快速更新（`fastUpdate`）挂钩：仅传感器网络融合航迹达到 `Precise (0.9)` 时识别概率取决于该航迹是否由具备 `fastUpdate: true` 的 3D 雷达贡献（3D 雷达为 `0.70`，慢扫 2D 雷达即使凑满质量也按 `0.35` 识别）；且地面火控自带 `local_optical` 不计入雷达网诱饵识别。 | [`data/rules/decoy_threat.json`](../../../data/rules/decoy_threat.json)<br>[`docs/spec/02_sensing_tracks_ew_emission.md`](../02_sensing_tracks_ew_emission.md) §3.2.4<br>[`docs/塔防数值表_v1.md`](../../塔防数值表_v1.md) §9.7 | [`sensing.py`](../../../tools/papersim/sensing.py)<br>`H07` 复测通过 |
+| **H-10 修正**<br>（对应 §3.10 `H-10`） | 试探波（`probe`）敌方情报采集扩展（条件 A + 条件 B）：不仅采集暴露度 `>= 50`（下调自 `70`）的单位，还会在试探威胁距防空/传感器单位 `<= 12 km`（上调自 `8 km`）且该单位开机或本夜曾开火时发现其位置，驱动后续巡航导弹 A* 绕航。 | [`docs/spec/04_enemy_ai_commands.md`](../04_enemy_ai_commands.md) §3.2.4<br>[`docs/游戏设计文档_GDD_v1.md`](../../游戏设计文档_GDD_v1.md) §7.3 | [`enemy_ai.py`](../../../tools/papersim/enemy_ai.py)<br>`H10` 复测通过 |
+
+---
+
+### 7.2 实验 1（`test_01` 两夜 × 8 种战术 Bot）调优前后对比
+
+| Bot 策略 | 两夜存活率 (前 → 后) | 第 1 夜拦截率 (前 → 后) | 第 2 夜拦截率 (前 → 后) | 第 1 夜加权损失 (前 → 后) | 第 2 夜加权损失 (前 → 后) | 第 1 夜效费比 ExR (前 → 后) | 两夜累计信任度变化 (前 → 后) | 综合得分 (前 → 后) |
+|---|---|---|---|---|---|---|---|---|
+| `smart_blink` | 100.0% → **100.0%** | 55.28% → **72.22%** | 47.39% → **79.65%** | 12.14% → **9.03%** | 6.45% → **0.00%** | 1.38 → **4.04** | 0.00 → **+2.58** | 75.20 → **85.64** |
+| `relocator` | 91.7% → **100.0%** | 68.06% → **71.11%** | 93.74% → **96.26%** | 21.50% → **20.83%** | 24.14% → **21.33%** | 7.57 → **8.08** | +1.58 → **+4.75** | 63.70 → **72.49** |
+| `default` | 75.0% → **91.7%** | 68.06% → **71.11%** | 92.20% → **97.71%** | 25.67% → **24.21%** | 27.89% → **24.21%** | 7.57 → **8.08** | 0.00 → **+4.42** | 52.41 → **66.69** |
+| `passive` | 75.0% → **83.3%** | 68.06% → **70.56%** | 91.50% → **96.71%** | 26.86% → **25.00%** | 27.99% → **24.71%** | 7.57 → **7.55** | 0.00 → **-12.33** | 52.23 → **54.84** |
+| `wasteful` | 75.0% → **83.3%** | 68.06% → **70.56%** | 92.20% → **96.71%** | 25.67% → **24.21%** | 27.89% → **24.71%** | 7.57 → **7.55** | 0.00 → **-12.17** | 52.41 → **54.76** |
+| `panic` | 75.0% → **75.0%** | 56.11% → **60.83%** | 64.96% → **66.37%** | 23.81% → **16.71%** | 25.49% → **22.86%** | 6.80 → **6.88** | 0.00 → **-2.50** | 49.42 → **52.66** |
+| `hoarder` | 8.3% → **8.3%** | 30.83% → **36.67%** | 77.78% → **94.44%** | 52.25% → **47.83%** | 45.28% → **33.33%** | 3.74 → **5.41** | -15.25 → **-15.75** | 1.98 → **4.43** |
+| `never_emit` | 8.3% → **8.3%** | 28.61% → **35.56%** | 25.00% → **58.33%** | 50.92% → **48.46%** | 56.39% → **51.67%** | 2.66 → **5.14** | 0.00 → **-10.33** | 2.91 → **3.36** |
+
+**核心改善结论**：
+1. **`default` vs `wasteful` 彻底拉开差距（验证 `T-04`）**：调优前 `default` 与 `wasteful` 完全重合（得分同为 `52.41`，信任度同为 `0.00`）；调优后，`default`（保留 3 枚 NASAMS 备弹拦截 Kh-101）取得 **91.7%** 存活率、**+4.42** 信任度、**66.69** 综合得分，而 `wasteful`（零备弹限制，用 0.85 M\$ 的 NASAMS 狂打 0.05 M\$ 的 Shahed）因触发 `wastefulWeapon` 与 `inquiry` 调查团问责，两夜累计损失 **-12.17** 信任度，综合得分跌至 **54.76**（落后 `default` **11.93 分**）。
+2. **`smart_blink` 与 `relocator` 稳居前二（验证 `T-01`、`T-02`、`T-03`、`T-08`）**：由于高炮/单兵筒补齐 `"CM"` 标签且反导反应时间恢复正常，`smart_blink` 第 1/2 夜拦截率跃升至 **72.22% / 79.65%**（第 2 夜实现 **0.00%** 加权损失），综合得分达 **85.64**；`relocator` 两夜存活率达 **100.0%**，得分升至 **72.49**。
+
+---
+
+### 7.3 实验 2（部署拓扑敏感度：2A 标准关 `test_01` & 2B 合成打击 `combined_arms`）调优前后对比
+
+#### 表 2A：`test_01` 部署拓扑对比（前 → 后）
+
+| 拓扑方案 | 两夜存活率 (前 → 后) | 第 1 夜拦截率 (前 → 后) | 第 2 夜拦截率 (前 → 后) | 第 1 夜加权损失 (前 → 后) | 第 2 夜加权损失 (前 → 后) | 综合得分 (前 → 后) |
+|---|---|---|---|---|---|---|
+| `D_layered`（外推分层防空网） | 58.3% → **100.0%** | 70.28% → **78.33%** | 86.44% → **91.03%** | 27.63% → **25.46%** | 30.13% → **25.87%** | 40.78 → **67.98** |
+| `D_default_spiral`（默认螺旋部署） | 75.0% → **83.3%** | 68.06% → **70.56%** | 92.20% → **96.71%** | 25.67% → **24.21%** | 27.89% → **24.71%** | 52.41 → **54.76** |
+| `D_all_stacked`（全员抱团守电厂） | 75.0% → **75.0%** | 62.50% → **68.06%** | 87.35% → **90.71%** | 25.00% → **23.83%** | 27.99% → **23.52%** | 50.83 → **51.15** |
+| `D_all_north`（全员偏置北侧） | 33.3% → **50.0%** | 68.61% → **70.83%** | 90.00% → **90.28%** | 30.25% → **30.38%** | 35.14% → **29.75%** | 22.84 → **32.27** |
+
+#### 表 2B：`combined_arms` 全谱系合成打击拓扑对比（前 → 后）
+
+| 拓扑方案 | 两夜存活率 (前 → 后) | 第 1 夜拦截率 (前 → 后) | 第 2 夜拦截率 (前 → 后) | 第 1 夜加权损失 (前 → 后) | 第 2 夜加权损失 (前 → 后) | 综合得分 (前 → 后) |
+|---|---|---|---|---|---|---|
+| `D_all_stacked`（核心抱团 + 全装） | 75.0% → **100.0%** | 77.78% → **87.04%** | 76.19% → **84.26%** | 21.97% → **10.97%** | 34.93% → **25.42%** | 51.16 → **65.99** |
+| `D_default`（标准均衡 + 全装） | 58.3% → **91.7%** | 78.70% → **86.34%** | 77.98% → **83.69%** | 23.39% → **13.72%** | 34.86% → **21.61%** | 40.28 → **63.69** |
+| `D_layered`（外推梯队 + 全装） | 66.7% → **83.3%** | 76.62% → **85.42%** | 77.64% → **82.22%** | 21.58% → **14.03%** | 34.58% → **25.31%** | 46.23 → **56.83** |
+| `D_no_decoy_no_ew`（撤除诱饵与电子战） | 66.7% → **66.7%** | 75.69% → **84.72%** | 74.03% → **79.72%** | 24.44% → **26.06%** | 36.11% → **32.33%** | 45.28 → **44.79** |
+
+**核心改善结论**：
+1. **`D_layered` 逆袭登顶 `test_01` 第一名（验证 `T-02`、`T-03`、`T-08`）**：调优前 `D_layered` 因变电站 `10 HP` 脆皮与高炮无法拦截巡航导弹，存活率仅 `58.3%`（得分 `40.78`）；调优后，外推高炮层对 Kh-101 形成首轮消耗，变电站 `15 HP` 提供了合理的容错空间，且城区外拦截避免了 `Level 2` 碎片砸伤平民区，`D_layered` 两夜存活率跃升至 **100.0%**，综合得分从 `40.78` 飙升至 **67.98**，反超 `D_default_spiral`（**54.76**）与 `D_all_stacked`（**51.15**）达 **+13.22 分**！
+2. **诱饵与电子战在合成打击中的不可替代性（验证 `T-01`、`T-05`、`T-06`）**：在 `combined_arms` 中，配备诱饵与电子战的 `D_default` 存活率从 `58.3%` 升至 **91.7%**（第 1/2 夜加权损失降至 **13.72% / 21.61%**，得分 **63.69**），而撤除诱饵与电子战的 `D_no_decoy_no_ew` 存活率停留在 **66.7%**（第 1/2 夜损失高达 **26.06% / 32.33%**，得分 **44.79**），两者拉开 **+18.90 分** 的显著差距。
+
+---
+
+### 7.4 实验 3（H-01..H-15 与 B-T3-01..B-T3-10 专项机制）调优前后对比与重评定
+
+| 编号 | 核心检验指标 | 调优前实测数据 | 调优后实测数据（[`d4_results.json`](../../../tools/papersim/experiments/d4_results.json)） | 原评级 → 复测评级 |
+|---|---|---|---|---|
+| **H-01** | 雷达全开 vs 闪烁反辐射生存率与拦截率 | `always_on` 被毁 `0.42` 台；`smart_blink` `0.00` 台、拦截率 **84.38%** | 保持优异：`smart_blink` 雷达 0 损毁，拦截率维持 **>84%** | ✅ → **✅ 验证通过** |
+| **H-02** | 物理转移 vs 原地不动战损与暴露度 | 转移阵地 `0.00` 损毁 vs 原地不动 `2.00` 损毁 | 保持优异：转移阵地彻底规避跨夜记忆的弹道/巡航点名打击 | ✅ → **✅ 验证通过** |
+| **H-03**<br>(`B-T3-05`, `B-T3-10`) | 6 种辐射策略的暴露度与拦截效率动态涌现 | `on_warning` 与 `decoy_coordinated` 在 `test_01` 暴露比均为 `1.0000`（与 `always_on` 无异） | **`test_01` 峰值暴露度完美分化**：`always_on` (**100.0**, 比值 `1.00`) > `decoy_coordinated` (**63.35**, 比值 `0.6335`) > `intermittent` (**59.25**, 比值 `0.5925`) > `on_warning` (**50.00**, 比值 `0.5000`) > `silent_standby` (**0.00**, 均值 `1.48`) > `silent` (**0.00**)。<br>**`arm_sead` 暴露度**：`always_on` (`91.67`) > `on_warning` (`75.00`) > `decoy_coordinated` (`63.06`, 拦截率 **80.73%**) > `intermittent` (`59.17`) > `silent_standby` (`0.00`)。 | ⚠️/❌ → **✅ 验证通过** |
+| **H-04**<br>(`H-08`, `B-T3-01`) | 备弹保留与目标白名单 vs 浪费好弹惩罚 | `wasteful_any` 零惩罚（信任度 `+1.00`），爱国者打 Shahed 不触发 `wastefulWeapon` | **彻底修复**：在 `H04` 中，`wasteful_any` 因好弹打无人机平均触发 `wastefulWeapon` 与 `inquiry` 问责，信任度从 `+1.00` 暴跌至 **-9.00**；而 `reserve_6_strict`（**+2.33**）与 `whitelist_cm_only`（**+3.00**）获得正向信任度奖励。在 `H08` 中，爱国者打 Shahed 纯造价交换比 `0.0125 < 0.20`，100% 触发浪费计数。 | ⚠️/❌ → **✅ 验证通过** |
+| **H-05** | 夜间光学降级、声学预警与探照灯协同阶梯 | `night_no_radar_no_searchlight` 与 `with_searchlight` 拦截率完全相同（`78.89%`） | **形成完美单调递增阶梯（12 种子 × 16 架次）**：<br>1. `night_no_radar_no_searchlight`：拦截率 **44.27%**（开火 `28.00` 次，损失 `27.50%`）<br>2. `night_with_acoustic_no_searchlight`：拦截率 **70.83%**（开火 `39.67` 次，损失 `13.75%`）<br>3. `night_no_radar_with_searchlight`：拦截率 **87.50%**（开火 `55.25` 次，损失 `5.00%`）<br>4. `day_clear`：拦截率 **90.10%**（开火 `56.92` 次，损失 `3.75%`）<br>5. `night_with_acoustic_with_searchlight`：拦截率 **93.75%**（损失 `2.50%`）<br>6. `night_with_radar_no_searchlight`：拦截率 **94.27%**（损失 `2.50%`） | ❌ → **✅ 验证通过** |
+| **H-06** | 城区外远距拦截 vs 城区上空拦截附带损伤 | 城区上空拦截 `Kh-101` (`L=2`) 落入 Band 1，造成 `0 HP` 伤害 | **死区消除**：城区上空拦截 `Kh-101`（碎片 `L = round(6×0.3) = 2`）现命中新增的 `Level 2` 分档，造成 **10%（1 HP）** 基础设施伤害与 **1 栋** 民房损毁（`zone_intercept_hp_loss = 1.00, civil_destroyed = 1.00`），而 `outside_intercept` 为 **0.00 HP**；同时 `DECOY` 残骸保持 `0` 伤害。 | ❌ → **✅ 验证通过** |
+| **H-07** | 3D 雷达 vs 2D 雷达对诱饵（`gerbera`）识别率 | `3d_radar` 与 `2d_radar` 均凑满 `Precise`，识别数同为 `6.75 / 10` | **梯度恢复**：`3d_radar_precise`（`fastUpdate: true`）识别 **6.75 / 10** 架诱饵（放行率 **84.17%**）；`2d_radar_approximate`（`soviet_mid_range_radar`，慢扫无 `fastUpdate`）仅识别 **3.33 / 10** 架（放行率 **70.83%**）；`no_radar_vague_only` 识别 **0.00 / 10** 架（`6.75 > 3.33 > 0.00`）。 | ⚠️ → **✅ 验证通过** |
+| **H-09** | 变电站单点脆弱性与电网崩溃容错 | `substation_central` 仅 `10 HP`（漏 2 架 Shahed 即触发 `grid_collapse`） | **容错合理化**：`substation_central` 升至 `15 HP`（需 3 架 Shahed 直击才全毁），`test_01` 中 `default` 存活率从 `75.0%` 升至 **91.7%**，`D_layered` 存活率从 `58.3%` 升至 **100.0%**。 | ⚠️ → **✅ 验证通过** |
+| **H-10** | 试探波（`probe`）侦察 → 后续巡航导弹 A* 绕航 | 试探波结束时暴露度未达 `70`，`known_targets_found = 0.0`，无绕航 | **侦察—绕航闭环打通**：`with_probe_always_on` 平均发现 **4.58** 个防空/雷达阵地，驱动后续 Kh-101 规划 **8.83** 个航路点、产生 **6,142.5 m** 横向绕航偏移；而 `no_probe_wave` 与 `probe_silent_during_w1`（试探期间静默）发现目标数为 **0.00**，横向偏移 **0.0 m**（航路点 `2.00`）。 | ⚠️ → **✅ 验证通过** |
+| **H-11**<br>(`H-14`) | 弹道/高超音速导弹首发射击反应窗口与 SLS 齐射控制 | `iskander_m` 与 `kinzhal` 反应时间 `12s > 11.4s` 留空时间，**0 发开火、0% 拦截** | **反导与 SLS 全面激活**：<br>• **`H14` 首射窗口**：`iskander_m` 与 `kinzhal` 均为 **2.0s 首射（可打 2 轮）**，`kh101` 首射从 `38.0s` 提前至 **26.0s**，`kh59` 从 `22.0s` 提前至 **11.0s**。<br>• **`H11` 拦截率与效费比**：对 `iskander_m`（20km/60km），`SLS (1+1)` 取得 **66.7% / 93.8%** 拦截率（耗弹 **5.33 / 4.42 发**，效费比 **10.67 / 13.50**），`no-SLS (齐射)` 取得 **93.8% / 100.0%** 拦截率（耗弹 **8.08 / 7.83 发**，效费比 **9.29 / 10.17**）；对 `kinzhal`（60km），`SLS` 与 `no-SLS` 分别取得 **45.8%** 与 **79.2%** 拦截率。 | ❌ → **✅ 验证通过** |
+| **H-12** | 平民区防空警报（`SetAlert`）减伤与疲劳权衡 | `test_01` 无波次打 `city_west`，开关警报伤亡均为 `0.00` | **决策权衡激活**：分流 Shahed 攻打 `city_west` 后，在 `test_01` 中开启警报将平民伤亡从 `2.08` 降至 **1.33**（减免 **36.1%**）；在合成饱和打击下将平民伤亡从 `6.92` 降至 **4.67**（减免 **32.5%**），同时累积 `1.0` 疲劳度。 | ⚠️ → **✅ 验证通过** |
+| **H-13**<br>(`B-T3-07`) | 自动结算（`AutoResolve`）相对手动接管的折损梯度 | 默认 `mult_1.0` 时差值仅 `+0.29%`，无法激励高危夜亲手接管 | **精准落入目标区间**：采用新默认值 **`mult_0.85`** 后，自动结算平均加权损失为 **35.25%**（存活率 `58.33%`），手动活跃指挥（`Active`）平均加权损失为 **22.75%**（存活率 `100.0%`），自动结算平均多损失 **+12.50%**，精准落在理想区间内。 | ⚠️ → **✅ 验证通过** |
+| **H-15** | 机动火力组（MFT）与单兵筒对巡航导弹的末端补防 | 5 种末端武器漏写 `"CM"` 标签，对 `kh101` 开火 **0 次（0% 击落）** | **末端补防激活**：未打补丁的默认 `mobile_fire_team` 现对掠过防区的 10 枚 `kh101` 平均每次掠过点射 **1.00 次**（累计 `10.0` 次），取得 **10.0%** 的单组补防拦截率。 | ❌ → **✅ 验证通过** |
+| **B-T3-08** | 电子战分层：国家级导航欺骗 vs 单位级干扰非叠加 | `national_spoofing_only` 电厂掉血 `25.08 HP`，弱于单台 `area_nav_jammer` (`23.75 HP`) | **倒挂与盲区消除**：`national_spoofing_only` 电厂掉血降至 **21.67 HP**（加权损失 **10.83%**），优于单台 `area_nav_jammer`（**23.75 HP / 11.88%**）；两者同开 `both_national_and_unit_jammer` 为 **19.67 HP（9.83%）**；`nav_spoofer` 为 **21.25 HP**；`counter_uas_jammer` 致坠 **4.83** 架 Lancet。 | ⚠️ → **✅ 验证通过** |
+| **B-T3-09** | 敌方载机平台（`su24m`/`su34`/`tu22m3`）投弹前远程猎杀 | `patriot` 对 `su24m` 投弹前击落率 `0.0%`；`s200` 对 `su34` 击落率 `0.0%` | **远程猎杀威慑建立**：<br>1. `su24m + patriot`：投弹前击落率从 `0.0%` 跃升至 **66.7%（60km 投弹距）** 与 **100.0%（20km / 10km 投弹距）**；<br>2. `su34 + s200`：在 20km / 10km 投弹距下取得 **25.0%** 投弹前击落率；<br>3. `tu22m3 + s200`：在 10km 投弹距下投弹前击落率从 `20.8%` 提升至 **45.8%**（总击落 `0.88` 架/波）。 | ⚠️ → **✅ 验证通过** |
+

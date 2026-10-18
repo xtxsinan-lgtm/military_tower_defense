@@ -266,12 +266,20 @@ class EnemyAiHooks(IEnemyAiHooks):
         sites: List[Tuple[Vec2, float]] = []
         dest_pt = path[-1] if path else None
         for kt in state.enemy_intel.known_targets:
-            if kt.kind in (0, 1):
-                udef = cat.air_defense_units.get(kt.unit_def_id, {})
+            udef = cat.air_defense_units.get(kt.unit_def_id)
+            ddef = cat.deception_units.get(kt.unit_def_id)
+            if udef is not None:
                 rmax = max(
-                    (float(cat.weapons[wid].get("rangeM", 10000.0)) for wid in udef.get("weaponIds", []) if wid in cat.weapons),
-                    default=float(b_rules.get("fakeLauncherAssumedRangeM", 10000.0)),
+                    (float(cat.weapons[wid].get("rangeM", 0.0)) for wid in udef.get("weaponIds", []) if wid in cat.weapons),
+                    default=0.0,
                 )
+            elif ddef is not None and ddef.get("effect") == "visual_decoy":
+                rmax = float(b_rules.get("fakeLauncherAssumedRangeM", 10000.0))
+            elif kt.unit_def_id == "" and kt.kind in (0, 1):
+                rmax = float(b_rules.get("fakeLauncherAssumedRangeM", 10000.0))
+            else:
+                rmax = 0.0
+            if rmax > 0.0:
                 if dest_pt is not None and kt.pos.distance_to(dest_pt) <= rmax:
                     rmax = min(rmax, 4500.0)
                 sites.append((kt.pos, rmax))
@@ -476,18 +484,23 @@ class EnemyIntelSystem:
                     # B-T3-05: Retarget 25% of pending weighted_random munitions
                     self._retarget_pending_spawns_on_exp100(ctx, u, exp100_frac)
 
-        # 2. Check Probe observations when units fire near probe wave threats
+        # 2. Check Probe observations when units fire at or near probe wave threats (04 §3.2.4)
         for ev in list(ctx.events.current_step):
             if ev.type in (SimEventType.InterceptorLaunched, SimEventType.GunFired):
                 fuid = int(ev.data.get("fire_unit_id", 0) or 0)
+                th_id = int(ev.data.get("threat_id", 0) or 0)
                 fu = ctx.state.fire_units.try_get(fuid) if fuid > 0 else None
                 if (
                     fu is not None
                     and fu.pos is not None
                     and fu.id not in ctx.state.enemy_intel.probe_observed_unit_ids
-                    and (fu.exposure >= 15.0 or (fu.emitter is not None and fu.emitter.on))
                 ):
-                    if self._near_probe_threat(ctx, fu.pos, probe_rad_m):
+                    has_sig = (
+                        ev.type == SimEventType.InterceptorLaunched
+                        or fu.exposure >= 15.0
+                        or (fu.emitter is not None and fu.emitter.on)
+                    )
+                    if has_sig and (self._is_probe_threat_id(ctx, th_id) or self._near_probe_threat(ctx, fu.pos, probe_rad_m)):
                         ctx.state.enemy_intel.probe_observed_unit_ids.append(fu.id)
                         self._add_or_update_known_target(
                             ctx,
@@ -518,6 +531,20 @@ class EnemyIntelSystem:
                 else:
                     remaining_held.append(hw)
             ctx.state.enemy_intel.held_waves = remaining_held
+
+    def _is_probe_threat_id(self, ctx: Any, th_id: int) -> bool:
+        if th_id <= 0:
+            return False
+        th = ctx.state.threats.try_get_including_removed(th_id)
+        if th is None:
+            return False
+        _, night = ctx.wave_spawn_system._find_night(ctx)
+        probe_wave_ids = {
+            w["id"]
+            for w in night.get("waves", [])
+            if (parse_ai_tags(w.get("aiTags")) and AiTag.Probe in parse_ai_tags(w.get("aiTags")))
+        }
+        return th.wave_id in probe_wave_ids
 
     def _near_probe_threat(self, ctx: Any, pos: Vec2, rad_m: float) -> bool:
         _, night = ctx.wave_spawn_system._find_night(ctx)

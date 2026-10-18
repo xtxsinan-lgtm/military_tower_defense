@@ -924,7 +924,9 @@ class TrackFusionSystem:
         tr_rules: Dict[str, Any],
         dets: Optional[List[RawDetection]] = None,
     ) -> None:
-        if tr.threat_id <= 0 or tr.identified_as_decoy or tr.quality < TrackQuality.Approximate:
+        net_q = getattr(tr, "network_quality", None) or TrackQuality.Vague
+        prev_net_q = getattr(tr, "decoy_checked_quality", TrackQuality.Vague)
+        if tr.threat_id <= 0 or tr.identified_as_decoy or net_q < TrackQuality.Approximate:
             return
         th = ctx.state.threats.try_get(tr.threat_id)
         if th is None or th.tag != TargetTag.DECOY:
@@ -947,17 +949,19 @@ class TrackFusionSystem:
         p_approx = min(1.0, p_approx + bonus)
         p_prec = min(1.0, p_prec + bonus)
 
-        if tr.quality == TrackQuality.Approximate and not tr.decoy_check_done:
+        if net_q == TrackQuality.Approximate and not tr.decoy_check_done:
             tr.decoy_check_done = True
+            setattr(tr, "decoy_checked_quality", TrackQuality.Approximate)
             if ctx.rng.chance(p_approx):
                 tr.identified_as_decoy = True
                 ctx.events.emit(SimEventType.DecoyIdentified, fields=(tr.id, tr.threat_id), track_id=tr.id, threat_id=tr.threat_id)
-        elif tr.quality == TrackQuality.Precise and (is_new or prev_q < TrackQuality.Precise):
+        elif net_q == TrackQuality.Precise and prev_net_q < TrackQuality.Precise:
             if not tr.decoy_check_done:
                 tr.decoy_check_done = True
                 p_roll = p_prec
             else:
                 p_roll = (p_prec - p_approx) / max(1e-9, 1.0 - p_approx) if p_approx < 1.0 else 1.0
+            setattr(tr, "decoy_checked_quality", TrackQuality.Precise)
             if ctx.rng.chance(p_roll):
                 tr.identified_as_decoy = True
                 ctx.events.emit(SimEventType.DecoyIdentified, fields=(tr.id, tr.threat_id), track_id=tr.id, threat_id=tr.threat_id)
@@ -1253,6 +1257,10 @@ class EmissionSystem:
         for tr in ctx.state.tracks.alive_list():
             if tr.quality >= TrackQuality.Approximate:
                 return True
+        for w_tick, _, _, exp_sec, _, _ in getattr(ctx.sensor_system, "_warning_schedule", []):
+            end_lead = SimTime.sec_to_ticks_ceil(float(exp_sec) + 120.0, ctx.step_sec)
+            if w_tick <= ctx.tick <= end_lead:
+                return True
         return False
 
     def _should_open_last_moment(self, ctx: Any, u: PlayerUnitEntity) -> bool:
@@ -1271,6 +1279,10 @@ class EmissionSystem:
         return False
 
     def _decoy_ready(self, ctx: Any, u: PlayerUnitEntity) -> bool:
+        if isinstance(u, DeceptionUnit):
+            return True
+        if not self._has_warning_or_approx_track(ctx):
+            return False
         for d in ctx.state.deception_units.alive_list():
             if d.deploy_state == UnitDeployState.Deployed and d.emitter is not None and d.emitter.on:
                 return True
@@ -1379,16 +1391,19 @@ class ExposureSystem:
 
                 if emitting and kind != EntityKind.DeceptionUnit and u.emitter is not None:
                     if u.emitter.policy_id == "on_warning":
-                        rate *= 0.70
+                        rate *= 0.85
                     elif u.emitter.policy_id == "decoy_coordinated":
-                        rate *= 0.25
+                        rate *= 0.35
 
                 if u.pos is not None and any(u.pos.distance_to(rp) <= recon_rad_m + 1e-9 for rp in recon_positions):
                     rate += r_recon
 
                 n_launch = launches_by_unit.get(u.id, 0)
                 if rate == 0.0 and n_launch == 0:
-                    rate = r_silent
+                    if u.emitter is not None and u.emitter.policy_id in ("on_warning", "decoy_coordinated"):
+                        rate = 0.12 * r_silent
+                    else:
+                        rate = r_silent
 
                 new_exp = min(100.0, max(0.0, prev_exp + rate * ctx.step_sec + n_launch * per_missile))
                 u.exposure = new_exp
