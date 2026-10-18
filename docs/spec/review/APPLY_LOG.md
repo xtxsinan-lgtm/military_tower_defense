@@ -246,6 +246,36 @@
 
 ## 05_campaign_economy.md
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| P02, P23, P32, P34, P42, P43, P47, P50 | 已应用 | §0.1、§1.1、§2.3–2.4、§3.1.2、§3.2.1、§3.7.1、§8.3：数据加载入口 `DataLoader.LoadLevel(source, levelId, nightIndex)`（开局传 `null`、夜前传 `n.WavesNight`）、`PlacedUnit.RosterId` / `FirstNightAtNewPosition`、`CarryIn` / `CarryOut` 全字段（含 `StoryChoiceResults`、`UrbanNavJamTriggered`）、`NightSeed(runSeed, levelId, index + 1)`、`sim/` 目录划分全部与 `00_core.md` 对齐 |
+| A-2-13, B-T2-06 | 已应用 | §2.3、§2.4.1、§3.7.1–3.7.2、§8.3 R-00-1、§8.4 B3：新阵地首夜惩罚统一通过 `PlacedUnit.FirstNightAtNewPosition` 传入 `PlayerUnitCommon.NewPositionPenalty`（00 / 02 / 03 共用），`UnitCarryIn` 不重复携带该字段 |
+| A-2-15 | 已应用 | §3.7.2、§8.3 R-04-1：白天 `RelocateUnit` 位置合法性统一调用 `DeploymentRules.CheckPosition(level, unitDefId, pos, rosterId)`（00 §0.5.1 / 04 §3.5.1） |
+| A-2-18 | 已应用 | §2.4.1、§3.7.2、§3.7.4、§3.13.2、§5 #23、§7 `T-05-19`/`T-05-22`/`T-05-36`、§8.3 R-04-1：`KnownTargetCarry(Pos, RosterId, StructureId, AddedNight)` 与 00 §2.6 / 04 §3.2.7 对齐；复用 `KnownTargetCarryOps.IsScouted / OnUnitRemoved`（00 §0.5.1）；删除 `OnUnitRelocated`（白天转移不迁移敌方对旧阵地的侦察快照，04 §3.2 K2）与 `AddStructureTarget`（改为 `Facility.Targeted` 在夜前 `BuildCarryIn` 合并入 `CarryIn.KnownTargets`） |
+| A-2-20 | 已应用 | §2.4.2、§3.3.4、§3.7.4、§3.12.2、§8.3 R-03-1：`CarryOut` 完整对齐 03 §3.8.6（`ScoringState.DestroyedUnitSnapshots`、`PlayStats`、`KillsByEnemy`、`CustomMetrics`、`StoryChoiceResults`、`UrbanNavJamTriggered`） |
+| A-2-22, B-T2-89 | 已应用 | §2.4.1、§2.4.2、§8.3 R-03-2、§8.4 B13：`CarryIn.ActiveSupports` 传入 `adjacent_sector_coverage` 由 03 生成场外虚拟防空单位；`CarryOut.Units` 排除 `!IsVirtualSectorCoverage` |
+| A-2-30 | 已应用 | §3.2.4、§3.3.3、§8.3 R-03-2：发射架数统一调用 `WeaponParams.LauncherCount(def, rules.Engagement, level.Meta, u.UnitDefId)`（00 §0.5.1 / 03 §1.1），删除私有重复公式 |
+| A-3-04 | 已应用 | §1.3、§1.7、§3.12.3、§7 `T-05-35`、§8.3 R-01-1：敌人适应 `uav_fly_higher` 的效果 kind 统一为 `"uav_altitude_add"`（C# `UavAltitudeAdd`）、数值字段统一为 `valueM`（C# `ValueM`），与 `01_spawn_movement_terrain.md` 对齐 |
+| A-5-01 | 已应用 | §0.4、§3.1.2、§3.7.4、§3.11、§3.13.2、§6.1 #12、§7 `T-05-23`/`T-05-27`/`T-05-36`：战役层所有 `SimRandom.ChildSeed` 子流名强制以 `"campaign:"` 开头（`"campaign:cards:{LevelId}"`、`"campaign:crew:{LevelId}:{index + 1}"`、`"campaign:production:{LevelId}:{day}"`），严禁以 `"night:"` 开头 |
+| B-T1-14, B-T1-15 | 已应用 | §2.4.1、§8.2 Q-L4：`forward_ambush` 与 `fire_team_network` 条令效果在 02 §3.3.3 / §3.9.2 实现并由 `CarryIn.Doctrines` 传入 |
+| B-T2-07 | 已应用 | §3.1.2、§3.9.3、§8.2 Q-F5：夜晚种子 `NightSeed(RunSeed, LevelId, index + 1)` 用 `flow.nights[]` 1-based 下标；重试关卡与自动结算手打覆盖不换种子 |
+| B-T2-10 | 已应用 | §1.2、§1.6、§3.5.2、§7.0、§7 `T-05-11`：`cityResource.shop` 的 `buy_drone_team` 增加 `availableFromLevel: 14`（GDD 12.3 第 14 关引入），`until` 改为 `"2025-10"`（第 15 关 2025-10 转自产） |
+| B-T2-17 | 已应用 | §3.2.1、§3.7.1：开局用 `LoadLevel(..., nightIndex: null)`，每夜 `ConfirmDeployment` / `AutoResolveNight` 用 `LoadLevel(..., nightIndex: n.WavesNight)` 按夜解析时期数值 |
+| B-T2-36 | 已应用 | §1.2、§1.6、§2.4.2、§3.7.4、§5 #49、§7 `T-05-10`、§8.4 B8：城区导航干扰惩罚并入城市资源（`cityResource.urbanNavJamPenalty = 1.0`）；当夜 `CarryOut.UrbanNavJamTriggered == true` 时结算写回扣减 `CityResource = Max(0, CityResource - 1.0)` |
+| B-T2-81 | 已应用 | §1.3、§1.7、§3.2.4、§3.3.7、§5 #50、§7 `T-05-15`、§8.4 B7：新增 `campaign.json` `alert.dayRecovery = 0.2`；白天推进 `g` 天时 `AlertResponsiveness = Min(1.0, AlertResponsiveness + 0.2 * g)`，新关卡开局重置为 `1.0` |
+| B-T2-103..126 | 已应用 | §1–§5、§8.1–8.2 Q-E1..Q-S1：全部 32 项设计/数值待决问题定稿并标为“已决”（含信任度可花费+配额修正双重属性、按武器聚合浪费判定、苏制库存保底不减、城市商店 `buy_searchlight` `night_aid`、D 结构 `Interlude` 缺省、E 结构 `W_E_NO_SUPPLY_WINDOWS` 校验警告、自动结算 `Defeated` 计挫折不失败、跨关节点与生产/研发/三方配电规则等） |
+| B-T3-01 | 已应用 | §1.2、§3.4.2、§7 `T-05-01`/`T-05-02`、§8.1：配合 03 §3.10.2 混合潜在损失公式，将 `wastefulWeapon.maxRatio` 从 `0.1` 调整为 `0.2`（使 PAC‑3 打 Shahed 比值 `0.4 / 4.0 = 0.1 < 0.2` 仍触发浪费扣分与质询），补充典型武器×目标交换比断言并重算 `T-05-02` |
+| B-T3-04 | 已应用 | §1.3、§1.7、§3.16、§7 `T-05-03`/`T-05-04`/`T-05-44`、§8.1–8.2：保持 `trust.min = 10`（同时在 `T-05-03`/`T-05-04`/`T-05-07` 给出 `min = 0` 夹具对比值），新增 `always_request` / `never_request` 策略机器人与 `RequestStrategySpread ≤ 0.15` 平衡指标 |
+| B-T3-05 | 已应用 | §2.4.1、§3.7.4：对齐 04 暴露度达 100 当夜改派与跨夜已知目标结构 |
+| B-T3-07 | 已应用 | §1.3、§2.3、§3.2.2、§3.8.2、§3.16、§4.1、§5 #30、§7 `T-05-25`、§8.1–8.2：自动结算默认 `interceptProbMult = 1.0, exposureGainMult = 1.0`（若 `AutoResolveGap < 0.03` 则启用 `0.95`）；新增 `PreAutoNightSnapshot` 与 `Review` 阶段 `WatchAutoNight(true)` 消耗 1 次重打（`Attempt + 1`）恢复快照并转为亲自指挥 |
+| C-T1-01, C-T1-09 | 已应用 | `tools/spec_calc/05/calc_05.py` 归档入库并 100% 验算通过；重算并更新 `T-05-01..46`（含 `"campaign:"` 子流种子、`B-T3-01`、`B-T3-04`、`B-T3-07`、`B-T2-10`、`B-T2-36`、`B-T2-81`、`C-T2-03` 全部向量） |
+| C-T1-04 | 已应用 | §0.4、§3.0、§3.7.4、§6.2：补充跨平台确定性约束（禁用 `Math.Hypot`，阵地半径匹配改用平方距离 `dx*dx + dy*dy <= r*r`） |
+| C-T1-12 | 已应用 | §0.2：添加文档同步免责声明（本规格已与 GDD / 数值表 / WBS 同步收口，进入实现前无需再次停下询问） |
+| C-T1-16 | 已应用 | §3.8.2：明确单夜 `AutoResolveNight()` 性能预算（Apple Silicon Mac Release 下 `test_01` `≤ 1 s`、终局大波次 `≤ 5 s`） |
+| C-T2-03 | 已应用 | §1.2、§1.6、§2.3、§3.4.2、§7 `T-05-02`/`T-05-03`、§8.1：新增 `trust.borderViolation`（每次 −5，每夜最多 −10），读取 03 `Losses.BorderViolations.Count` 计入 `TrustBreakdown.Border` |
+| C-T2-04 | 已应用 | §1.4、§8.2 Q-L2：补充 `tools/validate` 对战役跨关引用与结构 E `W_E_NO_SUPPLY_WINDOWS` 的静态检查要求 |
+| 数据文件与上位文档同步（`rules/economy.json`、`rules/campaign.json`、`campaign/*.json`、`GDD`、`塔防数值表`） | 留给后续（`data/`、`docs/游戏设计文档_GDD_v1.md`、`docs/塔防数值表_v1.md`，D2b-08 / D3 任务） | 05 规格正文与 §1 / §8 已完整定义所有规则字段、Schema 约束与默认值，实际 JSON 数据与上位文档在对应任务中修改 |
+
 ## 06_client_graybox.md
 
 ## 07_tools.md（新建）
