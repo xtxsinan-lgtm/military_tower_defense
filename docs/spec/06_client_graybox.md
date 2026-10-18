@@ -1351,7 +1351,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 
 ## 7. 测试用例
 
-> 预期数值由 `/Users/xtxsinan/.gemini/antigravity/brain/f5d90b3a-1445-4897-ba48-ae246f303a94/scratch/spec_calc_06.py` 计算（与 3 节公式一一对应）。
+> 预期数值由 [`tools/spec_calc/06/calc_06.py`](../../tools/spec_calc/06/calc_06.py) 计算（与第 3 节公式一一对应；按 C-T1-04 不使用 `math.hypot`）。
 > 7.1 – 7.2 为纯 C# 单元测试（`game/tests`，`dotnet test game/tests`），不启动引擎、不读正式数据；7.3 为 Godot 无头烟雾测试（读正式 `test_01`，只断言结构与一致性，不断言平衡数值）。
 > 浮点比较：写"精确"的用 `==`（同一 IEEE 运算序列）；其余容差 `1e-9`（相对或绝对，见各条）。
 
@@ -1361,7 +1361,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 - **投影**：`MapProjection(worldPxPerM: 4, mapHeightM: 2000)`。
 - **相机 `CamT`**：视口 `1000 × 500`；内容范围 `(0, 0) – (3000, 2000)`；`MinSpanM 1000`、`MaxSpanM 400000`、`FitPaddingFactor 1.1`、`ZoomStepFactor 1.25`、`ZoomSmoothingSec 0`（除 T-06-07）；测试开始时直接设置 `CenterM = (1500, 1000)`、`SpanM = TargetSpanM = 3000`（`s = 1/3`），除非另有说明。注意内容范围决定 `EffectiveMaxSpanM = max(3000, 2000 × 1000/500) × 1.1 = 4400`。
 - **`FakeSnap`**：`sealed record FakeSnap(int Tick)`。
-- **`FakeWorld : ISimWorldFacade<FakeSnap>`**：`StepSec = 1`；`DurationTicks`（构造参数）；`Tick` 从 0 开始，`Step()` 使 `Tick += 1` 并记录 `"Step"`；`Snapshot` 返回当前 Tick 的 `FakeSnap`（同一 Tick 内返回同一实例，第一次读取时记录 `$"Snap@{Tick}"`）；`DrainEvents()` 返回脚本 `EventsAt[Tick]`（无则空列表，同一 Tick 只返回一次）；`ThrowAtTick`（`Step()` 使 Tick 变为该值时抛 `InvalidOperationException("boom")`，Tick 不变）；`IsFinished` = `Tick ≥ DurationTicks` 或已返回过 `NightEnded`；`CountsOf` 返回脚本 `Counts`（缺省 `(1, 0, false)`，即"有 1 条航迹、不空闲"）；`Log` 为调用记录列表。
+- **`FakeWorld : ISimWorldFacade<FakeSnap>`**：`StepSec = 1`；`DurationTicks`（构造参数）；`Tick` 从 0 开始，`Step()` 使 `Tick += 1` 并记录 `"Step"`；`Snapshot` 返回当前 Tick 的 `FakeSnap`（同一 Tick 内返回同一实例，第一次读取时记录 `$"Snap@{Tick}"`）；`DrainEvents()` 返回脚本 `EventsAt[Tick]`（无则空列表，同一 Tick 只返回一次）；`ThrowAtTick`（`Step()` 使 Tick 变为该值时抛 `InvalidOperationException("boom")`，Tick 不变）；`IsFinished` = `Tick ≥ DurationTicks` 或已返回过 `NightEnded`；`CountsOf` 返回脚本 `Counts`（缺省 `(1, 0, false, null)`，即"有 1 条航迹、不空闲、无弹道航迹"）；`Log` 为调用记录列表。
 - **`FakeValidator : IPlacementValidator`**：`Check`：`candidate.Pos.X < 0` → `PlacementError("E_TEST_OUT", replaceIndex < 0 ? plan.Units.Count : replaceIndex, "out")`；否则 null。`ValidateAll`：返回构造时给定的列表（缺省空）。
 - **手写部署数据 `MiniDeploy`**（`DeployPlanBuilder` 的主构造函数为 `DeployPlanBuilder(IReadOnlyList<PaletteEntry> entries, IReadOnlyList<AlternatePositionDef> alternates, IPlacementValidator validator)`；客户端用静态工厂 `DeployPlanBuilder.FromLevel(LevelData level, IPlacementValidator validator)` 从关卡数据构造。测试只用主构造函数，不需要 `LevelData`）：
   - `entries = [ PaletteEntry("u_fire", "unit.u_fire.name", 2, Fire), PaletteEntry("u_radar", "unit.u_radar.name", 1, Sensor) ]`。
@@ -1467,18 +1467,26 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 5. `ExpectedAtSec = 10`（早于当前）在 tick 100 到达 → `BallisticUntilTick == 220`。
 6. `ClearBallisticAlarm()` 后 `BallisticAlarmPending == false`，模式不变。
 
-**T-06-19 变速：弹道航迹延长**：新实例；`OnFrameEnd(300, 1, 0, anyBallisticTrack: true)` → `BallisticUntilTick == 420`、`BallisticSlow`；`OnFrameEnd(400, 1, 0, true)` → `520`；`OnFrameEnd(519, 0, 0, false)` → `BallisticSlow`；`OnFrameEnd(520, 0, 0, false)` → `Normal`。
+**T-06-19 变速：弹道航迹延长与动态自适应慢放（C-T3-01）**
+1. 新实例；`OnFrameEnd(300, 1, 0, anyBallisticTrack: true)` → `BallisticUntilTick == 420`、`Mode == BallisticSlow`、`Rate == 0.5`（`minBallisticRemWorldSec == null` 时取 `BallisticSlowRate`）；`OnFrameEnd(400, 1, 0, true)` → `520`；`OnFrameEnd(519, 0, 0, false)` → `BallisticSlow`；`OnFrameEnd(520, 0, 0, false)` → `Normal`。
+2. 动态自适应慢放倍率 $\text{Clamp}(T_{\text{remWorldSec}} / 360,\; 1/60,\; 0.5)$（确保至少 6.0 现实秒反应窗口）：
+   - 锆石级窗口 `OnFrameEnd(300, 1, 0, true, minBallisticRemWorldSec: 12.0)` → `Rate == 1.0 / 30.0`（`0.03333333333333333`，容差 1e-12）。
+   - 匕首级窗口 `OnFrameEnd(301, 1, 0, true, minBallisticRemWorldSec: 22.0)` → `Rate == 11.0 / 180.0`（`0.06111111111111111`，容差 1e-12）。
+   - 伊斯坎德尔级窗口 `OnFrameEnd(302, 1, 0, true, minBallisticRemWorldSec: 35.0)` → `Rate == 7.0 / 72.0`（`0.09722222222222222`，容差 1e-12）。
+   - 极短窗口下限夹取 `OnFrameEnd(303, 1, 0, true, minBallisticRemWorldSec: 3.0)` → `Rate == 1.0 / 60.0`（`0.016666666666666666`，容差 1e-12）。
+   - 充裕窗口上限夹取 `OnFrameEnd(304, 1, 0, true, minBallisticRemWorldSec: 240.0)` → `Rate == 0.5`。
 
-**T-06-20 变速：二选一**
-1. `OnStepEvents([ChoiceRequested{ChoiceId = 7}], 10)` → `ChoiceSlow`，`Rate == 0.5`。
-2. 再 `EarlyWarning{Ballistic = true, ExpectedAtSec = 10}`（tick 11）→ 仍 `ChoiceSlow`（优先级 4 先于 5）。
-3. `OnStepEvents([ChoiceResolved{ChoiceId = 7}], 12)` → `BallisticSlow`（`BallisticUntilTick == 131`）。
-4. `ChoiceResolved{ChoiceId = 99}`（未知 ID）→ 无变化、不抛异常。
-5. 空闲判定：`PendingChoiceIds` 非空时 `OnFrameEnd(t, 0, 0, false)` 不设置 `IdleSinceTick`。
+**T-06-20 变速：二选一（叙事模式硬暂停 + 8.0 现实秒超时，C-T3-01）**
+1. `OnStepEvents([ChoiceRequested{ChoiceId = 7, DefaultOption = 1}], 10)`（`allowManualPause == true`）→ `Mode == ChoiceSlow`，`Rate == 0.0`（硬暂停），`PendingChoiceTimers[7].RemainingRealSec == 8.0`。
+2. 再 `EarlyWarning{Ballistic = true, ExpectedAtSec = 10}`（tick 11）→ 仍 `ChoiceSlow`、`Rate == 0.0`（优先级 4 先于 5）。
+3. 玩家点击或收到 `OnStepEvents([ChoiceResolved{ChoiceId = 7}], 12)` → 切换为 `BallisticSlow`（`BallisticUntilTick == 131`，`Rate == 0.5`）。
+4. 8.0 现实秒超时自动提交：`OnStepEvents([ChoiceRequested{ChoiceId = 8, DefaultOption = 1}], 20)` → `ChoiceSlow`、`Rate == 0.0`；调用 `TickChoiceTimers(5.0)` 返回空列表，`RemainingRealSec == 3.0`；再调用 `TickChoiceTimers(3.0)` 返回 `[(8, 1)]`，自动移除 `8` 并立即恢复 `Mode == BallisticSlow`、`Rate == 0.5`。
+5. `ChoiceResolved{ChoiceId = 99}`（未知 ID）→ 无变化、不抛异常。
+6. 空闲判定：`PendingChoiceIds` 非空时 `OnFrameEnd(t, 0, 0, false)` 不设置 `IdleSinceTick`。
 
-**T-06-21 变速：暂停、硬核、结束**
-- `TogglePause()` 返回 true，`Mode == Paused`，`Rate == 0`；在 `ChoiceSlow` 条件下仍为 `Paused`；再 `TogglePause()` → 回到原模式。
-- `allowManualPause = false`：`TogglePause()` 返回 false，`ManualPaused == false`，`Mode == Normal`。
+**T-06-21 变速：暂停、硬核二选一慢放、结束（C-T3-01）**
+- `TogglePause()` 返回 true，`Mode == Paused`，`Rate == 0`；在 `ChoiceSlow` 条件下仍为 `Paused`（且 `ManualPaused == true` 时 `TickChoiceTimers` 不扣减倒计时）；再 `TogglePause()` → 回到原模式。
+- `allowManualPause = false`（硬核模式）：`TogglePause()` 返回 false，`ManualPaused == false`，`Mode == Normal`；当收到 `OnStepEvents([ChoiceRequested{ChoiceId = 7, DefaultOption = 0}], 10)` 时，不硬暂停，`Mode == ChoiceSlow`、`Rate == ChoiceSlowRate == 1.0 / 60.0`（`0.016666666666666666`，即 1 现实秒 = 1 世界秒）；调用 `TickChoiceTimers(8.0)` 后返回 `[(7, 0)]` 并恢复 `Mode == Normal`、`Rate == 1.0`。
 - `OnStepEvents([NightEnded{…}], 50)` → `Finished`，`Rate == 0`；之后 `TogglePause()` 返回 false；`SetUserSpeedIndex(1)` 后仍 `Finished`。
 
 **T-06-22 变速：关闭自动快进、锁定倍率**

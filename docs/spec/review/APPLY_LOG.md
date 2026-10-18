@@ -278,6 +278,24 @@
 
 ## 06_client_graybox.md
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| P08, P14, P44, P45, P46 | 已应用 | §0.3–0.4、§3.6、§3.9.2、§3.10.1、§3.11、§4.1、§8.2–8.4：全面对齐 `00_core.md` 定稿契约（`TrackView.Tag`、`310 PlayerUnitDestroyed(UnitId, DefId, Category, SourceThreatId, Pos)`、`DeploymentValidator.CheckPlacement`、`GlobalView(CommandPoints, CommandPointsInitial, AlertOn)`、`SimConfig.CaptureDebug`、`SimSnapshot.Debug` / `DebugView` / `DetectionDebugView`） |
+| A-2-15 | 已应用 | §0.4 C9、§3.9.2、§8.3 D-04-1：`Sim04PlacementValidator` 对齐 `04 §3.5.1` 的 `Nightwatch.Sim.EnemyAi.DeploymentValidator.CheckPlacement(level, plan, replaceIndex, candidate)` 与 `DeploymentError(Code, Index, UnitDefId, Detail)`（14 个 `D_*` 错误码） |
+| A-2-16, C-T1-12, C-T2-01 | 已应用 | §0.4 C9、§3.9.6、§3.11、§3.14、§8.3 D-02-1：覆盖查询对齐 `02 §3.8` 的 `Nightwatch.Sim.Sensing.CoverageQuery.ComputeGrid` 及 `01 §3.3` 的 720-bin 径向地平线包络 `HorizonProfile`；单单位 `200 × 200` 格耗时预算从 `≤ 200 ms` 更新为 `≤ 5 ms`；`CoverageComposer` 增加对 `0/1` 二值网格向 `0/2` 的兼容提升 |
+| B-T1-19, B-T1-20, B-T1-21 | 已应用 | §1.7、§2.2、§8.1 Q14–Q16：锁定渲染后端 `gl_compatibility`、Godot 4.3+ .NET SDK 版本与引擎严格一致、导出包 `data/` 置于可执行文件同级目录并由 `DataRootLocator` 定位 |
+| B-T2-06 | 已应用 | §0.1、§3.6、§3.11、§4.1、§8.2 C：事件订阅表、调试层 `Reasons` 决策日志与事件依赖表新增 `408 EnemyGroupsReleased(WaveId, GroupIds, Reason)` |
+| B-T2-07, B-T2-144 | 已应用 | §1.5、§3.9.7、§8.1 Q10：命令行 `--seed` 支持十进制与 `0x` 十六进制，未指定时使用 `SimRandom.NightSeed(DefaultRunSeed, Level.Id, 1)` |
+| B-T2-11, B-T2-146 | 已应用 | §1.5、§3.9.7、§4.2、§8.1 Q12、§8.2 A：硬核模式 `--hardcore` 同时设置 `allowManualPause: false` 与 `SimConfig.AutoChoicePrompts = !Args.Hardcore` |
+| B-T2-135..152 | 已应用 | §1.4、§2.2、§3.2–3.14、§8.1 Q1–Q21：全部 21 项客户端待决问题定稿并标为“已决（2026-10-17）” |
+| B-T3-07 | 已应用 | §0.1、§3.13、§8.4 B9：明确多夜战役与 `WatchAutoNight(true)` 自动夜逐帧播放入口由 `05_campaign_economy.md` 的 `CampaignController` 承接 |
+| C-T1-01 | 已应用 | `tools/spec_calc/06/calc_06.py` 归档入库并通过 `python3` 全量验算；§7 引用路径与测试向量同步更新 |
+| C-T1-04 | 已应用 | §0.4、§3.3.1、§6 #12、`tools/spec_calc/06/calc_06.py`：明确禁用 `Math.Hypot` / `math.hypot`，统一使用 `Vec2.DistanceTo` / `Math.Sqrt(dx*dx + dy*dy)` |
+| C-T1-12 | 已应用 | §0.4：添加文档同步免责声明（本规格已与 GDD / 数值表 / WBS 同步收口，进入实现前无需再次停下询问） |
+| C-T2-02 | 已应用 | §3.14、§8.1 Q19：明确常规规模模拟单步预算 `≤ 2 ms/step`、单帧推进上限 `StepTimeBudgetMs = 10 ms` |
+| C-T3-01 | 已应用 | §1.4、§2.5.4、§3.3.1–3.3.3、§3.5.1–3.5.4、§3.10.1、§3.10.4、§4.2、§5 #13/#14/#41、§6 #5、§7 `T-06-19..21`、§8.1 Q3/Q5：（1）叙事/普通模式下弹出二选一（`ChoiceRequested`）切换为**硬暂停**（`Rate = 0.0`），并附 `ChoiceTimeoutRealSec = 8.0` 现实秒（`unscaledDeltaTime`）倒计时，超时自动提交 `AnswerChoice(DefaultOption)` 并立即恢复原倍速；硬核模式下不硬暂停，强制慢放至 `ChoiceSlowRate = 1/60×`（1 现实秒 = 1 世界秒），同样给足 8.0 现实秒反应窗口；（2）高超音速/弹道慢放采用**动态自适应慢放倍率** $\text{rate} = \text{Clamp}(T_{\text{remWorldSec}} / (60 \times 6.0),\; 1/60,\; 0.5)$，确保至少 `6.0` 现实秒反应窗口（锆石 12s $\to 1/30\times$、匕首 22s $\to 11/180\times$、伊斯坎德尔 35s $\to 7/72\times$） |
+| `02 §3.8` 覆盖网格三态返回值（`0 / 1 / 2`）与 `AGENTS.md` 第 5 节常用命令补充 | 留给后续（`docs/spec/02_sensing_tracks_ew_emission.md`、`AGENTS.md`、`data/loc/zh.json`） | `02 §3.8` 当前正文写二值 `1 = 覆盖, 0 = 不覆盖`，而 `A-2-16` 与 `06 §3.9.6 / T-06-35` 约定三态 `0 = 距离外, 1 = 距离内盲区, 2 = 可探测`（06 已做二值兼容提升，建议后续在 02 §3.8 补齐 `1 = 盲区 / 2 = 覆盖` 分支）；`AGENTS.md` 常用命令与 `data/loc/zh.json` 本地化键在对应任务中写入 |
+
 ## 07_tools.md（新建）
 
 ## 上位文档（GDD / 数值表 / data / test_01）
