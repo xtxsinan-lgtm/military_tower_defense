@@ -147,6 +147,31 @@
 
 ## 02_sensing_tracks_ew_emission.md
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| P05, P06, P08, P09, P12, P15, P17–P20, P23–P26, P29, P32–P34, P36–P37, P44, P46, P48 | 已应用 | §1.1–1.11、§2.1–2.8、§3.1、§4.1–4.2、§8.2：数据模型（`TrackRulesDef.DetectionRules`、`SelfAcquisition`、`WeaponDef.ReactionSec`、`EwRulesDef`、`ExposureRulesDef`）、实体状态（`PlayerUnitCommon`、`EmitterControl`、`Track`、`Threat` 33–43 字段含 `EwEverCovered`）、事件 200–208 与命令 20–21 全部与 `00_core.md` 对齐 |
+| A-2-05 | 已应用 | §3.5.7、§8.3：提供 `FireControlQueries`（`GetTargetFilterMultiplier`、`GetReactionTimeMultiplier`、`GetArmHitProbMultiplier`）供 03 消费 |
+| A-2-06 | 已应用 | §2.6、§3.5.5、§6、§7 `T-02-56`–`T-02-58`：`TargetUnitId` 由 01/04 独占写入、02 只读不改；02 维护 `Threat.HomingUnitId`（辐射源关机时置 0，重开时恢复为 `TargetUnitId`） |
+| A-2-07 | 已应用 | §2.6、§3.4.3、§6、§7 `T-02-30`/`T-02-31`：`Threat.EwEverCovered` 在首次进入开启的导航干扰/欺骗区时置 `true`（不论判定成败） |
+| A-2-11 | 已应用 | §2.2、§3.5.5、§4.2、§7 `T-02-57`：新增 `EmissionChoiceEffects.ApplyArmChoice(state, unitId, silence)` 供阶段 0 `ChoiceStage` 静默辐射源（0 点指挥点） |
+| A-2-12 | 已应用 | §2.1、§3.2.5、§3.5.1、§4.1、§6、§7 `T-02-14`：`FireUnit.RadarDestroyed` 或 `u.Suspended` 时强制关机并发出 `EmitterSwitched { RadarDestroyed / Suspended }`，不产生火控探测 |
+| A-2-13 | 已应用 | §1.11、§2.1、§3.1.2、§3.2.3、§3.4.2：统一使用 `PlacedUnit.FirstNightAtNewPosition` 与运行态 `NewPositionPenalty` |
+| A-2-17 | 已应用 | §4.2、§7 `T-02-64`：`SetEmissionPolicy` 与 `SectorEmissionOverride` 在阶段 0 经 `CommandPointRules.CanSpend / Spend` 校验与扣减指挥点（缺省 1 点，不足报 `NoCommandPoints`） |
+| A-2-21 | 已应用 | §1.10、§2.9、§3.4.3、§7 `T-02-38`：国家级导航欺骗读取 `SupportAsset.State == SupportAssetState.Active` 与 `SupportAsset.RadiusM`（缺省 `30000` m） |
+| A-2-22 | 已应用 | §1.11、§3.2.3、§3.3.3、§3.3.6、§3.6.1、§7 `T-02-24`：消费 `CarryIn.ActiveDoctrineId`（`forward_ambush` 首次开机前免除侦察暴露、`fire_group_network` 局部交叉升级包含火力组自主捕获）与 `CarryIn.Dossier`（`DecoyIdentificationBonus`） |
+| A-2-26 | 已应用 | §2.1、§3.1.2、§3.2.3、§3.8、§7 `T-02-04`/`T-02-04b`：视线统一调用 01 的 `HorizonProfile.HasLineOfSightAgl`（展开及转移完成时调用 `TerrainModel.BuildHorizonProfile`） |
+| A-2-27 | 已应用 | §3.1、§3.4.3、§3.4.4、§3.5.3、§7 `T-02-33`/`T-02-35`：复用 `Geo.PointInPolygon` 与 `Geo.FirstEntryIntoCircle`；电子战诱导/悬停/返航统一调用 `ThreatRouting.Retarget / Hover / BeginEgress` |
+| A-2-28 | 已应用 | §3.1.2、§3.2.8、§7 `T-02-12`：初始化预警时间表排除 `WaveSpawnRules.IsStoryOnlyWave(night, w) == true` 的波次，运行期由 `WaveDefIndex` 查找 `WaveStarted` 波次并补发预警 |
+| A-3-05, A-3-06, A-3-07 | 已应用 | §1.6、§3.4.3–3.4.4、§3.5.4、§4.1、§7：`PlayerUnitDestroyed.Category` 使用 `PlayerUnitCategory`；`TrackRulesDef.DetectionRules` 统一字段名；`EwDiverted`/`EwLinkCut` 来源字段统一命名为 `SourceId` |
+| A-4-04 | 已应用 | §3.4.4、§3.4.5、§4.1、§7 `T-02-35`/`T-02-36`：`EwLinkCut` 追加 `string DefId`，且悬停超时坠毁移除前补发 `EwLinkCut { ThreatId, SourceId = 0, Outcome = Crash, DefId }` |
+| B-T1-07, B-T1-08, B-T1-09, B-T1-10, B-T1-23, B-T1-24 | 已应用 | §1.8、§1.9、§2.5、§3.3、§3.4.7、§4.1、§8.1 Q2/Q15/Q37/Q38：按真实 `ThreatId` 关联航迹；删 `ew.json sideEffects.friendlyInterceptorDroneMult`；暴露速率字段改名 `…RatesPerGameSec`；删 `ratesPerGameSec` 重复三项；航迹标签名统一为 `Track.Tag`；`PlayerUnitDestroyed` 含 `Vec2 Pos` |
+| B-T2-01, B-T2-02, B-T2-03, B-T2-04, B-T2-05, B-T2-06, B-T2-09, B-T2-14 | 已应用 | §1.4、§1.6、§1.9、§1.10、§3.2.3、§3.2.5、§3.4.2、§3.5.3、§7、§8.1：反应时间归 `WeaponDef.ReactionSec`（02 取单位武器最大值）；视线含 4/3 地球曲率；天线缺省高度统一归 `terrain.json.defaultAntennaHeightM = 10`；国家级导航欺骗半径 30 km；断电对主动雷达距离与电子战概率均 ×0.5；新阵地首夜对探测/火控距离与电子战概率均 ×0.7；光学自主捕获夜间无探照灯/热像乘 `opticalNightRangeMult = 0.3`；Orlan 侦察升档由 03 只读 `accuracy.spotterTierBoost` |
+| B-T2-31..54 | 已应用 | §1–§4、§7、§8.1 Q1–Q36：径向地平线包络预计算、低空倍率、精确航迹仅归火控/自主捕获、火控雷达参数、电子战参数与链路中断权重、城区导航干扰 60 游戏秒触发城市资源 −1、反辐射导弹初始锁定距离、辐射策略缺省值、邻近雷达接替、侦察识破、诱饵辐射源、无线电链路无人机、自动探测单位闸门、昼夜与天气倍率、误报频率、民众上报与 B 线延迟、航迹不加随机误差、丢失时间 1 游戏秒、视线开关、诱饵条件概率、车载防护罩、反无人机枪全向、发射暴露仅计导弹 |
+| B-T3-05, B-T3-06, B-T3-08, B-T3-10 | 已应用 | §1.9、§3.4.3、§3.5.4、§3.6、§3.7.1、§7 `T-02-38`、§8.1 Q6–Q12/Q18/Q19/Q39：`EmitterQueries.ListActive` 与 `DeceptionUnit.SeenThrough` 支撑 04 动态选目标；有火控单位自动置 `PendingRelocationAltId`、其余走手动转移命令；区域导航干扰与国家级导航欺骗同目标不叠加（取偏移期望较大者）；暴露度按真实开关机自然产生 |
+| C-T1-01, C-T1-04, C-T1-09, C-T1-12, C-T1-13 | 已应用 | §0.4、§3.1、§3.5.3、§3.6.1、§7：`tools/spec_calc/02/calc_02.py` 入库并验算通过；全部距离改用 `Math.Sqrt(dx*dx + dy*dy)`（禁用 `Math.Hypot`）；反应时间统一读 `WeaponDef.ReactionSec`；添加文档同步免责声明；补大功率电子战站暴露测试用例 `T-02-76` |
+| C-T2-01, C-T2-02, C-T2-07 | 已应用 | §1.5、§1.6、§1.9、§3.2.3、§3.2.5、§3.4.2、§3.8、§7 `T-02-04b`/`T-02-05`/`T-02-13`/`T-02-14`/`T-02-37`：配合 01 径向累积最大遮挡斜率包络并补 `T-02-04b`；新增 §3.8 `CoverageQuery`（雷达/传感器/电子战覆盖格点查询）；补齐 `TimeOfDay = Day`、`Season = Winter`（主动雷达与电子战 ×0.9）与夜间探照灯/热像规则 |
+| 数据文件与 Schema 变更（B-T1-08..10, B-T2-01..05, B-T2-09, B-T2-32..50） | 留给后续（`data/` 与 `data/schema/`，D3 任务） | 规格已在 §1 与 §8.2G 完整定义新字段与兼容加载规则，实际 JSON 数据与 Schema 文件在 D3 阶段修改 |
+
 ## 03_engagement_impact_scoring.md
 
 ## 04_enemy_ai_commands.md
