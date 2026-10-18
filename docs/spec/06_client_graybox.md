@@ -1222,7 +1222,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 
 ### 4.1 消费的事件
 
-客户端消费的事件及处理者见 3.6 订阅表与 3.5.2（`TimeController`）。字段一律按 00 4.2 / 01 4.1 / 02 4.1 / 03 4.2 的定稿使用；04 的事件（400–407）字段以 00 总表为准，04 定稿后对齐（8.3）。
+客户端消费的事件及处理者见 3.6 订阅表与 3.5.2（`TimeController`）。字段一律按 `00_core.md` §4.2、`01_world_terrain_waves.md` §4.1、`02_sensing_tracks_ew_emission.md` §4.1、`03_engagement_weapons_power.md` §4.2、`04_enemy_ai_commands.md` §4.1 的定稿使用。
 
 客户端依赖的**事件字段**汇总（缺任一项会导致对应显示缺失）：
 
@@ -1245,14 +1245,15 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | `AmmoDepleted` | `FireUnitId, WeaponId` | 03 |
 | `ThreatImpacted` | `Pos, DefId` | 03 |
 | `StructureDamaged` / `StructureDestroyed` | `StructureId, HpBefore, HpAfter` / `StructureId` | 03 |
-| `PlayerUnitDestroyed` | `UnitId, DefId` | 03 |
+| `PlayerUnitDestroyed` | `UnitId, DefId, Category, SourceThreatId, Pos` | 03（P14） |
 | `DebrisFell` | `Pos` | 03 |
 | `AirRaidAlertChanged` | `On` | 03 |
 | `SupportArrived` / `SupportRefused` | `SupportAssetId` / `SupportDefId, Reason` | 03 |
-| `KnownTargetAdded` / `KnownTargetRemoved` | `UnitId, Reason` | 04（依赖） |
-| `ChoiceRequested` / `ChoiceResolved` | `ChoiceId, ChoiceKey, DeadlineTick, DefaultOption` / `ChoiceId` | 04（依赖） |
-| `UnitDeployStateChanged` | `UnitId, To` | 04（依赖） |
-| `DialogueShown` | `DialogueKey` | 04（依赖） |
+| `KnownTargetAdded` / `KnownTargetRemoved` | `UnitId, Reason` | 04 |
+| `ChoiceRequested` / `ChoiceResolved` | `ChoiceId, ChoiceKey, DeadlineTick, DefaultOption` / `ChoiceId` | 04 |
+| `UnitDeployStateChanged` | `UnitId, To` | 04 |
+| `DialogueShown` | `DialogueKey` | 04 |
+| `EnemyGroupsReleased` | `WaveId, GroupIds, Reason` | 04（B-T2-06） |
 
 客户端依赖的**快照字段**：
 
@@ -1266,16 +1267,16 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | `SupportAssetView` | `Id, DefId, Pos, State, CenterPos, RadiusM, Exclusive` | 03 2.6 |
 | `StructureView` | `Id, DefId, Pos, Type, MaxHp, Hp, Powered` | 03 2.7 |
 | `GridNodeView` | `Id, Pos, Powered` | 03 2.7 |
-| `ChoiceRequestView` | 灰盒不读（用事件） | 04 |
-| `GlobalView` | 指挥点字段（04 依赖）、`AlertOn`（03） | 03 / 04 |
-| `SimSnapshot.Debug`（新增） | `Detections[]` | 8.2-A |
+| `ChoiceRequestView` | 灰盒不读（用事件） | 04 2.6 |
+| `GlobalView` | `CommandPoints, CommandPointsInitial`（04 2.6）、`AlertOn`（03 2.7） | 00 2.7 / 03 / 04（P45） |
+| `SimSnapshot.Debug` | `Detections[]`（`DetectionDebugView`） | 00 2.7（P46 / 8.2-A） |
 
 ### 4.2 发出的命令与输入
 
 | 何时 | 调用 | 字段 | 生效 |
 |---|---|---|---|
-| 开始夜晚 | `SimWorld.Create(Level, SimConfig { NightIndex = 1, Deployment, CaptureDebug = true }, seed)` | `DeploymentPlan.Units[]`：`UnitDefId, Pos, AlternatePositionId, Settings = new UnitSettings()` | 创建时（00 3.2 第 7 步） |
-| 二选一占位面板按钮 | `Enqueue(new AnswerChoice { ChoiceId, Option })` | `EffectiveTick = 0` ⇒ 下一步 | 00 3.4.1 |
+| 开始夜晚 | `SimWorld.Create(Level, SimConfig { NightIndex = 1, Deployment, AutoChoicePrompts = !Args.Hardcore, CaptureDebug = true }, seed)` | `DeploymentPlan.Units[]`：`UnitDefId, Pos, AlternatePositionId, Settings = new UnitSettings()` | 创建时（00 3.2 第 7 步） |
+| 二选一占位面板点击或 8.0 现实秒超时 | `Enqueue(new AnswerChoice { ChoiceId, Option })` + `Time.OnChoiceAnswered(ChoiceId)` | `EffectiveTick = 0` ⇒ 下一步（超时自动提交 `DefaultOption`，C-T3-01） | 00 3.4.1 / 04 3.7 |
 
 灰盒不发其他命令。客户端**不产生**模拟事件；客户端内部的界面通知不进入模拟、不参与哈希、不进入回放。
 
@@ -1289,7 +1290,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | 2 | 帧间隔很大（窗口拖动、断点调试，例如 5 秒） | 夹到 `MaxRealDeltaSec`（0.25 s）；再按 `MaxStepsPerFrame` 截断；积压整步丢弃（3.4） |
 | 3 | 1× 但 FPS 只有 30 | 每帧 2 步；插值在"倒数第二步后"与"最后一步后"之间进行（`capturedPrev` 在 `i == n − 1` 时读取） |
 | 4 | 高刷新率（144 Hz）、1× | 每帧约 0.42 步；多数帧 0 步，`Alpha` 递增，画面平滑 |
-| 5 | 本帧执行到一半降速（新航迹出现、弹道预警） | 立即停止，`Acc = 0`，本帧不插值（3.3.2） |
+| 5 | 本帧执行到一半降速（新航迹出现、弹道预警、二选一弹出） | 立即停止，`Acc = 0`，本帧不插值（3.3.2） |
 | 6 | 单帧时间预算耗尽 | 停止，剩余整步丢弃（计入 `DroppedSteps`），本帧不插值 |
 | 7 | `Step()` 抛异常 | `Fault`，停止推进，进入错误屏；已取得的快照仍可显示在错误屏背后 |
 | 8 | 事件订阅者抛异常 | 路由捕获并记录，继续（3.6） |
@@ -1297,8 +1298,8 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | 10 | 夜晚已结束后仍调用 `Advance` | 直接返回 0 步（3.3.2 第一行） |
 | 11 | 暂停时缩放 / 平移相机、打开调试层 | 正常工作（相机与模拟无关）；`Alpha` 冻结，画面不动 |
 | 12 | 硬核模式按 `Space` | `TogglePause` 返回 false，暂停按钮隐藏；无提示音 |
-| 13 | 二选一与弹道预警同时出现 | `ChoiceSlow` 优先（3.5.1 优先级 4 < 5）；二选一结束后若弹道仍有效 → `BallisticSlow` |
-| 14 | 用户速度 4× 且弹道慢放 | `Rate = min(4, 0.5) = 0.5` |
+| 13 | 二选一与弹道预警同时出现 | `ChoiceSlow` 优先（3.5.1 优先级 4 < 5；叙事模式 `Rate = 0.0` 硬暂停，硬核模式 `Rate = 1/60`）；二选一点击或 8.0 现实秒超时结束后若弹道仍有效 → `BallisticSlow` |
+| 14 | 用户速度 4× 且弹道慢放 | `Rate = min(4, EffectiveBallisticSlowRate)`（未知剩余窗口或长窗口时 `= 0.5`；短窗口如锆石 12s 时自适应降为 `12 / 360 = 1/30`，C-T3-01） |
 | 15 | 用户速度 4× 且空闲快进 | `Rate = max(4, 8) = 8` |
 | 16 | 用户速度高于快进倍率（配置成 `[1, 16]`） | 快进模式 `Rate = max(16, 8) = 16`（快进不会让速度变慢） |
 | 17 | 航迹存在但全部是已甄别诱饵 | 仍算"有航迹"，不快进（诱饵也在飞，玩家需要看到） |
@@ -1325,6 +1326,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | 38 | `SimSnapshot.Debug == null`（世界未开启采集） | 调试层 `Los` / `Blind` 显示 `ui.debug.no_capture`，其余子层正常 |
 | 39 | 拦截弹 ID 消失 | 删除其尾迹缓冲 |
 | 40 | `EarlyWarning.ExpectedAtSec` 早于当前时刻（剧情追加波次零提前量） | `BallisticUntilTick` 取 `tick + BallisticHoldTicks` 与预期项中较大者，仍至少持续 `BallisticHoldSec` |
+| 41 | 二选一弹出后玩家 8.0 现实秒未点击（C-T3-01） | `Time.TickChoiceTimers(realDeltaSec)` 倒计时归零，自动入队 `AnswerChoice { ChoiceId, Option = DefaultOption }` 并调用 `OnChoiceAnswered(ChoiceId)` 解除硬暂停 / 慢放，同帧后续 `Step()` 即结算该选择 |
 
 ---
 
@@ -1336,13 +1338,14 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 2. **同输入同结果**：客户端驱动的世界，与"同一 `LevelData`、`SimConfig`、种子、同一命令序列、同样步数"的无画面世界，状态哈希逐步相等（T-06-42）。读快照、`DrainEvents`、`CaptureDebug` 不改变哈希（00 6.1 #8；T-06-45）。
 3. `StepAccumulator`：每次 `Commit` 之后 `0 ≤ Acc < 1`；`DroppedSteps` 单调不减；`Plan` 的返回值 ∈ `[0, maxSteps]`。
 4. `SimDriver`：每帧 `StepsExecuted ≤ StepsPlanned ≤ MaxStepsPerFrame`；`World.Tick` 单调不减；`InterpolationValid ⇒ Prev != null 且 Prev.Tick == Cur.Tick − 1`。
-5. `TimeController`：`Mode == Finished ⇔ Finished`；`Mode ∈ {Finished, Paused} ⇔ Rate == 0`；其余模式 `Rate > 0`；`BallisticSlow ⇒ Rate ≤ BallisticSlowRate`；`FastForward ⇒ Rate ≥ FastForwardRate`；`!AllowManualPause ⇒ !ManualPaused`。
+5. `TimeController`：`Mode == Finished ⇔ Finished`；`Rate == 0 ⇔ Mode ∈ {Finished, Paused} 或 (Mode == ChoiceSlow 且 AllowManualPause)`；其余情况 `Rate > 0`；硬核模式（`!AllowManualPause`）下 `Mode == ChoiceSlow ⇒ Rate == ChoiceSlowRate`（`1/60`）；`BallisticSlow ⇒ Rate ≤ EffectiveBallisticSlowRate ≤ BallisticSlowRate` 且 `EffectiveBallisticSlowRate ≥ 1 / GameSecToWorldSec`；`FastForward ⇒ Rate ≥ FastForwardRate`；`!AllowManualPause ⇒ !ManualPaused`（C-T3-01）。
 6. `MapCamera`：`MinSpanM ≤ SpanM ≤ EffectiveMaxSpanM`（`TargetSpanM` 同）；`ContentMin ≤ CenterM ≤ ContentMax`（逐分量）；`WorldToScreen(ScreenToWorld(q)) == q`（容差 1e-9 × 视口尺寸）。
 7. `MapProjection`：`FromWorldPx(ToWorldPx(p)) == p`（容差 1e-9 m）。
 8. 正常界面（`DebugVisible == false`）拿不到真值：`SnapshotInterpolator.Build(..., includeTruth: false)` 返回的 `RenderFrame.ThreatPos` 为空、`Truth == null`；`CommandLayer` / `MapVectorLayer` / `FxLayer` 只接收 `RenderFrame` 与 `SimSnapshot` 中非真值的数组（代码审查：这三个类中不得出现 `.Threats` 与 `.Debug`；T-06-45 验证前者）。
 9. `DeployPlanBuilder.Units` 中的每一项都曾被 `IPlacementValidator.Check` 接受（或来自 `--plan` 且被接受）；客户端没有任何绕过校验写入 `Units` 的路径。
 10. 覆盖纹理尺寸 = `Cols × Rows`，且 `Cols, Rows ≤ CoverageMaxCellsPerSide`。
 11. `Client.Core` 程序集不引用任何以 `Godot` 开头的程序集（T-06-40）。
+12. `Client.Core` 与 `game/` 距离计算一律使用 `Vec2.DistanceTo` / `Length()` 或 `Math.Sqrt(dx * dx + dy * dy)`，禁止调用 `Math.Hypot`（.NET 8 不存在该 API，C-T1-04）。
 
 ---
 
@@ -1614,64 +1617,65 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 
 ---
 
-## 8. 待决问题
+## 8. 已决问题与跨规格契约
 
-### 8.1 需要人决定
+### 8.1 问题决议表（Q1–Q21，已全部决断）
 
-| # | 问题 | 背景 | 建议默认值（理由） |
+| # | 问题 | 背景 | 决议（备查） |
 |---|---|---|---|
-| Q1 | 客户端显示参数（含 GDD 给出的 8× / 0.5×）放在哪里 | AGENTS.md 要求"单位、武器、敌人、关卡、波次"的参数进 `data/`；变速倍率是 GDD 11.2 的设计值，但不进入模拟 | 放 `game/config/client_config.json`（1.4）：它们不影响模拟结果、不参与哈希，也不属于平衡数值；若人认为倍率属于设计数值，改放 `data/ui/time_control.json` 并加 Schema，加载方式不变 |
-| Q2 | 玩家可选的手动速度档 | GDD 只给出自动快进 8×、慢放 0.5× 与暂停 | `[1, 2, 4]`（1× = 1 游戏秒/现实秒；8 小时夜晚在 1× 下 8 分钟，符合 GDD"一整夜约 6–10 分钟"） |
-| Q3 | 二选一时的慢放倍率 | GDD 5.2 / 15.4 只说"慢放" | `0.5`（与弹道慢放一致，玩家只需记住一种慢放速度）；二选一的超时以世界步计（04），慢放使玩家有 2 倍现实时间思考 |
-| Q4 | "无来袭目标"的判定与进入快进的延迟 | GDD 11.2；用真值会泄露信息 | 只看玩家可见信息：无航迹、无在飞拦截弹、无未回答二选一；连续 `60` 世界秒（1× 下 1 现实秒）后进入快进；国家预警本身不阻止快进（预警不创建航迹）。替代：收到预警后到 `ExpectedAtSec` 前不快进 |
-| Q5 | 弹道慢放的触发与持续 | GDD 11.2"探测到弹道导弹发射时自动减速并报警"；02 的 `EarlyWarning.Ballistic` 在预警时刻发出，提前量 = 进入点的 `warningGameSec` | 触发：`EarlyWarning.Ballistic == true` 或场上有 `Tag ∈ {BM, HBM}` 的航迹；持续到 `max(预警步, 预期到达步, 最后一次看到弹道航迹的步) + 120` 世界秒。若某关弹道预警提前量很长（数分钟游戏时间），慢放会持续很久——届时改为"`ExpectedAtSec − TimeSec ≤ 某阈值`才开始慢放" |
-| Q6 | 缩放范围"400 km 到 1 km"的含义；与实景层 4 像素/米的关系 | WS04-002 vs WBS 03.A | 指**视口宽度**对应的地面距离。1920 像素宽时 1 km ≈ 1.92 像素/米，尚未到精灵原生的 4 像素/米（480 m）；灰盒只有指挥层，不受影响。WS04-011 引入实景层时需要把下限放宽到约 0.4 km，或接受精灵最大只显示到 ½ 原生尺寸 |
-| Q7 | 小地图是否允许缩到 400 km | `test_01` 只有 20 km | 不允许：最大跨度 = 内容范围（地图 + 进入点 + 航点）取景跨度 × 1.1，且不超过 400 km |
-| Q8 | 探测覆盖 / 盲区按哪个目标高度显示 | GDD 8.1"低空盲区"；同一雷达对不同高度覆盖不同 | 三档参考高度 `[50, 500, 3000]` m（AGL），缺省 50 m（巡航导弹 / 低空无人机），`C` 键循环；数值仅为显示选择 |
-| Q9 | 预测航线画多长 | GDD 15.1"显示预测航线"，未给长度 | 直线外推 `300` 世界秒（5 游戏秒）：Shahed（约 50 m/s）≈ 15 km，巡航导弹（约 250 m/s）≈ 75 km；弹道落点椭圆另做（M2） |
-| Q10 | 客户端缺省种子 | 00 3.1.5：战役层生成 `runSeed`；灰盒没有战役 | `--seed` 优先；否则 `NightSeed(1, levelId, nightIndex)`，同一关每次相同，便于复现 |
-| Q11 | 放置预览需要"单个单位"的合法性检查 | 00 只引用了 `DeploymentValidator.Validate`（全量）；逐帧全量校验也可行但错误归属不清 | 请 04 提供 `CheckPlacement`（8.3 D-04-1）；若 04 不提供，客户端用 `Validate` 全量校验并只显示 `UnitIndex` 等于候选下标的第一条错误 |
-| Q12 | 硬核模式（关闭手动暂停）从哪里开启 | GDD 11.2；设置菜单属 WS04-012 | 灰盒只用命令行 `--hardcore`；正式开关由 WS04-012 / 05（存档）决定 |
-| Q13 | 夜间覆盖层是否反映雷达开关机、断电、暂停 | 02 的探测只在 `SensorActive` 时生效 | 灰盒不反映（只按部署位置的静态覆盖）；WS04-006 再加"按当前开机状态"选项 |
-| Q14 | 渲染后端 | 2D 灰盒；macOS 上 Forward+ 依赖 Metal / MoltenVK | `gl_compatibility`（最稳妥、2D 光照与法线贴图也支持）；实景层（WS03-008 光照）阶段再评估 |
-| Q15 | 锁定的 Godot 版本 | `tools/doctor` 只检查主版本 4 | 最低 4.3 .NET；`Godot.NET.Sdk` 版本号与实际引擎完全一致，写入 `tools/doctor` 的检查与 AGENTS.md |
-| Q16 | 导出版本中 `data/` 放在哪里 | 1.7 只覆盖开发环境 | 属 WS06-010：导出时把 `data/` 复制到可执行文件旁（`OS.GetExecutablePath()` 同级）；`DataRootLocator` 增加这一步 |
-| Q17 | HiDPI 与界面缩放 | `stretch/mode = disabled` + `allow_hidpi` 时 Retina 屏上界面偏小 | 灰盒接受；WS04-012 增加 UI 缩放（只缩放 `Ui` 层，指挥层符号尺寸另设） |
-| Q18 | 二选一的选项文本键格式 | 00 的 `ChoiceRequested` 只有 `ChoiceKey` | 占位面板假设 `<ChoiceKey>.opt0` / `.opt1`；由 04 定稿 |
-| Q19 | 性能预算的参考机 | WBS 只要求 60 FPS | 开发用 Apple Silicon Mac、1920 × 1080；Windows 参考机在 WS06-010 确定 |
-| Q20 | 进入点是否在地图上标出 | 进入点是关卡数据；预警会给出方位 | 标出（空心三角 + 名称）；航点与航线**不**显示（避免泄露敌方路线） |
-| Q21 | 瞬时标记（拦截 / 落地）在暂停时是否继续淡出 | 实现细节，但影响观感 | 按现实时间淡出（暂停时也淡出）；若试玩反馈希望暂停时保留，改为按世界时间 |
+| Q1 | 客户端显示参数（含 GDD 给出的 8× / 0.5×）放在哪里 | AGENTS.md 要求"单位、武器、敌人、关卡、波次"的参数进 `data/`；变速倍率是 GDD 11.2 的设计值，但不进入模拟 | **已决（2026-10-17）**：放 `game/config/client_config.json`（1.4）；不影响模拟结果、不参与哈希 —— 依据 `B-T2-135` |
+| Q2 | 玩家可选的手动速度档 | GDD 只给出自动快进 8×、慢放 0.5× 与暂停 | **已决（2026-10-17）**：采用 `[1, 2, 4]`（1× = 1 游戏秒/现实秒 = 60 世界秒/现实秒） —— 依据 `B-T2-136` |
+| Q3 | 二选一时的慢放倍率与超时 | GDD 5.2 / 15.4；弹道慢放或高倍速下按世界秒计时会导致反应窗口过短或过长 | **已决（2026-10-17）**：叙事/普通模式（`AllowManualPause == true`）下弹出二选一时切换为**硬暂停**（`Rate = 0.0`），并附带 `8.0` 现实秒（`unscaledDeltaTime`）倒计时，超时自动提交 `DefaultOption` 并立即恢复弹窗前倍速；硬核模式（`AllowManualPause == false`）下不硬暂停，强制慢放至 `ChoiceSlowRate = 1/60×`（1 现实秒 = 1 世界秒），同样给足 `8.0` 现实秒反应窗口 —— 依据 `C-T3-01` / `B-T2-137` |
+| Q4 | "无来袭目标"的判定与进入快进的延迟 | GDD 11.2；用真值会泄露信息 | **已决（2026-10-17）**：只看玩家可见信息（无航迹、无在飞拦截弹、无未回答二选一），连续 `60` 世界秒（1× 下 1 现实秒）后进入 `8×` 快进；国家预警本身不阻止快进 —— 依据 `B-T2-138` |
+| Q5 | 弹道慢放的触发、持续与自适应倍率 | GDD 11.2；高超音速导弹（锆石 12s、匕首 22s）在固定 0.5× 下仅 0.4–0.7 现实秒反应时间 | **已决（2026-10-17）**：触发为 `EarlyWarning.Ballistic == true` 或场上有 `Tag ∈ {BM, HBM}` 航迹，持续到 `max(预警步, 预期到达步, 最后看到弹道航迹步) + 120` 世界秒；倍率采用**动态自适应慢放倍率** $\text{rate} = \text{Clamp}(T_{\text{remWorldSec}} / (60 \times 6.0),\; 1/60,\; 0.5)$，确保玩家至少拥有 `6.0` 现实秒反应窗口 —— 依据 `C-T3-01` / `B-T2-139` |
+| Q6 | 缩放范围"400 km 到 1 km"的含义；与实景层 4 像素/米的关系 | WS04-002 vs WBS 03.A | **已决（2026-10-17）**：指**视口宽度**对应的地面距离；灰盒只有指挥层，按 `[1000, 400000]` m 实施，WS04-011 实景层阶段再放宽下限 —— 依据 `B-T2-140` |
+| Q7 | 小地图是否允许缩到 400 km | `test_01` 只有 20 km | **已决（2026-10-17）**：不允许，`EffectiveMaxSpanM = Clamp(FitSpanM, MinSpanM, MaxSpanM)`，`FitPaddingFactor = 1.1` —— 依据 `B-T2-141` |
+| Q8 | 探测覆盖 / 盲区按哪个目标高度显示 | GDD 8.1"低空盲区"；同一雷达对不同高度覆盖不同 | **已决（2026-10-17）**：三档参考高度 `[50, 500, 3000]` m（AGL），缺省 `50` m，`C` 键循环 —— 依据 `B-T2-142` |
+| Q9 | 预测航线画多长 | GDD 15.1"显示预测航线"，未给长度 | **已决（2026-10-17）**：直线外推 `300` 世界秒（5 游戏秒）；弹道落点椭圆属 M2 —— 依据 `B-T2-143` |
+| Q10 | 客户端缺省种子 | 00 3.1.5：战役层生成 `runSeed`；灰盒没有战役 | **已决（2026-10-17）**：命令行 `--seed` 优先（支持十进制与 `0x` 十六进制）；否则 `SimRandom.NightSeed(DefaultRunSeed, Level.Id, 1)` —— 依据 `B-T2-144` / `B-T2-07` |
+| Q11 | 放置预览需要"单个单位"的合法性检查 | 逐帧单候选增量校验 | **已决（2026-10-17）**：`04 §3.5.1` 已提供 `DeploymentValidator.CheckPlacement(level, plan, replaceIndex, candidate)`，客户端通过 `Sim04PlacementValidator` 转发 —— 依据 `B-T2-145` / `04 §3.5.1` |
+| Q12 | 硬核模式（关闭手动暂停）从哪里开启 | GDD 11.2；设置菜单属 WS04-012 | **已决（2026-10-17）**：灰盒用命令行 `--hardcore` 开启（关闭手动暂停，且 `SimConfig.AutoChoicePrompts = !Args.Hardcore`）；正式开关由 WS04-012 / 05 决定 —— 依据 `B-T2-146` / `B-T2-11` |
+| Q13 | 夜间覆盖层是否反映雷达开关机、断电、暂停 | 02 的探测只在 `SensorActive` 时生效 | **已决（2026-10-17）**：灰盒不反映（只按部署位置的静态覆盖）；WS04-006 再加动态开机覆盖选项 —— 依据 `B-T2-147` |
+| Q14 | 渲染后端 | 2D 灰盒；macOS 上 Forward+ 依赖 Metal / MoltenVK | **已决（2026-10-17）**：采用 `gl_compatibility` —— 依据 `B-T1-19` |
+| Q15 | 锁定的 Godot 版本 | `tools/doctor` 检查版本 | **已决（2026-10-17）**：最低 Godot 4.3 .NET 版，`Godot.NET.Sdk` 版本号与引擎完全一致 —— 依据 `B-T1-20` |
+| Q16 | 导出版本中 `data/` 放在哪里 | 1.7 覆盖开发与导出环境 | **已决（2026-10-17）**：导出时把 `data/` 复制到可执行文件旁（`OS.GetExecutablePath()` 同级），`DataRootLocator` 已纳入该查找步骤（1.7） —— 依据 `B-T1-21` |
+| Q17 | HiDPI 与界面缩放 | Retina 屏上界面尺寸 | **已决（2026-10-17）**：灰盒保持 `stretch/mode = disabled` + `allow_hidpi = true`，UI 缩放留给 WS04-012 —— 依据 `B-T2-148` |
+| Q18 | 二选一的选项文本键格式 | `ChoiceRequested.ChoiceKey` 对应的选项键 | **已决（2026-10-17）**：按 `04 §3.7` 定稿采用 `<ChoiceKey>.opt_a` / `<ChoiceKey>.opt_b`（兼容回退 `.opt0` / `.opt1`） —— 依据 `B-T2-149` / `04 §3.7` |
+| Q19 | 性能预算的参考机 | WBS 要求 60 FPS | **已决（2026-10-17）**：开发用 Apple Silicon Mac、1920 × 1080 窗口；常规模拟单步 `≤ 2 ms/step`（C-T2-02），单单位覆盖网格因 720-bin 地平线包络降至 `≤ 5 ms`（C-T1-12） —— 依据 `B-T2-150` / `C-T2-02` / `C-T1-12` |
+| Q20 | 进入点是否在地图上标出 | 进入点是关卡数据；预警会给出方位 | **已决（2026-10-17）**：标出（空心三角 + 名称）；航点与航线不显示 —— 依据 `B-T2-151` |
+| Q21 | 瞬时标记（拦截 / 落地）在暂停时是否继续淡出 | 实现细节与观感 | **已决（2026-10-17）**：按现实时间（`unscaledDeltaTime`）淡出，暂停时也淡出 —— 依据 `B-T2-152` |
 
-### 8.2 需登记到 00_core
+### 8.2 已登记到 00_core 的跨规格条目（已全部合入 `00_core.md`）
 
-**A. `SimConfig` 与快照（00 2.6、2.7）**
+**A. `SimConfig` 与快照（`00_core.md` §2.6、§2.7，P46 / B-T2-11）**
 
-| 表 | 新增 | 类型 / 规则 |
+| 表 | 字段 / 类型 | 类型 / 规则 |
 |---|---|---|
-| `SimConfig` | `CaptureDebug` | `bool`，缺省 `false`；`[JsonIgnore]`（不进回放文件；回放播放时由播放器自行决定）。**不参与状态哈希、不影响任何系统的行为**：只决定快照构建时是否复制调试数据（T-06-45 验证） |
+| `SimConfig` | `CaptureDebug` | `bool`，缺省 `false`；`[JsonIgnore]`（不进回放文件）。**不参与状态哈希、不影响任何系统的行为**：只决定快照构建时是否复制调试数据（T-06-45 验证） |
+| `SimConfig` | `AutoChoicePrompts` | `bool`，缺省 `true`；硬核模式传 `false`（04 §3.7 不自动发起系统二选一，B-T2-11） |
 | `SimSnapshot` | `Debug` | `DebugView?`；`CaptureDebug == false` 时为 `null` |
-| 新类型 | `DebugView` | `sealed class DebugView { IReadOnlyList<DetectionDebugView> Detections; }` |
-| 新类型 | `DetectionDebugView` | `readonly record struct DetectionDebugView(int SourceId, DetectionSource Source, int ThreatId, int PhantomKey, TrackQuality Quality)`；构建快照时从 `SensingState.Detections`（02 2.7，本步临时缓冲，按其列表顺序）逐项复制 |
+| 类型 | `DebugView` | `sealed class DebugView { IReadOnlyList<DetectionDebugView> Detections; }` |
+| 类型 | `DetectionDebugView` | `readonly record struct DetectionDebugView(int SourceId, DetectionSource Source, int ThreatId, int PhantomKey, TrackQuality Quality)`；构建快照时从 `SensingState.Detections`（02 2.7，本步临时缓冲，按其列表顺序）逐项复制 |
 
-00 6.1 #8（只读访问不影响哈希）的测试 T-00-26 建议追加一组 `CaptureDebug = true` 对照。
-
-**B. 快照视图字段确认**（00 2.7"字段由各规格第 2 节标注"——客户端依赖以下字段进入视图，请一致性审查确认各规格已标"快照"）
+**B. 快照视图字段确认（`00_core.md` §2.7，P45）**
 
 | 视图 | 字段 | 来源 |
 |---|---|---|
-| `FireUnitView` / `SensorUnitView` / `EwUnitView` / `DeceptionUnitView` | `DeployState`（00 2.4 公共字段）、`SuspendedUntilSec`（03 2.1 已标 ✔） | 00 / 03 |
-| `GlobalView` | 指挥点（字段名由 04 定，如 `CommandPoints`）、`AlertOn`（03） | 04 / 03 |
-| `SimSnapshot` | `NightIndex`（00 已有） | 00 |
+| `FireUnitView` / `SensorUnitView` / `EwUnitView` / `DeceptionUnitView` | `DeployState`（00 2.4 公共字段）、`SuspendedUntilSec`（03 2.1） | 00 / 03 |
+| `GlobalView` | `CommandPoints`、`CommandPointsInitial`（04 2.6）、`AlertOn`（03 2.7） | 00 2.7 / 03 / 04 |
+| `SimSnapshot` | `NightIndex`（00 2.7） | 00 |
 
-**C. 事件字段**：客户端支持 02 8.2-D 提出的 `PlayerUnitDestroyed` **追加 `Vec2 Pos`**（03 4.2 定稿中尚未加入）；客户端在没有该字段时用上一快照中的位置代替（3.6 末段），因此不是硬依赖。其余事件字段按 01 / 02 / 03 定稿即可。
+**C. 事件字段（`00_core.md` §4.2，P14 / B-T2-06）**：
+- `310 PlayerUnitDestroyed(int UnitId, string DefId, PlayerUnitCategory Category, int SourceThreatId, Vec2 Pos)` 已包含 `Category` 与 `Pos`（P14）。
+- `408 EnemyGroupsReleased(string WaveId, IReadOnlyList<string> GroupIds, HoldReleaseReason Reason)` 已合入 00 §4.2 与 04 §4.1（B-T2-06）。
 
-**D. 子流、命令、拒绝原因、事件类型**：无新增。
+**D. 子流、命令、拒绝原因**：无新增（均已由 `00_core.md` 定稿收录）。
 
-**E. 本地化键**（不属于 00，需人批准后写入 `data/loc/zh.json`；中文为源语言，以下给出建议文本）
+**E. 本地化键**（写入 `data/loc/zh.json`；中文为源语言，以下给出标准文本）
 
 | 键 | 建议文本 |
 |---|---|
-| `ui.time.mode.Finished` / `Paused` / `ChoiceSlow` / `BallisticSlow` / `FastForward` / `Normal` | 已结束 / 暂停 / 决策慢放 / 弹道慢放 / 快进 / 正常 |
+| `ui.time.mode.Finished` / `Paused` / `ChoiceSlow` / `BallisticSlow` / `FastForward` / `Normal` | 已结束 / 暂停 / 决策暂停 / 弹道慢放 / 快进 / 正常 |
 | `ui.time.auto_ff` | 自动快进 |
 | `ui.time.night` | 第 {0} 夜 |
 | `ui.time.lagging` | ⚠ 模拟落后 |
@@ -1698,62 +1702,63 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | `ui.debug.layer.truth` / `los` / `blind` / `exposure` / `reasons` / `log` | 真值 / 视线 / 盲区 / 暴露度 / 决策原因 / 交战日志 |
 | `ui.choice.default` | （默认） |
 | `ui.error.title` | 出错了 |
-| `ui.deploy.error.<Code>` | 每个 04 的部署错误码一条（04 定稿后补全） |
+| `ui.deploy.error.D_NULL_PLAN` … `D_INVALID_SETTINGS` | 对应 `04 §3.5.1` 的 14 个 `D_*` 部署错误码本地化文本（缺失时回退显示 `DeploymentError.Detail`） |
 
 措辞遵守 GDD 17：保护目标被毁写"失去功能"、我方单位被毁写"失去联系"，不写伤亡。
 
-**F. AGENTS.md 第 5 节常用命令**（文档变更，需人批准）：追加 `dotnet test game/tests`（客户端纯逻辑测试）与 `game/debug/smoke/run_smoke.sh`（Godot 无头烟雾测试）。
+**F. AGENTS.md 第 5 节常用命令**（留给后续统一更新）：建议追加 `dotnet test game/tests`（客户端纯逻辑测试）与 `game/debug/smoke/run_smoke.sh`（Godot 无头烟雾测试）。
 
-### 8.3 依赖接口（由其他规格提供；签名为本文件的建议，一致性审查对齐）
+### 8.3 跨规格依赖接口（已与 01 / 02 / 04 对齐定稿）
 
-**D-04-1 部署合法性**（04；00 3.2 第 7 步已引用 `Validate`）
+**D-04-1 部署合法性**（`04_enemy_ai_commands.md` §3.5.1；`00_core.md` §3.2 第 7 步）
 
 ```csharp
-namespace Nightwatch.Sim.Commands;            // 以 04 定稿为准
+namespace Nightwatch.Sim.EnemyAi;
+public readonly record struct DeploymentError(string Code, int Index, string? UnitDefId, string Detail);
 public static class DeploymentValidator
 {
     // 全量校验（00 3.2 第 7 步）
-    public static IReadOnlyList<DeploymentError> Validate(LevelData level, DeploymentPlan plan);
+    public static IReadOnlyList<DeploymentError> Validate(LevelData level, DeploymentPlan plan, CarryInState? carryIn = null);
     // 单个候选：把 candidate 放入 plan（replaceIndex = −1 追加；否则替换该下标）后，返回与 candidate 相关的第一个错误；合法返回 null
-    public static DeploymentError? CheckPlacement(LevelData level, DeploymentPlan plan, int replaceIndex, PlacedUnit candidate);
+    public static DeploymentError? CheckPlacement(LevelData level, DeploymentPlan plan, int replaceIndex,
+                                                  PlacedUnit candidate, CarryInState? carryIn = null);
 }
-public sealed record DeploymentError(string Code, int UnitIndex, string Detail);   // Code 形如 "E_DEPLOY_FORBIDDEN_ZONE"；Detail 为中文说明
 ```
 
-要求：纯函数、可在主线程每帧调用（`test_01` 规模 ≤ 0.2 ms）；`CheckPlacement` 与 `Validate` 对同一方案结论一致（5 #26）。
+要求：纯函数、可在主线程每帧调用（`test_01` 规模 ≤ 0.2 ms）；`CheckPlacement` 与 `Validate` 对同一方案结论一致（5 #26）。客户端 `Sim04PlacementValidator` 将 `DeploymentError(Code, Index, UnitDefId, Detail)` 映射为 `PlacementError(Code, Index, Detail)`。
 
-**D-02-1 探测覆盖网格**（02；用 01 的 `TerrainModel`）
+**D-02-1 探测覆盖网格**（`02_sensing_tracks_ew_emission.md` §3.8；内部使用 `01_world_terrain_waves.md` §3.3 的 720-bin `HorizonProfile`）
 
 ```csharp
 namespace Nightwatch.Sim.Sensing;
 public readonly record struct CoverageGridSpec(double MinX, double MaxY, double CellM, int Cols, int Rows);   // 第 0 行 = 北（MaxY 一侧）
 public static class CoverageQuery
 {
-    // 每格（行主序，row × Cols + col）：0 = 名义距离外；1 = 名义距离内但在 targetAglM 高度不可探测（盲区）；2 = 可探测
+    // 每格（行主序，row × Cols + col）：0 = 名义距离外；1 = 名义距离内但在 targetAglM 高度不可探测（盲区）；2 = 可探测（A-2-16）
     // 无探测能力的单位返回 null
     public static byte[]? ComputeGrid(LevelData level, TerrainModel terrain, int nightIndex, PlacedUnit unit,
                                       double targetAglM, CoverageGridSpec grid);
 }
 ```
 
-语义（建议，与 02 3.2.3 – 3.2.6 一致）：以格中心为目标位置、`targetAglM` 为目标高度，按 02 的有效探测距离公式（含夜间 / 天气倍率、低空倍率、低空盲区倍率、`PlacedUnit.FirstNightAtNewPosition` 的新阵地倍率；`Powered = true`；不含误报与延迟）与视线规则判定"可探测"；"名义距离" = 3.2.3 中**不含低空项**的有效距离；覆盖型单位（`FullMap` / `UrbanAreas`）按 3.2.6；火力单元按 3.2.5（火控雷达或自主捕获距离）。必须线程安全（只读 `LevelData` / `TerrainModel`）。
+语义（02 §3.8 / C-T1-12 / C-T2-01）：对单传感器先调用 `terrain.BuildHorizon(sensorPos, sensorAntH)` 构建一次 720-bin 径向最大遮挡仰角包络（`HorizonProfile`），再对 `Rows × Cols` 格以格中心和 `targetAglM` 做 $O(1)$ 地平线查表与有效探测距离判定；线程安全（只读 `LevelData` / `TerrainModel`），单单位 `200 × 200` 格耗时 `≤ 5 ms`。
 
-**D-04-2 二选一与指挥点显示**（04）：`ChoiceRequested` 字段按 00 总表；选项文本键格式（Q18）；`GlobalView` 中指挥点字段名；`UnitDeployStateChanged.To`。
+**D-04-2 二选一与指挥点显示**（`04_enemy_ai_commands.md` §2.6 / §3.7）：`ChoiceRequested(ChoiceId, ChoiceKey, DeadlineTick, DefaultOption)`；选项文本键格式 `<ChoiceKey>.opt_a` / `<ChoiceKey>.opt_b`；`GlobalView.CommandPoints` / `CommandPointsInitial`；`UnitDeployStateChanged.To`。
 
-**D-01-1 地形**（01，已定稿）：`TerrainModel` 公开构造函数与线程安全的只读查询（01 2.5）。客户端只把它传给 D-02-1，不直接做视线计算。
+**D-01-1 地形**（`01_world_terrain_waves.md` §2.5 / §3.3，已定稿）：`TerrainModel` 公开构造函数与线程安全的只读查询（含 `BuildHorizon` 与 `HasLineOfSight`）。客户端只把它传给 D-02-1，不直接做视线计算。
 
 ### 8.4 与其他规格的边界
 
-| # | 涉及 | 问题 | 本文件的处理 / 建议 |
+| # | 涉及 | 问题 | 本文件的处理 / 决议 |
 |---|---|---|---|
-| B1 | 02 / 03 | 航迹类型字段名：02 为 `Track.Tag`（`TrackView.Tag`），03 8.3 B3 假设 `Track.PerceivedTag` | 客户端按 02 使用 `TrackView.Tag`；请一致性审查统一为 02 的名字 |
-| B2 | 02 / 01 | 覆盖网格属于"探测规则"（02）还是"地形"（01） | 归 02（需要传感器参数与低空倍率），内部调用 01 的视线 |
-| B3 | 02 / 03 | `PlayerUnitDestroyed.Pos`：02 要求追加，03 定稿未加 | 客户端可回退到上一快照，不阻塞；建议加上 |
-| B4 | 04 | `DeploymentValidator` 的命名空间、错误类型、`CheckPlacement` 是否提供 | D-04-1；未提供时按 Q11 的回退方案 |
-| B5 | 04 | 夜间 `DeployUnit` 是否允许（00 Q17） | 灰盒不发夜间部署命令；若 04 允许，部署面板在夜间的行为由 WS04-008 定 |
-| B6 | 00 | 00 Q12（快照是否含真值） | 本文件确认：包含；正常界面不渲染，`RenderFrame` 在非调试时不计算真值（C8、不变量 8） |
-| B7 | 00 | 00 Q13（事件缓冲上限） | 客户端每步 `DrainEvents`，不会累积 |
-| B8 | 03 | `InterceptorView` 没有速度 | 朝向用"指向拦截点"代替，不需要 03 增加字段 |
-| B9 | 05 | 多夜关卡的下一夜（`CarryIn`）、战役种子 | 灰盒不支持；结果面板提示（3.13） |
-| B10 | WS04-006 / 008 / 009 | 覆盖层完整开关、正式二选一弹窗、战后复盘 | 本文件只做灰盒所需的最小版本（覆盖纹理 + 射程圈、占位二选一面板、结果 JSON 全文） |
+| B1 | 02 / 03 | 航迹类型字段名 | 已统一为 `TrackView.Tag`（P08 / 02 §2.9） |
+| B2 | 02 / 01 | 覆盖网格归属 | 归 02（`CoverageQuery.ComputeGrid`，02 §3.8），内部调用 01 的 720-bin `HorizonProfile`（C-T1-12 / C-T2-01） |
+| B3 | 02 / 03 | `PlayerUnitDestroyed.Pos` | 已合入 `00 §4.2` 与 `03 §4.2`（P14） |
+| B4 | 04 | `DeploymentValidator` 命名空间与 `CheckPlacement` | 已在 `04 §3.5.1`（`Nightwatch.Sim.EnemyAi.DeploymentValidator`）定稿提供（P44 / A-2-15） |
+| B5 | 04 | 夜间 `DeployUnit` 是否允许 | 04 §3.2 已支持预置预备队 `DeployUnit`；灰盒不发夜间部署命令，面板交互由 WS04-008 实现 |
+| B6 | 00 | `SimSnapshot` 含真值与 `DebugView` | 已在 `00 §2.6 / §2.7` 定稿（P46）；正常界面不渲染，`RenderFrame` 在非调试时不计算真值（C8、不变量 8） |
+| B7 | 00 | 事件缓冲上限 | 客户端每步 `DrainEvents`，不会触发 00 的单步 10,000 事件上限 |
+| B8 | 03 | `InterceptorView` 没有速度 | 朝向用"指向拦截点"（`InterceptPos − Pos`）计算，不需要 03 增加字段 |
+| B9 | 05 | 多夜关卡的下一夜（`CarryIn`）、战役控制器与自动夜 | 战役流程由 `05` 的 `CampaignController`（含 `WatchAutoNight(true)`，B-T3-07）负责；灰盒单夜运行器在结果面板提示（3.13） |
+| B10 | WS04-006 / 008 / 009 | 覆盖层完整开关、正式二选一弹窗、战后复盘 | 本文件只做灰盒所需的最小版本（覆盖纹理 + 射程圈、带 8.0 现实秒超时自动提交的占位二选一面板、结果 JSON 全文） |
 | B11 | WS06-008 | 回放的记录与播放 | 客户端不写回放文件；`SimWorld` 已记录命令日志（00 3.4.1），WS06-008 实现保存 |
