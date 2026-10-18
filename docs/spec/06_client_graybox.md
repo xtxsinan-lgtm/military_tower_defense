@@ -1,8 +1,9 @@
 # 06 Godot 灰盒客户端
 
 > 本文件规定 `game/`（Godot 4 .NET）灰盒客户端：项目结构、模拟驱动、坐标映射、相机、部署界面、时间控制、航迹显示、占位素材、调试可视化。
-> **客户端只显示和发命令**：一切模拟规则在 `sim/`。客户端不得复制任何规则（探测、合法性、交战……），需要时调用 `sim/` 提供的函数；尚未定义的函数写成"依赖接口"（8.3）。
-> 结构说明：本文件按 README 的固定 9 节编写，其中第 2 节"状态"改写为"场景与节点结构"，第 3 节"每步算法"改写为"每帧流程"。
+> **客户端只显示和发命令**：一切模拟规则在 `sim/`。客户端不得复制任何规则（探测、合法性、交战……），需要时调用 `sim/` 提供的函数。
+> 本文件中的名字就是最终代码中的名字。与 `00_core.md`–`05_campaign_economy.md` 的跨模块接口已在第 8.3 节统一收口；本规格已与 GDD / 数值表 / WBS 同步收口，进入实现前无需再次停下询问（C-T1-12）。
+> 结构说明：本文件按 README 的固定 9 节编写，其中第 2 节"状态"改写为"场景与节点结构"，第 3 节"每帧流程"。
 
 ---
 
@@ -17,32 +18,36 @@
 | 坐标映射（米 ↔ 世界像素 ↔ 屏幕像素） | 3.1 | WS04-001、WS04-002 |
 | 相机：平移、对数缩放（400 km – 1 km）、边界 | 3.2 | WS04-002 |
 | 部署界面：选单位、放置、射程圈、探测覆盖（含盲区）、合法性、生成部署方案 | 3.9 | WS04-003 |
-| 时间控制：暂停、变速、动态变速（无目标 8×、弹道导弹 0.5×、二选一慢放） | 3.5、3.10 | WS04-004 |
+| 时间控制：暂停、变速、动态变速（无目标 8×、弹道导弹自适应慢放 ≥ 6 现实秒、二选一硬暂停 + 8 现实秒倒计时 / 硬核 1/60×） | 3.5、3.10 | WS04-004 |
 | 航迹显示：三级质量线型、预测航线 | 3.8 | WS04-005 |
 | 占位素材：几何图形 + 简化军事符号、调色板 | 3.8、1.6 | WS03-004 |
 | 调试可视化：视线、盲区、AI 决策原因、暴露度、交战日志（一个快捷键） | 3.11 | WS06-009 |
 | 性能预算 | 3.14 | WS04-001 |
 
-**不在本文件范围**：实景层（WBS 03.A 的倾斜俯视精灵、光照，WS04-011 / WS03）、覆盖层完整开关与热力图（WS04-006，M2）、规则编辑器（WS04-007）、正式的二选一弹窗（WS04-008，本文件只做占位面板）、战后复盘（WS04-009）、白天界面与战役（WS04-010、WS05）、回放播放（WS06-008）。
+**不在本文件范围**：实景层（WBS 03.A 的倾斜俯视精灵、光照，WS04-011 / WS03）、覆盖层完整开关与热力图（WS04-006，M2）、规则编辑器（WS04-007）、正式的二选一弹窗（WS04-008，本文件只做占位面板）、战后复盘（WS04-009）、白天界面与战役（WS04-010、WS05，由 05 的 `CampaignController` 驱动）、回放播放（WS06-008）。
 
 ### 0.2 依据
 
 - [AGENTS.md](../../AGENTS.md) 第 3 节（Godot 4 API、模拟层独立、数据驱动、本地化键）
 - [WBS](../开发任务分解_WBS_v1.md)：WS04-001 – 005、WS06-009、WS03-004；03.A（4 像素/米、调色、三级航迹线型）；01.C（`SimWorld` 对外接口）
-- [GDD](../游戏设计文档_GDD_v1.md)：5.2（指挥点、二选一慢放）、8.1（航迹三级、低空盲区）、11.2（1 游戏秒 ≈ 真实 1 分钟；动态变速 8× / 0.5×；硬核模式可关闭手动暂停）、15（UI / UX：航迹显示、覆盖层、键鼠、色盲友好）、16.1（指挥层风格）、16.4（模拟与显示分离、性能目标）、17（敏感内容）、19.1（指挥层风格决策）
+- [GDD](../游戏设计文档_GDD_v1.md)：5.2（指挥点、二选一暂停 / 慢放）、8.1（航迹三级、低空盲区）、11.2（1 游戏秒 ≈ 真实 1 分钟；动态变速 8× / 自适应弹道慢放；硬核模式关闭手动暂停与自动二选一）、15（UI / UX：航迹显示、覆盖层、键鼠、色盲友好）、16.1（指挥层风格）、16.4（模拟与显示分离、性能目标）、17（敏感内容）、19.1（指挥层风格决策）
 - `data/rules/conventions.json`（`gameSecToWorldSec`）、`data/rules/tracks.json`（`qualities[].display`）、`data/loc/zh.json`、`data/levels/test_01/*`
 
 ### 0.3 依赖
 
 | 规格 | 使用的内容（只读 / 只调用） |
 |---|---|
-| 00 | `SimWorld`（`Create / Step / Enqueue / DrainEvents / Snapshot / ComputeStateHash / Tick / TimeSec / StepSec / DurationTicks / IsFinished / Result`）、`SimConfig`、`DeploymentPlan`、`PlacedUnit`、`UnitSettings`、`SimSnapshot`（2.7）、事件 / 命令总表（4.2、4.3）、`DataLoader`、`FileSystemDataSource`、`DataLoadException`、`SimSetupException`、`SimRandom.NightSeed`、`Vec2`、`SimTime`。**对 00 的接口只读不改**；需要新增的写在 8.2。 |
-| 01 | `ThreatView`（2.4）、`GlobalView` 追加字段、`TerrainModel`（2.5，公开构造函数）、事件 100–104 |
-| 02 | `TrackView`、四类我方单位视图追加字段（2.9）、事件 200–210、`UnitSettings` 字段（1.11）、`SensorDef` / `EwUnitDef` 的距离字段 |
-| 03 | `FireUnitView`、`InterceptorView`、`SupportAssetView`、`StructureView`、`GridNodeView` 的快照字段（2.1 – 2.7）、事件 300–317、`AirDefenseUnitDef` / `WeaponDef` 的距离字段 |
-| 04 | **依赖接口**（尚未定稿）：`DeploymentValidator.Validate` / `CheckPlacement`（8.3 D-04-1）、`ChoiceRequestView`、事件 400–407、`AnswerChoice` 命令 |
+| 00 | `SimWorld`（`Create / Step / Enqueue / DrainEvents / Snapshot / ComputeStateHash / Tick / TimeSec / StepSec / DurationTicks / IsFinished / Result`）、`SimConfig`（含 `AutoChoicePrompts`、`CaptureDebug`，P30–P31）、`DeploymentPlan`、`PlacedUnit`、`UnitSettings`、`SimSnapshot`（含 `GlobalView`、`DebugView`、`ThreatView`，2.7 / P44–P46 / B-T2-21）、事件 / 命令总表（4.2、4.3）、`DataLoader`、`FileSystemDataSource`、`DataLoadException`、`SimSetupException`、`SimRandom.NightSeed`（P23 / P43 / B-T2-07）、`Vec2`、`SimTime`。**对 00 的接口只读不改**。 |
+| 01 | `ThreatView`（2.4）、`GlobalView` 追加字段（`PendingSpawnCount`、`SpawnedThreatCount`、`AllWavesSpawned`）、`TerrainModel`（2.5，公开构造函数与 `BuildHorizonProfile` / `HorizonProfile` 720 方位桶径向累积最大遮挡斜率包络，C-T2-01）、事件 100–104 |
+| 02 | `TrackView`（`Tag` 字段，A-2-01 / B-T1-23）、四类我方单位视图追加字段（2.9）、`CoverageQuery.ComputeGrid`（02 §3.8，A-2-16 / C-T1-12）、事件 200–210（`205 EmitterSwitched` 含 `RadarDestroyed / Suspended`，A-2-12；`207 EwDiverted` / `208 EwLinkCut` 含 `SourceId`，A-3-07 / A-4-04）、`UnitSettings` 字段（1.11）、`SensorDef` / `EwUnitDef` 的距离字段 |
+| 03 | `FireUnitView`、`InterceptorView`、`SupportAssetView`、`StructureView`、`GridNodeView` 的快照字段（2.1 – 2.7）、事件 300–317（`309 PlayerUnitDamaged` 与 `310 PlayerUnitDestroyed` 含 `PlayerUnitCategory Category`、`310` 含 `Vec2 Pos`，A-2-05 / A-3-05 / B-T1-24）、`AirDefenseUnitDef` / `WeaponDef` 的距离字段 |
+| 04 | `DeploymentValidator.Validate` / `CheckPlacement` 与 `DeploymentError(Code, Index, UnitDefId, Detail)`（04 §3.5.1，A-2-15 / B-T1-17）、`ChoiceRequestView`、`GlobalView` 追加字段（`CommandPoints`、`CommandPointsInitial`、`EnemyKnownTargets`、`HeldWaveCount`）、事件 400–408（含 `408 EnemyGroupsReleased`）、`AnswerChoice` 命令 |
+| 05 | 战役与多夜流程由 05 的 `CampaignController` 驱动（含 `Day` / `Review` 阶段的 `WatchAutoNight(true)` 主动观看或消耗 1 次重打次数从 `PreAutoNightSnapshot` 手打覆盖自动结算夜，B-T3-07）；灰盒客户端单夜独立运行，战役 UI 由 WS04-010 / WS05 接入 |
 
-### 0.4 已作的关键选择
+### 0.4 已作的关键选择与文档同步声明
+
+> **文档同步免责声明（C-T1-12）**：本规格已与 GDD、数值表、WBS 及 `00_core.md`–`05_campaign_economy.md`、`DECISIONS.md` 同步收口；实现者直接按本规格编码，进入实现前无需再次停下询问。
+> **跨平台浮点确定性（C-T1-04）**：`Client.Core` 与测试中**严禁使用 `Math.Hypot`**（或自写 hypot），所有欧氏距离统一使用 `Math.Sqrt(dx * dx + dy * dy)` 或平方距离 `dx * dx + dy * dy` 比较。
 
 | # | 选择 | 理由 |
 |---|---|---|
@@ -51,9 +56,10 @@
 | C3 | 1× 播放速度 = 每现实秒 `conventions.gameSecToWorldSec` 个世界秒（= 60 步）；每帧最多 `MaxStepsPerFrame` 步；超出的整步**丢弃**（不追赶） | GDD 11.2："1 游戏秒 ≈ 真实 1 分钟"；丢弃可避免掉帧后的"死亡螺旋" |
 | C4 | 插值：在"本帧计划的最后一步之前"与"之后"的两个快照之间按累加器小数部分线性插值；本帧未执行完计划步数时不插值 | 只需在每帧额外读取一次快照；1× 时两次读取是同一个缓存实例，零额外开销 |
 | C5 | 动态变速**只用玩家可见的信息**（航迹、拦截弹、二选一、预警事件），不读敌方真值 | 用真值决定快进会泄露"雷达外还有没有目标" |
-| C6 | 部署合法性**只由 04 的 `DeploymentValidator` 判定**；探测覆盖 / 盲区**只由 02 的覆盖查询计算** | AGENTS.md：客户端不实现规则 |
+| C6 | 部署合法性**只由 04 的 `DeploymentValidator` 判定**（`Validate` / `CheckPlacement`，A-2-15）；探测覆盖 / 盲区**只由 02 §3.8 的 `CoverageQuery.ComputeGrid` 计算**（复用 01 的 720 方位桶径向累积最大遮挡斜率包络 `HorizonProfile`，与模拟可见性函数完全同源，C-T1-12 / C-T2-01） | AGENTS.md：客户端不实现规则，且覆盖预览与实际探测零偏差 |
 | C7 | 灰盒占位素材用 `_Draw` 矢量绘制（几何图形 + 简化北约式框形），不用纹理 | 分辨率无关、无资产管线、文本化便于 AI 修改；正式符号（milsymbol SVG）由 WS03-005 替换 |
-| C8 | 正常界面**不渲染** `SimSnapshot.Threats`（真值），只在调试叠加层打开时渲染（00 Q12） | 战争迷雾 |
+| C8 | 正常界面**不渲染** `SimSnapshot.Threats`（真值），只在调试叠加层打开时渲染（00 §2.7 / B-T2-21） | 战争迷雾 |
+| C9 | **二选一硬暂停 + 8 现实秒倒计时与弹道自适应慢放（C-T3-01）**：收到 `ChoiceRequested` 时，叙事 / 普通难度切换为**硬暂停**（`0×`，暂停调用 `SimWorld.Step()`），UI 弹窗走 **8.0 现实秒**（`unscaledDeltaTime`）倒计时，超时自动提交 `DefaultOption` 并恢复弹窗前倍速；硬核难度不硬暂停，强制切为 `1/60×` 慢放（1 现实秒 = 1 世界秒），同样给 8.0 现实秒（= 8 世界秒）反应窗口。弹道导弹触发慢放时采用**自适应慢放速率** $\text{rate} = \min(\text{baseSlowMoRate},\; T_{\text{remWorldSec}} / 6.0)$（折算游戏倍率时除以 `GameSecToWorldSec`，下限 `1/60×`），确保玩家至少拥有 **6.0 现实秒**操作窗口 | 解决原 `0.5×`（30 世界秒/现实秒）下二选一与弹道末段仅约 1 现实秒、无法反应式操作的问题（C-T3-01） |
 
 ### 0.5 Godot 3 → Godot 4 易错写法对照（C#，**左列一律禁止**）
 
@@ -95,10 +101,10 @@
 |---|---|---|---|
 | `level.json` | `Meta.Id`、`Meta.NameKey`、`Meta.Map.WidthM / HeightM` | m | 标题、坐标映射（`MapHeightM`）、相机内容范围 |
 | `level.json` | `Meta.AvailableUnits[]`（`UnitId, Count`） | — | 部署面板条目与剩余数（**仅显示**，合法性由 04 判定） |
-| `level.json` | `Meta.CommandPointsPerNight` | — | 时间条旁显示（夜间以 `GlobalView` 为准，04） |
+| `level.json` | `Meta.CommandPointsPerNight` | — | 时间条旁显示（夜间以 `GlobalView.CommandPoints / CommandPointsInitial` 为准，04） |
 | `Heightmap` | `WidthPx, HeightPx, MetersPerPixel, MinElevationM, MaxElevationM, ElevationM` | m | 高程底图纹理（3.8.1）、覆盖网格的格子大小下限（3.9.6） |
-| `waves.json` | `Waves.EntryPoints[]`（`Id, NameKey, Pos`） | m | 进入点标记、相机内容范围 |
-| `waves.json` | `Waves.Nights[]`（`Night, DurationSec, Waves[].Groups[].Route.Waypoints`） | 世界秒 / m | 时长显示；航点只用于相机内容范围（**不显示**航线，避免泄露敌方路线） |
+| `waves.json` | `Waves.EntryPoints[]`（`Id, NameKey, Pos`） | m | 进入点标记（B-T2-138）、相机内容范围 |
+| `waves.json` | `Waves.Nights[]`（`Night, DurationSec, Waves[].Groups[].Route.Waypoints`） | 世界秒 / m | 时长显示；航点只用于相机内容范围（**不显示**航线，避免泄露敌方路线，B-T2-138） |
 | `map/layers.json` | `Layers.Rivers / Roads / Bridges / Urban / Forests / Borders / RestrictedZones` | m | 底图矢量层（3.8.2） |
 | `map/structures.json` | `Structures[]`（`Id, NameKey, Type, Pos, RadiusM, Hp`） | m | 保护目标符号（静态部分） |
 | `map/grid.json` | `Grid.Nodes / Links` | m | 电网线（细线） |
@@ -111,7 +117,7 @@
 |---|---|---|
 | `ConventionsDef` | `GameSecToWorldSec` | 1× 播放速度的步频（3.4）；时钟显示"游戏秒" |
 | `GameCatalog` | `GetPlayerUnitCategory(unitId)` | 选择符号形状（3.8.4） |
-| `AirDefenseUnitDef` | `NameKey`、`WeaponIds`、`FireControlRadar?.RangeM`、`SelfAcquisitionRangeM`（02 8.2 F 追加） | 名称、射程圈 |
+| `AirDefenseUnitDef` | `NameKey`、`WeaponIds`、`FireControlRadar?.RangeM`、`SelfAcquisitionRangeM`（00 §1.6.6 / 02 §1.4，P15） | 名称、射程圈 |
 | `WeaponDef` | `NameKey`、`RangeM`、`RangeByTagM` | 射程圈（每个武器一圈；按标签的射程画点线圈） |
 | `SensorDef` | `NameKey`、`DetectionRangeM`（`null` = 覆盖型）、`Coverage` | 探测圈 |
 | `EwUnitDef` | `NameKey`、`RadiusM` | 电子战作用圈 |
@@ -121,19 +127,19 @@
 ### 1.3 本地化（`data/loc/zh.json`）
 
 - 客户端自带 `LocTable`（`Client.Core`）：读 `data/loc/zh.json`（平面键值对象），`Tr(key)` 返回文本；键不存在返回 `"⟦" + key + "⟧"`（醒目、不崩溃），并把缺失键记入 `LocTable.MissingKeys`（`SortedSet<string>`，序数比较）。
-- 界面中出现的所有文字都用本地化键；**本文件新增的键**列在 8.2-E，需人批准后写入 `data/loc/zh.json`。
+- 界面中出现的所有文字都用本地化键；**本文件新增的键**列在 8.2-E（已决 B-T2-140，由后续数据任务写入 `data/loc/zh.json`）。
 - 带参数的文本用 `{0}`、`{1}` 占位，`string.Format(CultureInfo.InvariantCulture, Tr(key), args)`。
 
 ### 1.4 客户端配置 `game/config/client_config.json` → `ClientConfig`
 
-客户端自身的显示 / 操作参数（**不是**游戏规则数值，不进入模拟；放置位置见待决问题 Q1）。由 `ClientConfigLoader`（`System.Text.Json`，`PropertyNameCaseInsensitive = false`、属性名 camelCase、`UnmappedMemberHandling = Disallow`）加载；缺字段 → 用下表默认值；未知字段或类型错误 → 启动报错（错误屏，3.0.3）。
+客户端自身的显示 / 操作参数（**不是**游戏规则数值，不进入模拟；已决 B-T2-127）。由 `ClientConfigLoader`（`System.Text.Json`，`PropertyNameCaseInsensitive = false`、属性名 camelCase、`UnmappedMemberHandling = Disallow`）加载；缺字段 → 用下表默认值；未知字段或类型错误 → 启动报错（错误屏，3.0.3）。
 
 | JSON 字段 | C# 属性 | 类型 | 单位 | 默认值 | 依据 |
 |---|---|---|---|---|---|
 | `worldPxPerM` | `WorldPxPerM` | `double` | 像素/米 | `4` | WBS 03.A |
-| `minSpanM` | `MinSpanM` | `double` | m（视口宽度） | `1000` | WS04-002"1 km" |
-| `maxSpanM` | `MaxSpanM` | `double` | m | `400000` | WS04-002"400 km" |
-| `fitPaddingFactor` | `FitPaddingFactor` | `double` | — | `1.1` | 实现细节 |
+| `minSpanM` | `MinSpanM` | `double` | m（视口宽度） | `1000` | WS04-002"1 km"（B-T2-132） |
+| `maxSpanM` | `MaxSpanM` | `double` | m | `400000` | WS04-002"400 km"（B-T2-132） |
+| `fitPaddingFactor` | `FitPaddingFactor` | `double` | — | `1.1` | B-T2-132 |
 | `zoomStepFactor` | `ZoomStepFactor` | `double` | 每格滚轮的跨度倍数 | `1.25` | 实现细节 |
 | `zoomSmoothingSec` | `ZoomSmoothingSec` | `double` | 现实秒（指数平滑时间常数） | `0.08` | 实现细节 |
 | `panSpeedSpanPerSec` | `PanSpeedSpanPerSec` | `double` | 视口宽度 / 现实秒 | `0.75` | 实现细节 |
@@ -142,29 +148,31 @@
 | `maxStepsPerFrame` | `MaxStepsPerFrame` | `int` | 步 | `32` | 3.4 |
 | `maxRealDeltaSec` | `MaxRealDeltaSec` | `double` | 现实秒 | `0.25` | 3.4 |
 | `stepTimeBudgetMs` | `StepTimeBudgetMs` | `double` | 毫秒 | `10` | 3.14 |
-| `userSpeeds` | `UserSpeeds` | `double[]` | 播放倍率 | `[1, 2, 4]` | Q2 |
+| `userSpeeds` | `UserSpeeds` | `double[]` | 播放倍率 | `[1, 2, 4]` | B-T2-128（原 Q2） |
 | `fastForwardRate` | `FastForwardRate` | `double` | 倍率 | `8` | GDD 11.2 |
-| `ballisticSlowRate` | `BallisticSlowRate` | `double` | 倍率 | `0.5` | GDD 11.2 |
-| `choiceSlowRate` | `ChoiceSlowRate` | `double` | 倍率 | `0.5` | GDD 5.2 / 15.4（数值见 Q3） |
-| `fastForwardEnterDelaySec` | `FastForwardEnterDelaySec` | `double` | 世界秒 | `60` | Q4 |
-| `ballisticHoldSec` | `BallisticHoldSec` | `double` | 世界秒 | `120` | Q5 |
+| `ballisticSlowRate` | `BallisticSlowRate` | `double` | 倍率 | `0.5` | 基础弹道慢放倍率 `baseSlowMoRate`（GDD 11.2 / C-T3-01） |
+| `ballisticMinRealWindowSec` | `BallisticMinRealWindowSec` | `double` | 现实秒 | `6.0` | 弹道自适应慢放保证的最少现实秒窗口（C-T3-01） |
+| `choiceSlowRate` | `ChoiceSlowRate` | `double` | 倍率 | `1.0 / 60.0` | 硬核模式下二选一极慢速倍率 `1/60×`（1 现实秒 = 1 世界秒；叙事/普通难度为硬暂停 `0×`，C-T3-01） |
+| `choiceTimeoutRealSec` | `ChoiceTimeoutRealSec` | `double` | 现实秒 | `8.0` | 二选一弹窗现实秒倒计时（`unscaledDeltaTime`，C-T3-01） |
+| `fastForwardEnterDelaySec` | `FastForwardEnterDelaySec` | `double` | 世界秒 | `60` | B-T2-130（原 Q4） |
+| `ballisticHoldSec` | `BallisticHoldSec` | `double` | 世界秒 | `120` | B-T2-131（原 Q5） |
 | `autoFastForwardDefault` | `AutoFastForwardDefault` | `bool` | — | `true` | GDD 11.2 |
 | `interpolationMaxJumpM` | `InterpolationMaxJumpM` | `double` | m（一步内位移超过即不插值） | `10000` | 实现细节 |
-| `predictionHorizonSec` | `PredictionHorizonSec` | `double` | 世界秒 | `300` | Q9 |
+| `predictionHorizonSec` | `PredictionHorizonSec` | `double` | 世界秒 | `300` | B-T2-134（原 Q9） |
 | `minErrorCirclePx` | `MinErrorCirclePx` | `double` | 屏幕像素 | `8` | 实现细节 |
 | `minVagueAreaPx` | `MinVagueAreaPx` | `double` | 屏幕像素 | `10` | 实现细节 |
 | `arrowMinSpeedMps` | `ArrowMinSpeedMps` | `double` | m/s | `0.5` | 实现细节 |
 | `staleTrackSec` | `StaleTrackSec` | `double` | 世界秒 | `60` | 3.8.5 |
 | `coverageMaxCellsPerSide` | `CoverageMaxCellsPerSide` | `int` | 格 | `1024` | 3.9.6 |
-| `coverageAltitudesM` | `CoverageAltitudesM` | `double[]` | m（AGL） | `[50, 500, 3000]` | Q8 |
+| `coverageAltitudesM` | `CoverageAltitudesM` | `double[]` | m（AGL） | `[50, 500, 3000]` | B-T2-133（原 Q8） |
 | `audioCueMinIntervalSec` | `AudioCueMinIntervalSec` | `double` | 现实秒 | `0.25` | 3.12 |
 | `engagementLogCapacity` | `EngagementLogCapacity` | `int` | 条 | `500` | 3.11 |
 | `notificationLifetimeSec` | `NotificationLifetimeSec` | `double` | 现实秒 | `6` | 3.10 |
 | `maxNotifications` | `MaxNotifications` | `int` | 条 | `6` | 3.10 |
 | `fxMaxCount` | `FxMaxCount` | `int` | 个 | `256` | 3.8.8 |
-| `defaultRunSeed` | `DefaultRunSeed` | `ulong` | — | `1` | Q10 |
+| `defaultRunSeed` | `DefaultRunSeed` | `ulong` | — | `1` | B-T2-07（原 Q10） |
 
-校验（任一不满足 → 启动报错，消息 `client_config.json: <字段> 取值非法`）：`WorldPxPerM > 0`；`0 < MinSpanM < MaxSpanM`；`FitPaddingFactor ≥ 1`；`ZoomStepFactor > 1`；`ZoomSmoothingSec ≥ 0`；`MaxStepsPerFrame ≥ 1`；`MaxRealDeltaSec > 0`；`UserSpeeds` 非空、全部 `> 0` 且严格升序；`FastForwardRate`、`BallisticSlowRate`、`ChoiceSlowRate > 0`；`CoverageAltitudesM` 非空、全部 `≥ 0`；`CoverageMaxCellsPerSide ≥ 16`；容量类 `≥ 1`。
+校验（任一不满足 → 启动报错，消息 `client_config.json: <字段> 取值非法`）：`WorldPxPerM > 0`；`0 < MinSpanM < MaxSpanM`；`FitPaddingFactor ≥ 1`；`ZoomStepFactor > 1`；`ZoomSmoothingSec ≥ 0`；`MaxStepsPerFrame ≥ 1`；`MaxRealDeltaSec > 0`；`UserSpeeds` 非空、全部 `> 0` 且严格升序；`FastForwardRate`、`BallisticSlowRate`、`BallisticMinRealWindowSec`、`ChoiceSlowRate`、`ChoiceTimeoutRealSec > 0`；`CoverageAltitudesM` 非空、全部 `≥ 0`；`CoverageMaxCellsPerSide ≥ 16`；容量类 `≥ 1`。
 
 单元测试使用手写的 `ClientConfig` 实例（7.0 的 `CfgT`），**不读这个文件**。
 
@@ -173,10 +181,10 @@
 | 参数 | 含义 | 缺省 |
 |---|---|---|
 | `--level <id>` | 关卡 ID | `test_01` |
-| `--seed <n>` | 本夜种子，十进制或 `0x` 十六进制（`ulong`），**直接**传给 `SimWorld.Create`（与 `tools/simrun --seed` 一致，00 3.1.5） | `SimRandom.NightSeed(DefaultRunSeed, levelId, nightIndex)` |
+| `--seed <n>` | 本夜种子，十进制或 `0x` 十六进制（`ulong`），**直接**传给 `SimWorld.Create`（与 `tools/simrun --seed` 一致，00 §3.1.5） | `SimRandom.NightSeed(DefaultRunSeed, levelId, nightIndex)`（非战役传 `nightIndex = 1`，战役传 `flow` 序号 + 1，B-T2-07） |
 | `--data <path>` | `data/` 目录的绝对路径 | 1.7 的查找结果 |
 | `--plan <path>` | 预载部署方案（`DeploymentPlan` 的 JSON，格式同回放文件 `config.deployment`，00 3.9.1） | 空方案 |
-| `--hardcore` | 硬核模式：禁止手动暂停（GDD 11.2） | 关 |
+| `--hardcore` | 硬核模式：禁止手动暂停、设置 `SimConfig.AutoChoicePrompts = false`（仅保留剧情二选一，B-T2-11），且二选一期间不进入硬暂停而切为 `1/60×` 慢放（B-T1-18、C-T3-01） | 关 |
 | `--smoke <name>` | 烟雾测试模式（7.3） | 关 |
 
 解析由 `CommandLineArgs.Parse(string[])`（`Client.Core`）完成：未知参数、缺值、种子格式错误 → 抛 `ArgumentException`（消息含参数名），启动报错。
@@ -212,7 +220,7 @@ WS03-004 的产出。每项为 `"#RRGGBB"` 或 `"#RRGGBBAA"`。Godot 侧用 `Col
 
 1. 有 `--data` → 使用它；该目录下不存在 `rules/conventions.json` → 报错 `--data 指向的目录不是 data/：<path>`。
 2. 否则从 `ProjectSettings.GlobalizePath("res://")`（即 `game/` 的绝对路径）开始，逐级向上查找含 `AGENTS.md` 的目录 `R`，返回 `R/data`（与 00 0.5 测试定位仓库根的方式一致）；到达文件系统根仍未找到 → 报错 `找不到仓库根（含 AGENTS.md 的目录）；请用 --data 指定`。
-3. 导出版本的数据位置不在灰盒范围（Q16）。
+3. 导出版本（WS06-010）把 `data/` 复制到可执行文件同级目录（`OS.GetExecutablePath()` 同级，已决 B-T1-20），灰盒开发阶段按第 1–2 步定位。
 
 `Find(string startDir, string? dataArg, Func<string, bool> fileExists)` 以委托访问文件系统，便于单元测试（T-06-39）。
 
@@ -289,8 +297,8 @@ renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
 ```
 
-- `config/features` 中的 `"4.3"` 写**实际使用的引擎主次版本**（Q15）；最低 4.3 .NET 版。
-- `stretch/mode="disabled"`：视口像素 = 窗口像素，`MapCamera` 的视口尺寸直接取 `GetViewport().GetVisibleRect().Size`（界面缩放在 WS04-012 处理，Q17）。
+- `config/features` 中的 `"4.3"` 写**实际使用的引擎主次版本**；锁定最低 4.3 .NET 版（已决 B-T2-136），渲染后端固定 `gl_compatibility`（已决 B-T1-19）。
+- `stretch/mode="disabled"`：视口像素 = 窗口像素，`MapCamera` 的视口尺寸直接取 `GetViewport().GetVisibleRect().Size`（灰盒接受当前 HiDPI 行为，界面缩放在 WS04-012 处理，已决 B-T1-21）。
 - `default_texture_filter=0`（Nearest）：覆盖纹理按格子显示；高程底图单独设为 Linear（3.8.1）。
 - **输入映射不写进 `project.godot`**：由 `InputSetup.EnsureActions()` 在启动时按 2.6 表用 `InputMap.AddAction` / `InputMap.ActionAddEvent` 注册（已存在的动作不重复添加）。理由：表格是唯一来源，手写 `InputEvent` 序列化易错。
 
