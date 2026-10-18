@@ -215,6 +215,35 @@
 
 ## 04_enemy_ai_commands.md
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| P01, P08, P12, P19, P20, P22, P24–P25, P27, P29–P30, P32–P35, P38–P42, P45–P48 | 已应用 | §1.1–1.4、§2.1–2.5、§3.1–3.9、§4.1–4.2、§8.2：数据模型（`EnemyAiRulesDef`、`CommandRulesDef`、`EventsFileDef`、`ChoicesFileDef`）、实体公共字段（`PlayerUnitCommon.DeployPhaseEndTick` / `Relocation` / `PendingRelocationAltId`）、`ChoiceRequest`（移除重复 `CreatedTick`）、`CommandState`（含 `RelocationsCompleted`）与 `EnemyIntelState`（单例哈希序 7、8）、阶段 0 三子阶段顺序、`AllClear()` 追加条件、`NightResult.CarryOut` 与 `CommandSummary`、快照视图全部与 `00_core.md` 对齐 |
+| A-2-05, B-T1-24 | 已应用 | §3.2.2、§3.8.2、§7 `T-04-04`/`T-04-72`：消费事件 `310 PlayerUnitDestroyed`（含 `Category`、`SourceThreatId`、`Pos`） |
+| A-2-10 | 已应用 | §3.3.0、§3.3.2–3.3.5、§8.3：`IEnemyAiHooks` 完整实现（`DeferGroup`、`SaturationSpawnTimes`、`SelectKnownTarget`、`SelectAirDefenseTarget`、`SelectWeightedRandomOverride`、`AdjustAvoidance`）与 `EnemyAiQueries.AvoidanceActive(ctx)` |
+| A-2-11 | 已应用 | §3.7.3、§7 `T-04-61`、§8.3：回答自动二选一时调用 `EmissionChoiceEffects.ApplyArmChoice(ctx, unitId, silence)`（消耗 0 指挥点） |
+| A-2-15 | 已应用 | §3.5.1、§3.5.3、§7 `T-04-41`、§8.3：`DeploymentValidator` 增加单点放置检查入口 `CheckPlacement(level, plan, replaceIndex, candidate)` 供 05 战役层与 06 部署界面复用 |
+| A-2-17 | 已应用 | §3.6、§4.2、§7 `T-04-50`/`T-04-51`、`8.3`：`CommandPointRules`（`CostOf`、`CanSpend`、`Spend`、`Refund`、`BuildSummary`）统一全模块耗点命令校验与扣减约定 |
+| A-2-18 | 已应用 | §1.5、§2.3、§3.1.1、§3.2.1、§3.2.6、§7 `T-04-01`/`T-04-27`/`T-04-52`：`CarryIn.CommandPointsBonus` 统一命名并按 `economy.commandPointsPerNight.max` 截断；`KnownTargetCarry` 增加 `string? RosterId` 与 `bool Priority = false` |
+| A-2-23 | 已应用 | §3.5.2、§8.3：部署多边形判定直接调用 `Nightwatch.Sim.Core.Geo.PointInPolygon`（不保留私有副本） |
+| A-2-25 | 已应用 | §3.5.3、§7 `T-04-42`、§8.3：部署校验第 9 步调用 02 `EmissionPolicyRules.CheckAvailable(level, p.UnitId, policyId)` |
+| A-2-30, A-3-09 | 已应用 | §3.3.5、§3.7.2、§8.3：火控雷达参数使用 `SensorEmbeddedDef`；武器分目标最大射程统一通过 `WeaponParams.RangeFor(w, tag)` 与 `MaxRangeAgainst(u, tag)` 读取 |
+| A-3-01 | 已应用 | §2.2：`ChoiceRequest` 移除与 `EntityHeader.CreatedTick` 重复的字段声明，哈希与超时计算读取 `EntityHeader.CreatedTick` |
+| A-3-05 | 已应用 | §3.3.2、§7 `T-04-08`：消费 02 `EmitterQueries.ListActive` 返回的 `ActiveEmitter.EntityKind`（`EntityKind.Sensor` → `Radar`，`EntityKind.EwUnit` → `Ew`，其他 → `AirDefense`） |
+| B-T1-03, B-T1-05 | 已应用 | §3.1、§3.4、§3.8：确认我方单位部署/撤收/移动状态机与剧情事件触发统一归 04 阶段 0 执行 |
+| B-T2-11, B-T2-78, B-T2-79, B-T2-88..104 | 已应用 | §1–§4、§8.1 Q-A1..Q-A12 / Q-D1..Q-D8 / Q-C1..Q-C6 / Q-S1..Q-S4：全部 30 项待决问题定稿并标为“已决”（含 `precision_exposure` 正式默认权重 `3.0`、`StoryActionDef.On` 可选布尔支持 `set_alert` 解除警报、夜间不从预备队新部署、各级单位转移规则、指挥点消耗与退费、二选一超时与并发上限等） |
+| B-T3-05 | 已应用 | §0.2 K1、§1.1.1、§1.5、§2.4、§3.2.2–3.2.3、§3.2.6、§3.3.0、§3.3.2、§6 #4、§7 `T-04-03`/`T-04-25`/`T-04-27`、§8.1 Q-A1：暴露度达 100 时加入当夜 `KnownTargets`（权重 3.0），并经 `TriggerExposure100Retarget` 从当夜剩余待发波次中把原本打 `weighted_random` 的组按 `retargetFrac = 0.25`（优先 `preferAttracts` 弹药）改向至该单位位置（每单位每夜最多触发一次当夜改向，经 `SelectWeightedRandomOverride` 零随机数消费生效）；若当夜已无匹配待发波次，则在 `CarryOut.KnownTargets` 标记 `Priority = true` 由次夜优先打击 |
+| B-T3-06 | 已应用 | §3.4.3、§8.1 Q-D2：夜间移动在 M1/M2 采用直线匀速并只检查目的地合法性 |
+| C-T1-01 | 已应用 | `tools/spec_calc/04/calc_04.py` 入库并验算通过；§7 引用路径更新 |
+| C-T1-04 | 已应用 | §0.4、§3.3.4、§3.3.5、§3.4.3：补充跨平台确定性约束（禁用 `Math.Hypot`，距离统一使用 `Math.Sqrt(dx*dx + dy*dy)`） |
+| C-T1-06 | 已应用 | §2.4、§3.3.2、§3.3.6、§6 #12、§7 `T-04-07`：`EnemyIntelState` 维护 `AssignedByUnit`、`AssignedByPos`、`ArmAssignedByUnit` 增量字典，替代 $O(\text{KnownTargets} \times \text{Threats})$ 全表扫描，并在 `CheckInvariants` 校验等价性 |
+| C-T1-07 | 已应用 | §2.4、§3.3.5、§7 `T-04-22`：`EnemyIntelState` 维护 `AvoidanceGridVersion` 与 `AStarCache`，对同网格版本、同 `(A50Active, startCell, goalCell)` 的绕行请求直接复用缓存航点，消除多枚巡航导弹同格生成的重复 A\* 搜索 |
+| C-T1-08 | 已应用 | §3.2.2、§7 `T-04-06`：`ProbeCheck` 条件 B 改用 `ctx.ThreatGrid.QueryCircle(fu.Pos, R)` 空间网格查询 |
+| C-T1-12 | 已应用 | §0.4：添加文档同步免责声明（本规格已与 GDD / 数值表 / WBS 同步收口，进入实现前无需再次停下询问） |
+| C-T1-16 | 已应用 | §3.1.2、§3.2.2：`CommandStage` 与 `EnemyIntelSystem` 补充空闲步 $O(1)$ 早退路径 |
+| C-T2-01 | 已应用 | §3.3.5：绕行网格 `Covers` 对防空火力单元优先复用 `u.HorizonProfile.HasLineOfSightAgl`，与 01/02 的 720 方位桶径向累积最大遮挡斜率包络保持一致 |
+| C-T3-01 | 已应用 | §3.7.2、§4.1、§8.1 Q-C5/Q-C6、§8.3 B-06：明确客户端表现层在 `ChoiceRequested` 期间于叙事/普通难度自动暂停、硬核难度降为 1/60×（1 世界秒/真实秒）慢放 |
+| 数据文件与上位文档同步（`rules/enemy_ai.json`、`rules/commands.json`、`events.schema.json`、`GDD`、`塔防数值表`） | 留给后续（`data/`、`docs/游戏设计文档_GDD_v1.md`、`docs/塔防数值表_v1.md`，D2b-08 / D3 任务） | 04 规格正文与 §1 / §8.2 已完整定义所有新增规则文件、Schema 字段与默认值，实际 JSON 数据与上位文档在对应任务中修改 |
+
 ## 05_campaign_economy.md
 
 ## 06_client_graybox.md
