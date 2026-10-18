@@ -15,6 +15,9 @@
 | `04_enemy_ai_commands.md` | 敌方 AI（试探 / 压制 / 猎杀 / 绕行 / 饱和）、已知目标清单、指挥点、二选一请求 | WS01-019、021 |
 | `05_campaign_economy.md` | 战役状态、经济、多夜流程、跨关影响、自动结算（系统规格层，M3 起细化） | WS05 |
 | `06_client_graybox.md` | Godot 灰盒客户端：场景结构、模拟驱动、相机、部署、时间控制、航迹显示 | WS04-001 – 005、WS06-009 |
+| `07_tools.md` | 命令行工具：数据校验器（`tools/validate`）、无头模拟器与回放校验器（`tools/simrun`）、性能基准（`simrun --bench`） | WS06-004、WS06-006、WS06-007、WS06-008、WS01-028 |
+
+> **阅读顺序**：`00_core` → `01_spawn_movement_terrain` → `02_sensing_tracks_ew_emission` → `03_engagement_impact_scoring` → `04_enemy_ai_commands` → `05_campaign_economy` → `06_client_graybox` → `07_tools`。
 
 ## 每个规格文件的固定结构
 

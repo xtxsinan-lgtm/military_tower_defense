@@ -1128,7 +1128,7 @@ if rng.Chance(Positions.Deception.FakeLauncherSeeThroughChance[rq]):
 
 ### 3.8 覆盖预计算查询（`CoverageQuery`，只读供客户端，A-2-16 / C-T1-12）
 
-供客户端部署阶段与夜间覆盖层（06 §3.9.6、§8.3 D-02-1）在后台线程计算单个单位的探测 / 火控 / 武器覆盖网格；**不读 `SimState`、无副作用、线程安全**：
+供客户端部署阶段与夜间覆盖层（06 §3.9.6、§8.3 D-02-1）在后台或主线程计算单个单位的探测 / 火控 / 自主捕获覆盖与盲区网格；**不读 `SimState`、无副作用、线程安全**：
 
 ```csharp
 namespace Nightwatch.Sim.Sensing;
@@ -1137,25 +1137,30 @@ public readonly record struct CoverageGridSpec(double MinX, double MaxY, double 
 
 public static class CoverageQuery
 {
-    // 返回 Rows × Cols（行主序，r = 0 对应北侧 MaxY）的 byte[]：1 = 覆盖，0 = 不覆盖；
-    // 该单位无覆盖圈（如欺骗单位、覆盖型自动单位）返回 null。
+    // 返回 Rows × Cols（行主序，r = 0 对应北侧 MaxY）的 byte[]（三态，A-2-16 / 06 §3.9.6）：
+    //   0 = 名义距离 R_nom 之外；
+    //   1 = 名义距离 R_nom 之内，但在 targetAglM 高度不可探测（超出有效距离 R 或视线被地形遮挡 = 盲区）；
+    //   2 = 可探测（在有效距离 R 内且视线无遮挡）。
+    // 该单位无探测能力（如电子战单位、欺骗单位、覆盖型自动单位、无火控且无自主捕获的火力单元）返回 null。
     public static byte[]? ComputeGrid(
         LevelData level, TerrainModel terrain, int nightIndex, PlacedUnit unit,
         double targetAglM, CoverageGridSpec grid);
 }
 ```
 
-计算规则（与 3.2.3–3.2.5 完全同源，禁止另写一套公式，C-T1-12）：
+计算规则（与 3.2.3–3.2.5 完全同源，禁止另写一套公式，C-T1-12 / C-T2-01）：
 
 1. 取 `night = level.Waves.Nights` 中 `Night == nightIndex` 的项（无则取 `Nights[0]`），`season = EnvironmentResolver.SeasonFor(night, level.Meta.DateRange.From)`。
-2. 按 `unit.UnitDefId` 在 `level.Catalog` 中查找定义：
-   - **`SensorUnit`**（`DetectionRangeM != null`）：按 3.2.3 计算目标高度 `AltM = targetAglM` 下的有效探测距离 `R`（其中 `Powered = true`、`NewPositionPenalty = unit.FirstNightAtNewPosition`、`NightAids = unit.Settings?.NightAids`）；若 `LineOfSight != false && Layer != National`，用 `terrain.BuildHorizonProfile(unit.Pos, AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM, R)` 检查每个格心 `p` 的 `HasLineOfSightAgl(p, targetAglM)`。
+2. 按 `unit.UnitDefId` 在 `level.Catalog` 中查找定义，确定名义探测距离 `R_nom`、在目标高度 `AltM = targetAglM` 下的有效探测距离 `R`、以及是否需要视线检查与對應的 `HorizonProfile`（预计算一次 720 方位桶径向最大遮挡斜率包络，耗时约 1.2 ms）：
+   - **`SensorUnit`**（`DetectionRangeM != null`）：`R_nom = s.Def.DetectionRangeM`；按 3.2.3 计算 `AltM = targetAglM` 下的有效探测距离 `R`（其中 `Powered = true`、`NewPositionPenalty = unit.FirstNightAtNewPosition`、`NightAids = unit.Settings?.NightAids`）；若 `LineOfSight != false && Layer != National`，用 `profile = terrain.BuildHorizonProfile(unit.Pos, AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM, R)` 检查视线，否则不需要视线检查（`profile = null`）。
    - **`FireUnit`**：
-     - 若 `FireControlRadar != null`：按 3.2.5 火控雷达分支计算 `R`（`Powered = true`、`NewPositionPenalty = unit.FirstNightAtNewPosition`、含冬季与 `targetAglM` 低空倍率），并用 `terrain.BuildHorizonProfile(unit.Pos, FireControlRadar.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM, R)` 检查 `HasLineOfSightAgl(p, targetAglM)`；
-     - 否则若 `SelfAcquisitionRangeM != null`：按 3.2.5 自主捕获分支计算 `R`（含 `SelfAcquisition == Optical` 的昼夜与天气倍率），并用 `terrain.BuildHorizonProfile(unit.Pos, Rules.Terrain.DefaultAntennaHeightM, R)` 检查 `HasLineOfSightAgl(p, targetAglM)`。
-   - **`EwUnit`**（`EquipmentSlot != true`）：`R = def.RadiusM`，不检查视线与高度。
-   - 其他定义：返回 `null`。
-3. 对每个格子 `(r, c)`（`0 ≤ r < grid.Rows`、`0 ≤ c < grid.Cols`），格心 `p = (grid.MinX + (c + 0.5) * grid.CellM, grid.MaxY - (r + 0.5) * grid.CellM)`；满足 `WithinRange(unit.Pos, p, R)` 且（需要视线时）`HasLineOfSightAgl(p, targetAglM) == true` 则置 `result[r * grid.Cols + c] = 1`，否则 `0`。
+     - 若 `FireControlRadar != null`：`R_nom = FireControlRadar.RangeM`；按 3.2.5 火控雷达分支计算 `R`（`Powered = true`、`NewPositionPenalty = unit.FirstNightAtNewPosition`、含冬季与 `targetAglM` 低空倍率），并用 `profile = terrain.BuildHorizonProfile(unit.Pos, FireControlRadar.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM, R)` 检查视线；
+     - 否则若 `SelfAcquisitionRangeM != null`：`R_nom = SelfAcquisitionRangeM`；按 3.2.5 自主捕获分支计算 `R`（含 `SelfAcquisition == Optical` 的昼夜与天气倍率），并用 `profile = terrain.BuildHorizonProfile(unit.Pos, Rules.Terrain.DefaultAntennaHeightM, R)` 检查视线。
+   - 其他定义（含 `EwUnit`、`DeceptionUnit`、`DetectionRangeM == null` 的覆盖型单位、无火控且无自主捕获的 `FireUnit`）：返回 `null`（电子战圈与武器射程圈由 06 §3.8.7 `RangeRings` 直接按半径绘制）。
+3. 对每个格子 `(r, c)`（`0 ≤ r < grid.Rows`、`0 ≤ c < grid.Cols`），格心 `p = (grid.MinX + (c + 0.5) * grid.CellM, grid.MaxY - (r + 0.5) * grid.CellM)`：
+   - 若 `!WithinRange(unit.Pos, p, R_nom)` → `result[r * grid.Cols + c] = 0`（名义距离外）；
+   - 否则若 `WithinRange(unit.Pos, p, R)` 且（`profile == null || profile.HasLineOfSightAgl(p, targetAglM)`）→ `result[r * grid.Cols + c] = 2`（可探测）；
+   - 否则 → `result[r * grid.Cols + c] = 1`（名义距离内盲区）。
 
 ---
 
@@ -1891,5 +1896,5 @@ ID：`r_reg = 1`，目标 = 2，航迹 = 3。预期第 1 步：事件 `TrackCrea
 | 04 | 部署校验与指挥点 | `DeploymentValidator` 校验 `UnitSettings`（策略可用性用 `EmissionPolicyRules.CheckAvailable`）；运行时辐射命令在阶段 0 经 `CommandPointRules` 校验并扣减指挥点（A-2-17） |
 | 04 | 暴露度后果与条令 | 消费 `ExposureThresholdCrossed` / `ExposurePeak`；排除 `SeenThrough` 的假发射车；传入 `CarryIn.ActiveDoctrineId`（`forward_ambush`、`fire_group_network`，A-2-22） |
 | 05 | 跨夜与敌情档案 | `CarryIn` 的暴露度初值、`FirstNightAtNewPosition`、`ActiveDoctrineId`、`CarryIn.Dossier`（`DecoyIdentificationBonus`），假发射车的 `durationNights`、`SeenThrough` |
-| 06 | 覆盖层预览 | 调用 `CoverageQuery.ComputeRadarCoverage / ComputeSensorCoverage / ComputeEwCoverage`（§3.8，C-T2-02） |
+| 06 | 覆盖层预览 | 调用 `CoverageQuery.ComputeGrid(level, terrain, nightIndex, unit, targetAglM, grid)` 返回三态 `byte[]?`（`0 = 名义距离外, 1 = 距离内盲区, 2 = 可探测`；§3.8，A-2-16 / C-T1-12） |
 
