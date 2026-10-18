@@ -592,71 +592,75 @@ public sealed record UnitEngagementSettings(EngagementRule Default, IReadOnlyLis
 
 ---
 
-## 3. 每步算法
+### 3. 每步算法
 
-### 3.0 公共工具（全目录只此一处实现）
+### 3.0 公共工具与区域规则查询
 
-```csharp
-namespace Nightwatch.Sim.Core;
-public static partial class Geo
-{
-    // 点在多边形内（交叉数法，半开规则）。多边形不必闭合；边界上的点结果由下式决定，不另做特判。
-    public static bool PointInPolygon(Vec2 p, IReadOnlyList<Vec2> poly)
-    {
-        bool inside = false;
-        for (int i = 0, j = poly.Count - 1; i < poly.Count; j = i++)
-        {
-            var a = poly[i]; var b = poly[j];
-            if ((a.Y > p.Y) != (b.Y > p.Y) &&
-                p.X < (b.X - a.X) * (p.Y - a.Y) / (b.Y - a.Y) + a.X)
-                inside = !inside;
-        }
-        return inside;
-    }
-}
-```
+`Geo.PointInPolygon(Vec2 p, IReadOnlyList<Vec2> poly)` 与 `Geo.InUrban(LevelData level, Vec2 p)` 全目录唯一实现位于 `Nightwatch.Sim.Core.Geo`（见 [00_core.md](00_core.md) §0.4.6，P48、A-2-23），本文件直接调用：
 
-- `InUrban(p)` = `Layers.Urban` 中任一多边形（任意密度）`PointInPolygon(p, Polygon)`。
-- `ZoneRuleAt(p)`：遍历 `Layers.RestrictedZones`（数据顺序），收集包含 `p` 的区域规则集合；返回 `(bool NoEngagement, bool Restricted, bool FrontlineRisk)`。
-- 若 01 也需要点在多边形判断，必须调用同一个 `Geo.PointInPolygon`（00 3.8：同一公式只写一处）。
-- 本文件所有“时刻比较”使用 `Eps = 1e-9`：`a ≥ b` 写作 `a + Eps >= b`；`a > b` 写作 `a > b + Eps`。
+- `InUrban(p)` ⇔ `Geo.InUrban(ctx.Level, p)`（`Layers.Urban` 中任一多边形 `Geo.PointInPolygon(p, Polygon)` 为 `true`）。
+- `ZoneRuleAt(p)`：遍历 `Layers.RestrictedZones`（数据顺序），对满足 `Geo.PointInPolygon(p, z.Polygon)` 的区域收集规则，返回 `(bool NoEngagement, bool Restricted, bool FrontlineRisk, bool NeighborCountry)`（分别对应 `rule` 为 `no_engagement`、`restricted_engagement`、`frontline_risk`、`neighbor_country`，C-T2-03）。
+- 本文件所有"时刻 / 距离比较"使用 `Eps = 1e-9`：`a ≥ b` 写作 `a + Eps >= b`；`a > b` 写作 `a > b + Eps`。
 
 ### 3.1 解析拦截点（`InterceptSolver`，WS01-010）
 
 ```csharp
 namespace Nightwatch.Sim.Engagement;
+public readonly record struct PredictedState(Vec2 Pos, double AltM, bool Arrived);
 public readonly record struct InterceptSolution(double TimeSec, Vec2 Pos, double AltM);
 
 public static class InterceptSolver
 {
+    public const int BisectionIterations = 32; // C-T2-10：由 48 改为 32（分辨率 2.3e-10 s）
+
     // origin：发射点（高度按 0 AGL）；speedMps：拦截弹速度；rangeM：对该目标的射程（水平）；ceilingM：射高；
-    // predict：dt → 目标预测状态（正式代码传入 dt => ThreatPredictor.Predict(ctx, threat, dt)，测试传入桩函数）
+    // predict：dt → 目标预测状态（正式代码传入 dt => PredictThreat(ctx, threat, dt)，测试可传入桩函数）；
+    // maxTargetSpeed3DMps：可选的目标三维速度上界（正式代码传入 ThreatKinematics.MaxSpeed3DMps(threat)，C-T1-05）
     public static InterceptSolution? Solve(Vec2 origin, double speedMps, double rangeM, double ceilingM,
-                                           Func<double, PredictedState> predict, double sampleSec);
+                                           Func<double, PredictedState> predict, double sampleSec,
+                                           double? maxTargetSpeed3DMps = null);
 }
 ```
 
-算法（逐行实现）：
+正式代码对 `Threat t` 构造 `predict` 委托（A-2-02）：
+```csharp
+Func<double, PredictedState> predict = dt =>
+{
+    var p = ThreatKinematics.Predict(t, ctx.TimeSec + dt);
+    return new PredictedState(p.Pos, p.AltM, Arrived: p.AtPathEnd && t.PathEnd == PathEndAction.Arrive);
+};
+```
+
+算法（逐行实现，含 C-T1-05 采样起点下界 `k0` 与 C-T2-10 的 32 次二分）：
 
 ```
 Reach(t):                                             # 等速直线飞行 t 秒能否到达目标在 t 时刻的位置
     s = predict(t)
     dx = s.Pos.X − origin.X; dy = s.Pos.Y − origin.Y
-    d = Math.Sqrt(dx*dx + dy*dy + s.AltM*s.AltM)      # 三维直线距离
+    d = Math.Sqrt(dx*dx + dy*dy + s.AltM*s.AltM)      # 三维直线距离（禁用 Math.Hypot，C-T1-04）
     return speedMps * t + Eps >= d
 
 Solve:
     tMax = Math.Sqrt(rangeM*rangeM + ceilingM*ceilingM) / speedMps   # 超过此时长的解必然在包络外
     K = SimTime.SecToTicksCeil(tMax, sampleSec); if K < 1: K = 1
-    lo = 0.0
-    for k = 1 .. K:
+    if maxTargetSpeed3DMps != null:                   # C-T1-05：采样起点下界（与 k0 = 1 逐位等价）
+        s0 = predict(0.0)
+        if s0.Arrived: return null
+        dx0 = s0.Pos.X − origin.X; dy0 = s0.Pos.Y − origin.Y
+        d3D0 = Math.Sqrt(dx0*dx0 + dy0*dy0 + s0.AltM*s0.AltM)
+        k0 = max(1, (int)Math.Floor(d3D0 / ((speedMps + max(0.0, maxTargetSpeed3DMps.Value)) * sampleSec)))
+    else:
+        k0 = 1
+    if k0 > K: return null
+    lo = (k0 − 1) * sampleSec
+    for k = k0 .. K:
         t = k * sampleSec
         if predict(t).Arrived: return null            # 目标在可达之前已落地 / 到达
         if Reach(t): hi = t; goto Refine
         lo = t
     return null                                       # 追不上
 Refine:
-    repeat 48 times:
+    repeat 32 times:                                  # C-T2-10：32 次二分
         mid = lo + (hi − lo) * 0.5
         if Reach(mid): hi = mid else lo = mid
     s = predict(hi)
@@ -666,140 +670,193 @@ Refine:
     return InterceptSolution(hi, s.Pos, s.AltM)
 ```
 
-- 结果是“最早可达时刻” `t*`（拦截弹恰好在 `t*` 到达，不会提前飞到某处等待）。若 `t*` 的拦截点在包络外，本步返回 `null`；目标继续接近后，后续某一步的 `t*` 落入包络时才发射——即“在最大射程处发射”的自然结果。
-- 在 `sampleSec` 网格上首次可达的区间内二分；可达窗口短于 `sampleSec` 而恰好落在两个采样点之间时会被漏掉，属已知近似（8.1 Q-I5）。
-- 拦截弹不做逐帧碰撞（WBS 01.A），也不做中途修正：发射后拦截点固定（2.5）。
-- 地形：拦截弹和目标高度都用 AGL，不考虑发射点与拦截点的地形高差（8.1 Q-I5）。
+- **采样起点下界等价性（C-T1-05）**：对任意 `k < k0`，目标与发射点的三维距离下界 `> d3D0 − k * sampleSec * maxTargetSpeed3DMps > k * sampleSec * speedMps`，故 `Reach(k * sampleSec)` 恒为 `false`；又 `predict(t).Arrived` 单调不减，跳过 `1 .. k0 − 1` 不改变二分区间 `[lo, hi]`，因此带 `maxTargetSpeed3DMps` 的加速实现与 `k0 = 1` 的朴素实现结果**逐位相同**（由 T-03-56 验证）。
+- 结果是"最早可达时刻" `t*`（拦截弹恰好在 `t*` 到达，不会提前飞到某处等待）。若 `t*` 的拦截点在包络外，本步返回 `null`；目标继续接近后，后续某一步的 `t*` 落入包络时才发射——即"在最大射程处发射"的自然结果。
+- 在 `sampleSec` 网格上首次可达的区间内二分；可达窗口短于 `sampleSec` 而恰好落在两个采样点之间时会被漏掉，属已知近似（8.1 Q-I5 / B-T2-65）。
+- 拦截弹不做逐帧碰撞（WBS 01.A），也不做中途修正：发射后拦截点固定（2.5；目标中途机动导致的失锁自毁见 3.3.1，A-2-09）。
+- 地形：拦截弹和目标高度都用 AGL，不考虑发射点与拦截点的地形高差（8.1 Q-I5 / B-T2-65）。
 - 对 `Gun` 不调用本函数（3.2.4.2）。
-
 
 ### 3.2 `EngagementSystem`（Order 7，子流 `engagement`，WS01-009）
 
 本系统**不消耗随机数**（所有选择都有确定的全序）；`engagement` 子流保留未用。
 
-#### 3.2.1 `Initialize`（火力单元的武器状态、弹药池）
+#### 3.2.1 `Initialize`（火力单元的武器状态、弹药池与邻近扇区覆盖）
 
-`SimWorld.Create` 第 7 步创建 `FireUnit` 后、第 8 步应用 `CarryIn` 之前，由 `FireUnitFactory.Init(unit, def, level)` 填写 2.2 的字段（00 3.2“其余字段由所属规格初始化”）。本系统 `Initialize` 只做弹药池分配：
+分阶段初始化顺序（00 §3.2 第 7–9 步，P36、P37、A-2-14、A-4-05、B-T2-89）：
+
+1. **第 7 步（`FireUnitFactory.Init(unit, def, level)`）**：按 `def.WeaponIds` 顺序为 `unit.Weapons` 建立 `WeaponState` 项，此时 `Launchers` 为空列表、`PerLevelUsedBefore = 0`（**不在第 7 步分配弹药池**）。
+2. **第 8 步（`SimWorld.Create`）**：按 `PlacedUnit.RosterId` 匹配 `CarryIn.Units`，拷贝标量字段（`Exposure`、`ExposurePeak`、`DamageEfficiencyMult`、`LightDamaged`、`CrewConsecutiveNights`、`AceCrew`）。
+3. **第 9 步（`EngagementSystem.Initialize(ctx)`）**：
+   - **邻近扇区覆盖虚拟单位生成（B-T2-89）**：若 `Config.CarryIn?.ActiveSupports != null` 且含 `"adjacent_sector_coverage"`，且 `Level.Meta.SectorCoverageAnchors != null`：按 `SectorCoverageAnchors` 数组顺序，为每个锚点 `a` 创建一个 `FireUnit`（`DefId = a.UnitDefId`、`Pos = a.Pos`、`DeployState = Deployed`、`RosterId = 0`、`IsVirtualSectorCoverage = true`），并调用 `FireUnitFactory.Init`。
+   - **弹药池与发射架余弹分配（A-2-14、A-4-05）**：
 
 ```
-pool = 对 Meta.AmmoQuota 中每项：pool[WeaponId] = Count          # 无 ammoQuota → pool 为空
+quotaSource = Config.CarryIn?.AmmoPool ?? Level.Meta.AmmoQuota   # A-2-14：CarryIn.AmmoPool 非 null 时替代 Meta.AmmoQuota
+pool = 对 quotaSource 中每项：pool[WeaponId] = Count（无则为 空）
+usedMap = 对 Config.CarryIn?.PerLevelUsed 中每项：usedMap[WeaponId] = Rounds
 for unit in FireUnits (ID 升序):
+  carryUnit = (unit.RosterId != 0 && Config.CarryIn != null)
+              ? Config.CarryIn.Units.FirstOrDefault(u => u.RosterId == unit.RosterId) : null
   for w in unit.Weapons (数据顺序):
     def = Weapon(w.WeaponId)
-    n = (def.Kind == Gun) ? 1 : LauncherCount(def)
+    w.PerLevelUsedBefore = usedMap.GetValueOrDefault(w.WeaponId, 0)
+    carryWep = carryUnit?.Weapons.FirstOrDefault(cw => cw.WeaponId == w.WeaponId)
+    if carryWep != null:                                          # A-4-05：CarryIn 给出逐架余弹时直接采用，不从 pool 扣减
+      for rounds in carryWep.LauncherRounds:
+        w.Launchers.Add(new LauncherState { RoundsLeft = rounds })
+      continue
+    n = (def.Kind == Gun) ? 1 : WeaponParams.LauncherCount(def, Rules.Engagement, Level.Meta, unit.DefId)
     for i in 0..n−1:
       if def.Kind == Gun:              cap = def.MagazineRounds ?? −1
       else:                            cap = def.Magazine ?? −1
       if cap ≥ 0 and pool 含 def.Id:   take = min(cap, pool[def.Id]); pool[def.Id] −= take; rounds = take
       else:                            rounds = cap
       w.Launchers.Add(new LauncherState { RoundsLeft = rounds })
-EngagementState.AmmoPoolRemaining = pool（只保留 ammoQuota 中出现的武器）
+EngagementState.AmmoPoolRemaining = pool（只保留 quotaSource 中出现的武器）
 ```
 
-- 共享弹药池按武器 ID（00 1.2 第 14 条）：同一武器出现在多个单位中时，按单位 ID、武器顺序、发射架顺序依次取弹。
-- 夜间**不从弹药池装填**（8.1 Q-E3）。
-- `CarryIn` 若给出某单位某武器的逐架余弹，则在第 8 步覆盖 `RoundsLeft`（05 定义字段），覆盖时不再从池中扣。
+- 共享弹药池按武器 ID（00 1.2 第 14 条）：未由 `CarryIn.Units` 指定逐架余弹的单位，按单位 ID、武器顺序、发射架顺序依次从 `pool` 取弹。
+- 夜间**不从弹药池装填**（8.1 Q-E3 / B-T2-56）。
 
-#### 3.2.2 单位能否开火
+#### 3.2.2 单位能否开火与空闲步早退
 
 ```
 CanAct(unit, def):
     switch unit.DeployState:
         Deployed: return true
         Moving:   return unitDef.FireOnMove == Yes
-                         or (unitDef.FireOnMove == Partial and def.Kind == Gun)
+                          or (unitDef.FireOnMove == Partial and def.Kind == Gun)   # B-T2-62
         其他（Packing / Packed / Deploying）: return false
 ```
 
-`CanAct == false` 时本步跳过该武器：不开火、不标记任何保留原因、`TargetTrackId = 0`。
+- `CanAct == false` 时本步跳过该武器：不开火、不标记任何保留原因、`TargetTrackId = 0`。
+- **空闲步早退（C-T1-16）**：`Step()` 开头若 `Threats.Count == 0`：将所有 `FireUnit` 的各武器 `w.TargetTrackId` 置 `0` 后立即 `return`（O(1)，不分配任何临时列表或字典）。
 
 #### 3.2.3 候选航迹
 
-每步开头（单位循环之前）：
+每步开头（非空闲步，单位循环之前）：
 
 ```
 now = ctx.TimeSec
 # A. 航迹覆盖记录（突防原因用）
 for track in Tracks (ID 升序):
     if Threats.TryGet(track.ThreatId, out t): t.MaxTrackQuality = max(t.MaxTrackQuality, (int)track.Quality)
-# B. 已占用数（按真实目标计，避免同一目标多条航迹时重复射击）
-claims = new Dictionary<int,int>()          # 只查找，不遍历
-for ic in Interceptors (ID 升序): claims[ic.TargetThreatId] += 1
+# B. 已在飞拦截弹占用数（按真实目标计，避免同一目标多条航迹时重复射击）
+inFlightClaims = new Dictionary<int,int>()  # 只查找，不遍历
+for ic in Interceptors (ID 升序): inFlightClaims[ic.TargetThreatId] += 1
 # C. 候选列表（按航迹 ID 升序）
 candidates = []
 for track in Tracks (ID 升序):
-    if !Threats.TryGet(track.ThreatId, out t): continue
+    if track.ThreatId == 0 or !Threats.TryGet(track.ThreatId, out t): continue   # B-T2-46：误报航迹 ThreatId == 0 不进入交战
+    if t.Phase == ThreatPhase.Arrived: continue                                   # A-4-02：本步已到达终点的目标不再新发起交战
     if t.Tag == null: continue
     if t.Kind == Munition and MunitionDef(t).Interceptable == false: continue
-    if track.PerceivedTag == null: continue
-    candidates.Add((track, t))
+    pt = track.Tag ?? (track.Quality == TrackQuality.Vague ? Rules.Intercept.DecoyUsesColumn : null)   # A-2-01：模糊航迹按 UAV 外观进入候选
+    if pt == null: continue
+    candidates.Add((track, t, pt))
 ```
 
-#### 3.2.4 逐武器的交战决策
+#### 3.2.4 逐武器的交战决策与多单元便宜优先分配（B-T3-02、C-T1-05、C-T1-14）
+
+为兼顾 GDD 9.3 交换比控制与终章性能预算（分配步骤 `≤ 0.3 ms`，C-T1-14），每步交战分为**阶段 I（逐武器筛选与候选锁定）**与**阶段 II（按期望成本排序开火与让位重选）**。
+
+##### 阶段 I：逐武器筛选与候选队列构建（`PrepareWeapon`）
+
+对每个存活 `FireUnit unit`（ID 升序）、每个武器 `(wi, w)`（列表顺序）：
 
 ```
-for unit in FireUnits (ID 升序):
-  for wi, w in unit.Weapons (列表顺序):
-    EngageWeapon(unit, wi, w)
-```
-
-`EngageWeapon`：
-
-```
-def  = Weapon(w.WeaponId); rule = RuleFor(unit, w.WeaponId)
-if !CanAct(unit, def): w.TargetTrackId = 0; return
+def  = Weapon(w.WeaponId); baseRule = RuleFor(unit, w.WeaponId)
+if !CanAct(unit, def): w.TargetTrackId = 0; return Inactive
 
 # —— 第 1 步：逐候选筛选 ——
 eligible = []; reachable = []
-for (track, t) in candidates:
-    pt = track.PerceivedTag
-    if pt ∉ def.Targets: continue                                     # 武器本身打不了，不算“有目标”
+for (track, t, pt) in candidates:                                      # 可通过 ctx.TrackGrid 粗筛，结果须按 track.Id 升序（C-T1-08）
+    if pt ∉ def.Targets: continue                                     # 武器本身打不了，不算"有目标"
     if !ClassHasColumn(def.InterceptClass, Column(pt)): continue        # Column：DECOY → decoyUsesColumn
     if def.RestrictToEnemies != null and !(track.Quality == Precise and t.DefId ∈ def.RestrictToEnemies): continue
-    R = RangeFor(def, pt)
-    dNow = |t.Pos − unit.Pos|
+    rule = EffectiveRuleForTag(unit, w.WeaponId, def, baseRule, pt)    # C-T2-09：默认规则下反导类对 BM/HBM 自动取 salvoSize=2, shootLookShoot=false
+    R = WeaponParams.RangeFor(def, pt)
+    dNow = Math.Sqrt((t.Pos.X − unit.Pos.X)² + (t.Pos.Y − unit.Pos.Y)²)
     inReach = dNow <= R + Eps and t.AltM <= def.CeilingM + Eps        # 当前就在射程、射高内
     if def.Kind == Gun: coarse = inReach
-    else:               coarse = dNow <= R + |t.VelMps| * TMax(def, R) + Eps   # TMax = √(R²+Ceiling²)/速度
+    else:               coarse = dNow <= R + ThreatKinematics.MaxSpeed3DMps(t) * TMax(def, R) + Eps   # C-T1-03：用三维最大速度上界
     if !coarse: continue
     if inReach: reachable.Add((track, t))
     reason = FirstGateFailure(unit, w, def, rule, track, t, pt)        # 3.2.4.1
     if reason != null:
         if inReach: MarkHeld(unit, wi, track, t, reason)               # 3.2.7
         continue
-    if Covered(rule, def, claims, t): continue                         # 已有足够拦截弹 / 射击指向该目标；不标记
-    eligible.Add((track, t, pt, dNow, inReach))
+    if Covered(rule, def, inFlightClaims, t): continue                 # 已被早先在飞拦截弹满足；不标记
+    eligible.Add((track, t, pt, rule, dNow, inReach))
 
 # 单位 / 武器级状态（在筛选之后判断，使 reachable 可用于标记）
-if unit.Suspended(now):                  mark Suspended on all reachable; w.TargetTrackId = 0; return
+if unit.Suspended(now):                  mark Suspended on all reachable; w.TargetTrackId = 0; return Inactive
 if def.BarrelCooldown == true and w.CooldownUntilSec > now + Eps:
-                                         mark BarrelCooling on all reachable; return
+                                         mark BarrelCooling on all reachable; return Inactive
 
-# —— 第 2 步：排序 ——
-for e in eligible: e.Key1 = TagPriorityIndex(rule, e.pt)               # rule.TagPriority == null → 0；否则 IndexOf，未列出 = Count
-                   e.Key2 = (rule.PriorityMode == Nearest or def.Kind == Gun) ? e.dNow : SolveFor(unit, def, e).TimeSec（无解 = +∞）
-order eligible by (Key1 asc, Key2 asc, track.Id asc)
+# —— 第 2 & 3 步：粘滞优先 + 下界懒求值选出排好序的第一个合格目标 chosen ——
+chosen = NextValidCandidate(unit, wi, w, def, eligible)                # 见下"下界懒求值（C-T1-05）"与 PostCheck（3.2.4.2）
+if chosen == null: w.TargetTrackId = 0; return Inactive
+```
 
-# —— 第 3 步：选目标（粘滞：已锁定且仍合格的目标优先）——
-chosen = null
-if w.TargetTrackId != 0 and eligible 中存在 track.Id == w.TargetTrackId:
-    把它移到 order 的最前面
-for e in order:
-    r = PostCheck(unit, wi, def, rule, e)                              # 3.2.4.2；失败时内部已 MarkHeld（若 inReach）
-    if r.Ok: chosen = e; restricted = r.Restricted; sol = r.Solution; break
-if chosen == null: w.TargetTrackId = 0; return
-for e in reachable where e.track.Id != chosen.track.Id: MarkHeld(unit, wi, e.track, e.t, ChannelBusy)
+**下界懒求值与 `SolveFor` 缓存（C-T1-05，与全量求解排序逐位等价）**：
+1. 同一 `(unit, wi)` 在本步内维护字典缓存 `solveCache[track.Id] -> InterceptSolution?`，调用 `InterceptSolver.Solve(..., maxTargetSpeed3DMps: ThreatKinematics.MaxSpeed3DMps(t))`（3.1）。
+2. 若 `w.TargetTrackId != 0` 且 `eligible` 中含 `track.Id == w.TargetTrackId` 的项 `eSticky`，将 `eSticky` 放在队首最先调用 `PostCheck`（粘滞目标优先）。
+3. 对其余 `eligible` 项：
+   - 若 `baseRule.PriorityMode == Nearest` 或 `def.Kind == Gun`：`Key1 = TagPriorityIndex(baseRule, e.pt)`、`Key2 = e.dNow`，直接按 `(Key1 asc, Key2 asc, track.Id asc)` 排序并依次调用 `PostCheck` 取第一个通过者。
+   - 若 `baseRule.PriorityMode == SoonestIntercept` 且 `def.Kind != Gun`：对每项先算无需调用 `Solve` 的时间下界
+     `d3D = Math.Sqrt(e.dNow * e.dNow + e.t.AltM * e.t.AltM)`，
+     `lb = Math.Max(0.0, d3D / (WeaponParams.InterceptorSpeedMps(def, Rules.Engagement) + ThreatKinematics.MaxSpeed3DMps(e.t)))`，
+     按 `(Key1 asc, lb asc, track.Id asc)` 放入未求解队列 `unsolved`，同时维护已求解最小堆 `solved`（按 `(Key1 asc, Key2 asc, track.Id asc)` 排序，`Key2 = SolveFor(unit, def, e).TimeSec`）。循环：当 `solved` 非空且其堆顶 `(Key1, Key2, Id)` 不大于 `unsolved` 队首的 `(Key1, lb, Id)` 时，弹出 `solved` 堆顶做 `PostCheck`（通过即得 `chosen`）；否则弹出 `unsolved` 队首求 `SolveFor`（若无解则直接调 `PostCheck` 记录 `CannotIntercept` 并丢弃，若有解则入 `solved`）。因为 `Key2 >= lb` 恒成立，选出的 `chosen` 与对全部候选求 `SolveFor` 后排序**逐位一致**。
+
+##### 阶段 II：按每击毁期望成本分配与开火（B-T3-02、C-T1-14）
+
+对阶段 I 得到 `chosen != null` 的所有活跃武器上下文 `ctxW = (unit, wi, w, def, chosen)`：
+
+1. 计算对当前 `chosen` 的单发命中概率 `p = HitProbability(unit, def, chosen.track, chosen.t, chosen.point)`（3.3.2）及每击毁期望成本：
+   `expectedCost = (p > 0.0) ? ((def.ShotCostMusd ?? 0.0) / p) : double.PositiveInfinity`。
+2. **排序**：
+   - 若 `Rules.Engagement.Allocation == CheapestExpected`（默认）：按 `(expectedCost asc, unit.Id asc, wi asc)` 排序；
+   - 若 `Rules.Engagement.Allocation == UnitIdOrder`：按 `(unit.Id asc, wi asc)` 排序。
+3. 维护本步新增占用 `sameStepClaims = new Dictionary<int, int>()` 与"已由更便宜且来得及的武器接管"的目标集合 `inTimeClaimed = new HashSet<int>()`。按上述顺序遍历每个 `ctxW`：
+
+```
+# 若当前 chosen.t 在本步刚被更早（更便宜）的武器开火覆盖，且该更便宜武器"来得及"，则本武器让位并从阶段 I 的懒队列取下一个候选
+while chosen != null
+      and sameStepClaims.GetValueOrDefault(chosen.t.Id, 0) > 0
+      and CoveredWithTotal(chosen.rule, def, inFlightClaims, sameStepClaims, chosen.t)
+      and inTimeClaimed.Contains(chosen.t.Id):
+    chosen = NextValidCandidate(unit, wi, w, def, eligible, skipCoveredBy: (inFlightClaims, sameStepClaims, inTimeClaimed))
+
+if chosen == null:
+    w.TargetTrackId = 0; continue
+
+for e in reachable where e.track.Id != chosen.track.Id:
+    MarkHeld(unit, wi, e.track, e.t, ChannelBusy)
 
 # —— 第 4 步：反应时间 ——
 if chosen.track.Id != w.TargetTrackId:
     w.TargetTrackId = chosen.track.Id
-    w.ReadyAtSec = now + ReactionSecFor(unit, def, chosen.track, restricted)   # 3.2.5
-if w.ReadyAtSec > now + Eps: return                                    # 反应中
-if w.NextShotAtSec > now + Eps: return                                 # 射击间隔未到（选目标与反应计时不受影响，可与间隔重叠）
+    w.ReadyAtSec = now + ReactionSecFor(unit, def, chosen.track, chosen.restricted)   # 3.2.5
+if w.ReadyAtSec > now + Eps: continue                                  # 反应中
+if w.NextShotAtSec > now + Eps: continue                               # 射击间隔未到（选目标与反应计时不受影响，可与间隔重叠）
 
-# —— 第 5 步：开火 ——
-if def.Kind == Gun: FireGun(unit, w, def, chosen) else: FireInterceptors(unit, w, def, rule, chosen, sol)
+# —— 第 5 步：开火并登记本步占用与"是否来得及"（C-T1-14）——
+if def.Kind == Gun:
+    FireGun(unit, w, def, chosen, sameStepClaims)
+    interceptAt = now
+else:
+    FireInterceptors(unit, w, def, chosen.rule, chosen, chosen.sol, inFlightClaims, sameStepClaims)
+    interceptAt = now + chosen.sol.TimeSec
+
+arrSec = ThreatKinematics.PredictArrivalSec(chosen.t) ?? double.PositiveInfinity
+if interceptAt < arrSec − WeaponParams.ShotIntervalSec(def, Rules.Engagement) − Eps:
+    inTimeClaimed.Add(chosen.t.Id)                                     # B-T3-02 / C-T1-14：留有至少一次补射间隔才算"来得及"，否则贵武器不让位
 ```
+
+- `CoveredWithTotal(rule, def, inFlightClaims, sameStepClaims, t)`：以 `c = inFlightClaims.GetValueOrDefault(t.Id) + sameStepClaims.GetValueOrDefault(t.Id)` 代入 `Covered`。
+- **复杂度保证（C-T1-14）**：阶段 II 只读取阶段 I 已缓存的候选队列与 `solveCache`，不对 `(目标 × 单位)` 做额外 `Solve`；当更便宜武器本步未开火（仍处于反应计时或冷却）时，`sameStepClaims` 为 0，贵武器在反应计时期间可并行锁定热备，仅在实际同步开火或更便宜武器已发射拦截弹在途时让位。
 
 ##### 3.2.4.1 `FirstGateFailure`（按此顺序，返回第一个不满足的原因；全部满足返回 `null`）
 
@@ -809,7 +866,7 @@ if def.Kind == Gun: FireGun(unit, w, def, chosen) else: FireInterceptors(unit, w
 | b | `!(track.DecoyIdentified && !rule.EngageIdentifiedDecoys)` | `IdentifiedDecoy` |
 | c | `rule.AllowedTags == null \|\| rule.AllowedTags.Contains(pt)` | `TagNotAllowedByRule` |
 | d | `QualityAllows(def.Kind, track.Quality)`：`Gun` → 任意质量；`InterceptorDrone` → `tracks.Allows(q, vector_interceptor_drones)`；`Missile` / `Rocket` → `tracks.MissilesAllowed(q)` | `TrackQualityTooLow` |
-| e | `Missile`/`Rocket`：`unit.FireControlActive`。不满足时：`unit.EmissionSilentHold ? EmissionSilent : FireControlOff` | `EmissionSilent` / `FireControlOff` |
+| e | `Missile`/`Rocket`：`track.PreciseHolderIds.Contains(unit.Id)`（A-2-08）。不满足时：`FireControlQueries.SilentHold(unit, now) ? EmissionSilent : FireControlOff` | `EmissionSilent` / `FireControlOff` |
 | f | `TotalRounds(w) != 0`（不满足时若 `w.DecoyShots > 0` 则置 `t.DecoyDrained = true`） | `AmmoDepleted` |
 | g | `def.PerLevelLimit == null \|\| w.PerLevelUsedBefore + w.ShotsFired < def.PerLevelLimit` | `PerLevelLimitReached` |
 | h | `rule.AmmoReserve == 0 \|\| TotalRounds(w) == −1 \|\| TotalRounds(w) > rule.AmmoReserve \|\| (rule.ReserveForTags != null && rule.ReserveForTags.Contains(pt))` | `AmmoReserve` |
@@ -823,43 +880,43 @@ if def.Kind == Gun:
     if !e.inReach: fail（不标记）
     point = e.t.Pos; sol = null
 else:
-    sol = SolveFor(unit, def, e)       # InterceptSolver.Solve(unit.Pos, InterceptorSpeedMps(def), RangeFor(def, pt), def.CeilingM, dt => Predict(t, dt), StepSec)
+    sol = SolveFor(unit, def, e)       # InterceptSolver.Solve(unit.Pos, InterceptorSpeedMps(def), RangeFor(def, pt), def.CeilingM, dt => Predict(t, dt), StepSec, MaxSpeed3DMps(t))
     if sol == null: if e.inReach: MarkHeld(CannotIntercept); fail
     point = sol.Pos
 z = ZoneRuleAt(point)
 if z.NoEngagement: MarkHeld(NoEngagementZone); fail
 restricted = z.Restricted
 for a in SupportAssets (ID 升序) where a.State == Active and IsFighter(a.Effect):
-    if |point − a.Pos| <= a.RadiusM + Eps:
+    if Math.Sqrt((point.X − a.Pos.X)² + (point.Y − a.Pos.Y)²) <= a.RadiusM + Eps:
         if a.Exclusive and support.Airspace.Exclusive.GroundHoldFire: MarkHeld(FighterExclusiveZone); fail
         restricted = true
 if restricted and support.Airspace.Restricted.ConfirmedHostileOnly and e.track.Quality != Precise:
     MarkHeld(NotConfirmedHostile); fail
-ok(restricted, sol)
+ok(restricted, sol, point)
 ```
 
-- `SolveFor` 的结果在同一步同一武器内缓存（第 2 步排序算过的直接复用），不得重复计算产生不同结果（纯函数，结果必然相同，缓存只为性能）。
+- `SolveFor` 的结果在同一步同一武器内缓存（第 2 步算过的直接复用），不得重复计算产生不同结果（纯函数，结果必然相同，缓存只为性能）。
 - `IsFighter(effect)` = `effect ∈ {AreaPatrol, DirectedIntercept, UavHunt}`。
-- “已确认的敌方目标”= 航迹质量 `Precise`（8.1 Q-E7）。地图上的“限制交战区”与“战斗机所在区域”使用同一套效果（`ConfirmedHostileOnly` + 反应时间倍率）。
+- "已确认的敌方目标"= 航迹质量 `Precise`（8.1 Q-E7 / B-T2-60）。地图上的"限制交战区"与"战斗机所在区域"使用同一套效果（`ConfirmedHostileOnly` + 反应时间倍率）。
 
 #### 3.2.5 反应时间
 
 ```
 ReactionSecFor(unit, def, track, restricted) =
-      ReactionSec(def)                                         # 1.1 取值函数
-    × unit.EmissionReactionMult                                # D10，辐射策略
-    × (track.Cued ? 1.0 : intercept.NoCueFirstShotReactionMult) # 无外部指示，首发 +50%
-    × (restricted ? intercept.RestrictedEngagementReactionMult : 1.0)
+      WeaponParams.ReactionSec(def, Rules.Engagement)                           # 1.1 取值函数（含按 interceptClass 细分，B-T2-01）
+    × FireControlQueries.ReactionMult(unit, Rules.Emission)                     # D10 / A-2-08，辐射策略
+    × (FireControlQueries.Cued(track, Rules.Tracks) ? 1.0 : intercept.NoCueFirstShotReactionMult) # 无外部指示，首发 +50%
+    × (restricted ? intercept.RestrictedEngagementReactionMult : 1.0)           # B-T1-11
 ```
 
-按上式从左到右相乘。“首发”解释为**对每个新锁定目标的第一次发射**（8.1 Q-E5）：同一目标的后续齐射只受射击间隔约束。反应期间若目标失去资格或被别的目标取代，计时作废，新目标重新计时。
+按上式从左到右相乘。"首发"解释为**对每个新锁定目标的第一次发射**（8.1 Q-E5 / B-T2-58）：同一目标的后续齐射只受射击间隔约束。反应期间若目标失去资格或被别的目标取代，计时作废，新目标重新计时。
 
 #### 3.2.6 开火
 
 **导弹 / 火箭 / 拦截无人机**（`FireInterceptors`）：
 
 ```
-c = claims.GetValueOrDefault(t.Id)
+c = inFlightClaims.GetValueOrDefault(t.Id) + sameStepClaims.GetValueOrDefault(t.Id)
 n = rule.ShootLookShoot ? rule.SalvoSize : rule.SalvoSize − c
 if TotalRounds(w) != −1: n = min(n, TotalRounds(w))
 if def.PerLevelLimit != null: n = min(n, def.PerLevelLimit − w.PerLevelUsedBefore − w.ShotsFired)
@@ -869,15 +926,16 @@ for k in 0 .. n−1:
     if w.Launchers[li].RoundsLeft > 0: w.Launchers[li].RoundsLeft −= 1
     ic = Interceptors.Add(new Interceptor {
         DefId = def.Id, Pos = unit.Pos, AltM = 0, FireUnitId = unit.Id, SupportAssetId = 0, WeaponKind = def.Kind,
-        LauncherIndex = li, TargetTrackId = track.Id, TargetThreatId = t.Id, OriginPos = unit.Pos,
-        LaunchAtSec = now, InterceptAtSec = now + sol.TimeSec, InterceptPos = sol.Pos, InterceptAltM = sol.AltM,
+        LauncherIndex = li, TargetTrackId = track.Id, TargetThreatId = t.Id, TargetPathVersion = t.PathVersion,
+        OriginPos = unit.Pos, LaunchAtSec = now, InterceptAtSec = now + sol.TimeSec,
+        InterceptPos = sol.Pos, InterceptAltM = sol.AltM,
         HitProbability = p, ShotCostMusd = def.ShotCostMusd ?? 0 })
     emit InterceptorLaunched { FireUnitId = unit.Id, LauncherIndex = li, WeaponId = def.Id, InterceptorId = ic.Id,
                                TrackId = track.Id, ThreatId = t.Id, SupportAssetId = 0 }
     w.ShotsFired += 1; t.ShotsTaken += 1
     if t.Tag == DECOY: w.DecoyShots += 1
-claims[t.Id] = c + n
-w.NextShotAtSec = now + ShotIntervalSec(def)
+sameStepClaims[t.Id] = sameStepClaims.GetValueOrDefault(t.Id) + n
+w.NextShotAtSec = now + WeaponParams.ShotIntervalSec(def, Rules.Engagement)
 AnnounceDepletion(unit, w)
 ```
 
@@ -891,8 +949,8 @@ else:                  used = min(per, L.RoundsLeft); L.RoundsLeft −= used    
 p = HitProbability(unit, def, track, t, t.Pos)
 emit GunFired { FireUnitId = unit.Id, WeaponId = def.Id, TrackId = track.Id, ThreatId = t.Id, Probability = p, RoundsUsed = used }
 w.ShotsFired += 1; t.ShotsTaken += 1; if t.Tag == DECOY: w.DecoyShots += 1
-claims[t.Id] += 1
-w.NextShotAtSec = now + ShotIntervalSec(def)
+sameStepClaims[t.Id] = sameStepClaims.GetValueOrDefault(t.Id) + 1
+w.NextShotAtSec = now + WeaponParams.ShotIntervalSec(def, Rules.Engagement)
 if def.BarrelCooldown == true:
     w.BurstsSinceCooldown += 1
     if w.BurstsSinceCooldown >= engagement.BarrelBurstsBeforeCooldown:
@@ -919,6 +977,7 @@ if EngagementState.HeldLogged.Add(key):                # 首次
 #### 3.3.1 每步流程
 
 ```
+if Interceptors.Count == 0 and ctx.Events.CurrentStep 中无 GunFired: return     # C-T1-16：空闲步 O(1) 早退
 now = ctx.TimeSec
 due = []
 for ic in Interceptors (ID 升序):
@@ -932,8 +991,18 @@ for ic in due:
     if !Threats.TryGet(ic.TargetThreatId, out t):
         emit InterceptorExpired { InterceptorId = ic.Id, Cause = TargetGone }      # 不掷骰
         Interceptors.Remove(ic.Id); continue
+    if t.Phase == ThreatPhase.Arrived and t.ArrivedAtSec < ic.InterceptAtSec − Eps: # A-4-02：目标在拦截时刻前已落地
+        emit InterceptorExpired { InterceptorId = ic.Id, Cause = TargetArrived }   # 不掷骰
+        Interceptors.Remove(ic.Id); continue
+    if t.PathVersion != ic.TargetPathVersion:                                      # A-2-09：目标中途改航 / 悬停 / 返航
+        vIc = InterceptorSpeedFor(ic)
+        if Math.Sqrt((t.Pos.X − ic.InterceptPos.X)² + (t.Pos.Y − ic.InterceptPos.Y)²) > vIc * ctx.StepSec:
+            emit InterceptorExpired { InterceptorId = ic.Id, Cause = TargetManeuvered } # 偏离超 1 步飞行距离，失锁自毁，不掷骰
+            Interceptors.Remove(ic.Id); continue
     hit = Rng.NextDouble() < ic.HitProbability                                     # 恰好 1 次 NextDouble
-    emit InterceptResolved { AtSec = min(ic.InterceptAtSec, now), InterceptorId = ic.Id, ThreatId = t.Id, Hit = hit,
+    resolvedSec = Math.Min(ic.InterceptAtSec, now)
+    atSec = resolvedSec > (ctx.Tick − 1) * ctx.StepSec ? resolvedSec : (double?)null # A-4-06：归一化到 (Tick-1, Tick]
+    emit InterceptResolved { AtSec = atSec, InterceptorId = ic.Id, ThreatId = t.Id, Hit = hit,
                              Probability = ic.HitProbability, Pos = ic.InterceptPos, AltM = ic.InterceptAltM,
                              OverUrban = InUrban(ic.InterceptPos), WeaponId = ic.DefId,
                              FireUnitId = ic.FireUnitId, SupportAssetId = ic.SupportAssetId }
@@ -950,42 +1019,44 @@ for e in ctx.Events.CurrentStep where e is GunFired (Seq 升序):
     if hit: Threats.Remove(t.Id)
 ```
 
+- `InterceptorSpeedFor(ic)`：地面发射（`ic.SupportAssetId == 0`）取 `WeaponParams.InterceptorSpeedMps(Weapon(ic.DefId), Rules.Engagement)`；战斗机发射取 `Rules.Engagement.ByWeaponKind[ ic.WeaponKind ].InterceptorSpeedMps!.Value`。
 - 拦截弹先于身管射击结算（拦截弹的拦截时刻 ≤ 本步时刻，身管射击视为发生在本步时刻）。
-- 发射它的火力单元在拦截弹飞行中被毁：拦截弹照常结算（概率已在发射时确定，8.1 Q-I6）。
+- 发射它的火力单元在拦截弹飞行中被毁：拦截弹照常结算（概率已在发射时确定，8.1 Q-I6 / B-T2-66）。
 
 #### 3.3.2 拦截概率（`HitProbability`，修正链的乘法顺序固定）
 
 ```
-col  = (t.Tag == DECOY) ? intercept.DecoyUsesColumn : t.Tag          # 真实标签（不是 PerceivedTag）
+col  = (t.Tag == DECOY) ? intercept.DecoyUsesColumn : t.Tag          # 真实标签（不是 Track.Tag）
 base = Class(def.InterceptClass).ProbByTag.TryGetValue(col, out v) ? v : 0.0
 m1 = QualityMult(def.Kind, track)
        Vague       → (def.Kind == Gun && TrackVague.Active) ? TrackVague.GunProbMult : 1.0
-       Approximate → (track.Cued && 该修正 Active) ? TrackApproximateCuedProbMult : 1.0
+       Approximate → (FireControlQueries.Cued(track, Rules.Tracks) && 该修正 Active) ? TrackApproximateCuedProbMult : 1.0
        Precise     → 1.0
-m2 = unit.NewPositionFirstNight ? NewPositionFirstNightProbMult : 1.0
+m2 = unit.NewPositionPenalty ? NewPositionFirstNightProbMult : 1.0   # A-2-13 / B-T2-06
 m3 = unit.CrewConsecutiveNights >= CrewFatigue.MinConsecutiveNights ? CrewFatigue.ProbMult : 1.0
 m4 = unit.AceCrew ? AceCrewProbMult : 1.0
-m5 = (def.Kind == InterceptorDrone && EwQueries.FriendlyJammingAt(ctx, point)) ? DroneInFriendlyEwProbMult : 1.0
-m6 = (def.Kind == InterceptorDrone && EvasiveVsDrone.Active && t.DefId ∈ EvasiveVsDrone.EnemyIds) ? EvasiveVsDrone.ProbMult : 1.0
+m5 = (def.Kind == InterceptorDrone && EwQueries.IsInFriendlyEwZone(ctx.State, ctx.Level.Catalog, point)) ? DroneInFriendlyEwProbMult : 1.0
+m6 = (def.Kind == InterceptorDrone && EvasiveVsDrone.Active && t.DefId ∈ EvasiveVsDrone.Enemies) ? EvasiveVsDrone.ProbMult : 1.0
 m7 = (t.Kind == Munition) ? (MunitionDef(t).InterceptProbMult ?? 1.0) : 1.0
 m8 = unit.DamageEfficiencyMult
-p  = base * m1 * m2 * m3 * m4 * m5 * m6 * m7 * m8                     # 严格从左到右
+m9 = ctx.Config.CarryIn?.AutoResolve?.InterceptProbMult ?? 1.0       # A-2-22 / B-T3-07：自动结算修正（默认 1.0）
+p  = base * m1 * m2 * m3 * m4 * m5 * m6 * m7 * m8 * m9                # 严格从左到右
 p  = Math.Clamp(p, 0.0, 1.0)
 ```
 
 - 任何 `Active == false` 的修正项按 1.0。
-- `point`：导弹类为拦截点 `sol.Pos`，身管为目标当前位置。
-- 数值表“目标只有模糊航迹：不可用导弹交战”由 3.2.4.1 d 保证，因此 `m1` 中导弹不会遇到 `Vague`。
-- 战斗机发射的拦截弹（3.4.4）只用 `base × m1 × m7`，其余项为 1.0（战斗机不是“单位”，没有阵地、班组、受损状态）。
-- 断电不影响火力单元的拦截概率（火力单元自带电源，8.1 Q-G3）。
+- `point`：导弹类为拦截点 `sol.Pos`，身管为目标当前位置 `t.Pos`。
+- 数值表"目标只有模糊航迹：不可用导弹交战"由 3.2.4.1 d 保证，因此 `m1` 中导弹不会遇到 `Vague`；身管武器对模糊航迹（含 `Track.Tag == null` 按 `UAV` 外观进入候选的模糊航迹，A-2-01）正常乘 `TrackVague.GunProbMult = 0.5`。
+- 战斗机发射的拦截弹（3.4.4）只用 `base * m1 * m7 * m9`，其余项为 1.0（战斗机不是地面单位，没有阵地、班组、受损状态）。
+- 断电不影响火力单元的拦截概率（火力单元自带电源，8.1 Q-G3 / B-T2-05）。
 
-#### 3.3.3 “追不上则不发射”
+#### 3.3.3 "追不上则不发射"
 
 由 3.1 的 `Solve` 返回 `null` 体现（3.2.4.2 标记 `CannotIntercept`）。追得上但拦截点在射程 / 射高之外同样返回 `null`。
 
 #### 3.3.4 HP 模型
 
-数值表 3.3 是“单发拦截概率”，因此**拦截判定命中 = 目标被摧毁**，与目标 HP 无关；HP 字段本文件不用于拦截（8.1 Q-I3 记录了备选方案）。
+数值表 3.3 是"单发拦截概率"，因此**拦截判定命中 = 目标被摧毁**，与目标 HP 无关；HP 字段保留在数据中供将来扩展，不参与拦截判定（已决 B-T3-03）。
 
 ### 3.4 `ExternalSupportSystem`（Order 9，子流 `support`，WS01-022）
 
@@ -1007,15 +1078,21 @@ p  = Math.Clamp(p, 0.0, 1.0)
 
 `Apply`：`cp > 0` 时 `CommandPointRules.Spend(ctx, cp, CallSupport)`；战斗机类：`SortiesRemaining −= 1`；`PendingCalls.Add(new PendingCall(cmd.Seq, def.Id, TargetPos, cp, UsesSortie: IsFighter))`。
 
-`FighterMode == OffmapAuto` 与 `OnmapSupportFacility` 在夜间按 `OffmapCall` 处理（8.1 Q-S2）。
+`FighterMode == OffmapAuto` 与 `OnmapSupportFacility` 在夜间按 `OffmapCall` 处理（8.1 Q-S2 / B-T2-84）。
 
-#### 3.4.2 命令 `SetFighterZone`（处理者：本系统）
+#### 3.4.2 命令 `SetFighterZone`（处理者：本系统，A-2-17、B-T2-87）
 
-`Validate`：`SupportAssets.TryGet(id)` 失败 → 若该 ID 属于其他存储则 `WrongEntityKind`，否则 `UnknownEntity`；`!IsFighter(a.Effect)` → `WrongEntityKind`。`Apply`：`a.Exclusive = cmd.Exclusive`。夜间任何时刻可用；是否扣指挥点由 04 决定（默认不扣，8.1 Q-S7）。
+`Validate`（按顺序，返回第一个失败）：
+1. `SupportAssets.TryGet(id)` 失败 → 若该 ID 属于其他存储则 `WrongEntityKind`，否则 `UnknownEntity`。
+2. `!IsFighter(a.Effect)` → `WrongEntityKind`。
+3. `cost = CommandPointRules.CostOf(ctx.Level, SimCommandType.SetFighterZone)`（默认 0 点，B-T2-87）；`cost > 0 && !CommandPointRules.CanSpend(ctx, cost)` → `NoCommandPoints`（A-2-17）。
+
+`Apply`：`cost > 0` 时首步调用 `CommandPointRules.Spend(ctx, cost, SimCommandType.SetFighterZone)`；`a.Exclusive = cmd.Exclusive`。夜间任何时刻可用。
 
 #### 3.4.3 每步流程
 
 ```
+if Support.PendingCalls.Count == 0 and SupportAssets.Count == 0: return          # C-T1-16：空闲步 O(1) 早退
 now = ctx.TimeSec
 # A. 处理本步接受的呼叫（PendingCalls 已按 CommandSeq 升序）
 for pc in Support.PendingCalls:
@@ -1064,7 +1141,7 @@ DelaySec(def):
         NextDay: 不可达（Validate 第 2 条已拒绝）
 AssetRadius(def):
     IsFighter → FighterWeapon(def).RangeM
-    AccuracyDrop → EwUnit(def.AffectsSameAsEwUnitId).RadiusM（缺省引用 → 0；8.1 Q-S5）
+    AccuracyDrop → def.RadiusM ?? (def.AffectsSameAsEwUnitId != null ? EwUnit(def.AffectsSameAsEwUnitId).RadiusM : 0.0)   # A-2-21 / B-T2-04（national_gnss_spoof 默认 30000 m）
     其他 → 0
 ```
 
@@ -1084,17 +1161,18 @@ AssetRadius(def):
 | 约束区 | 拦截点在 `NoEngagement` 区内 → 不打；不受其他战斗机空域规则影响 |
 | 反应时间 | `ReactionSec` 取 `engagement.ByWeaponKind[weapon.Kind]`，不乘辐射 / 指示 / 限制交战倍率 |
 | 射击间隔 | `ShotIntervalSec` 同上 |
-| 概率 | `base × m1 × m7`（3.3.2） |
-| 拦截弹 | `FireUnitId = 0`、`SupportAssetId = a.Id`、`LauncherIndex = 0`、`ShotCostMusd = weapon.ShotCostMusd` |
+| 概率 | `base * m1 * m7 * m9`（3.3.2） |
+| 拦截弹 | `FireUnitId = 0`、`SupportAssetId = a.Id`、`LauncherIndex = 0`、`TargetPathVersion = t.PathVersion`、`ShotCostMusd = weapon.ShotCostMusd` |
 | 状态字段 | `a.TargetTrackId`、`a.ReadyAtSec`、`a.NextShotAtSec` |
 | 保留原因 | 不调用 `MarkHeld`（支援不参与突防原因分析） |
 | 目标计数 | 每发 `t.ShotsTaken += 1` |
 
 `UavHunt` 的击落数在 3.3.1 中扣减（命中时 `KillsLeft −= 1`），本步发射前若 `KillsLeft == 0` 已在 3.4.3 结束。
 
-#### 3.4.5 国家级导航欺骗（`AccuracyDrop`）
+#### 3.4.5 国家级导航欺骗（`AccuracyDrop`）与邻近扇区覆盖（`SectorCoverage`）
 
-本系统只负责呼叫、延迟、到位、持续与结束（3.4.3）。**效果由 02 实现**：02 每步读取 `State == Active && Effect == AccuracyDrop` 的 `SupportAsset`，对 `|threat.Pos − a.CenterPos| ≤ a.RadiusM` 且受 `def.AffectsSameAsEwUnitId` 所指电子战单位影响的目标施加 `def.AccuracyTierDrop` 的降档（计入 D12 的 `EwTierDrop`）。
+- **国家级导航欺骗（`AccuracyDrop`）**：本系统负责呼叫、延迟、到位、持续与结束（3.4.3）。**效果由 02 实现**（02 §3.4.6）：02 每步读取 `State == Active && Effect == AccuracyDrop` 的 `SupportAsset`，对 `WithinRange(a.CenterPos, t.Pos, a.RadiusM)` 的有效目标按时期导航效能掷骰，命中时置 `t.NationalSpoof = Applied` 并调用 `ReconcileNavAccuracy(t)`（降 2 档，与单位电子战取偏移期望较大者、不叠加，B-T3-08）。
+- **邻近扇区覆盖（`SectorCoverage`，B-T2-89）**：属于白天 / 部署前通过信任度申请的跨夜支援，当 `CarryIn.ActiveSupports` 含 `"adjacent_sector_coverage"` 时，由 3.2.1 在 `Level.Meta.SectorCoverageAnchors` 位置生成场外虚拟 `FireUnit`（`IsVirtualSectorCoverage = true`，不累积暴露度、不受地面弹药伤害），夜内按普通火力单元参与交战。
 
 ### 3.5 `ImpactSystem`（Order 10，子流 `impact`，WS01-011、017）
 
