@@ -174,6 +174,45 @@
 
 ## 03_engagement_impact_scoring.md
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| P01, P06, P07, P14, P18, P19, P20, P24, P26–P29, P32–P34, P36–P37, P42, P45–P46, P48 | 已应用 | §1.1–1.3、§2.1–2.8、§3.2.1、§3.5.1、§3.8.6、§8.2：数据模型（`EngagementRulesDef`、`CivilRulesDef`、`WeaponDef`、`SupportDef`、`LevelMetaDef`）、实体字段（`PlayerUnitCommon`、`FireUnit.LaunchersLost`、`Threat` #44–47、`EngagementState` 单例哈希序 9）、`PlacedUnit.FirstNightAtNewPosition` → `NewPositionPenalty`、`UnitSettings.Engagement`、`CarryIn`/`CarryOut`、`NightResult`（含 `Civil`、`Support`、`Commands`、`CarryOut`）全部与 `00_core.md` 对齐 |
+| A-2-05, B-T1-24 | 已应用 | §3.5.6、§4.2、§7 `T-03-38`：事件 `310 PlayerUnitDestroyed` 末尾追加 `Vec2 Pos` |
+| A-2-07 | 已应用 | §0.1、§2.4、§3.5.3、§3.5.4、§3.5.7、§3.8.1、§3.8.4、§7 `T-03-35`/`T-03-40`/`T-03-52`：读取 02 写入的 `Threat.AccuracyTierDrop`（兼容别名 `EwTierDrop`）、`Threat.EwExtraOffsetM`（兼容 `EwAffected`）、`Threat.EwEverCovered`（兼容 `EwCovered`）、`Threat.TargetUnitId` 与 `Threat.ArmHitProbMult` |
+| A-2-08 | 已应用 | §0.1、§2.2、§3.2.4、§3.2.5、§3.5.6：通过 02 `IFireControlQueries` 读取 `IsFireControlActive`、`HasFireControlRadar`、`ReactionTimeMult`、`IsEmissionSilentHold`（并支持测试替身直接写 `FireUnit` 镜像字段） |
+| A-2-09 | 已应用 | §2.5、§3.2.6、§3.3.1、§4.1、§4.2、§5 #4b、§7 `T-03-57`：发射拦截弹时记录 `TargetPathVersion`；`InterceptorSystem` 步首扫描本步 `ThreatManeuvered` 事件，使指向机动目标的在途拦截弹按 ID 升序发出 `InterceptorExpired { Cause = TargetManeuvered }` 并移除 |
+| A-2-10, B-T3-06 | 已应用 | §0.1、§3.2.4、§5 #17、§7 `T-03-15`：航迹标签读取 `Track.Tag`（兼容别名 `PerceivedTag`）；当 `Track.Quality == Vague`（`Track.Tag == null`）时回退读取真实目标 `t.Tag` 做高炮/机枪武器目标集匹配，而交战规则标签过滤仍要求已识别标签 |
+| A-2-13, B-T2-06 | 已应用 | §2.1、§2.2、§3.2.1、§3.3.2：`FireUnit.NewPositionFirstNight` 统一与 `PlayerUnitCommon.NewPositionPenalty`（来自 `PlacedUnit.FirstNightAtNewPosition`）双向同步 |
+| A-2-17 | 已应用 | §0.1、§3.4.1、§3.7.1、§4.3：耗点命令（`SetEngagementRule` 默认 1 点、`CallSupport` 按定义、`SetAirRaidAlert` 默认 1 点）统一在 `Validate` 末步调 `CommandPointRules.CanSpend`、在 `Apply` 首步调 `Spend`；`SetFighterZone` 消耗 0 点 |
+| A-2-18, A-2-19, A-3-01 | 已应用 | §2.3、§2.8、§8.2：`UnitSettings`、`GlobalView`、`SimState.Engagement` 状态哈希序号与 `00_core.md` 对齐 |
+| A-2-20, A-3-10 | 已应用 | §2.2、§2.8、§3.5.6、§3.8.1、§3.8.6：新增 `FireUnit.LaunchersLost`、`ScoringState.DestroyedUnitSnapshots` / `DestroyedExposureEnd` / `UnitHits` / `KillsByEnemy` / `ThreatsEverEwCovered` / `ArmDetections` / `ArmShutdowns`；移除每步 `ExposureMax` 全单位循环（利用夜内暴露度单调不减性质，仅在 `Destroy` 时快照亡者暴露度与战果）；完整组装 `CarryOut` |
+| A-2-21, B-T2-87 | 已应用 | §1.3.1、§3.4.2、§8.1 Q-S5：`SupportDef.RadiusM` 可选，国家级导航欺骗优先取 `SupportDef.RadiusM`，缺省回退取 `affectsSameAsEwUnit` 电子战单位的 `RadiusM` |
+| A-2-23 | 已应用 | §3.0、§8.3：`Geo.PointInPolygon` 提升至 `Nightwatch.Sim.Core.Geo` 全库共用 |
+| A-3-05 | 已应用 | §3.5.6、§4.2、§7 `T-03-38`：事件 `309 PlayerUnitDamaged` 与 `310 PlayerUnitDestroyed` 中单位分类字段名统一为 `PlayerUnitCategory Category` |
+| A-3-09 | 已应用 | §3.2.1、§3.5.1、§8.3：明确三阶段初始化（阶段 1 `Initialize` 创建结构与初始弹药池 → 阶段 2 `RestoreCarryIn` 恢复跨夜弹药/战损/结构 HP → 阶段 3 `PostDeployInit` 生成扇区覆盖虚拟单位并连接电网） |
+| A-4-01 | 已应用 | §0.1、§3.2.4、§3.4.3：候选目标筛选显式跳过 `t.Phase == ThreatPhase.Arrived` 的已到达目标 |
+| A-4-02 | 已应用 | §3.3.1、§4.1、§4.2、§5 #4、§7 `T-03-57`：同一步先到达（Order 2 `ThreatArrived`）后拦截（Order 8）时，比较 `m.InterceptAtSec` 与 `arrivedEvt.AtSec`：拦截弹更早则正常掷骰（命中删除目标，Order 10 跳过），否则发出 `InterceptorExpired { Cause = TargetArrived }` |
+| A-4-04 | 已应用 | §2.8、§3.8.1、§3.8.6、§6 #8、§7 `T-03-58`：`ScoringSystem` 订阅 `MunitionReleased` 与 `EwLinkCut(Crash)`，计入 `ThreatsSpawned`、`ThreatsEwDowned`、`ThreatsArmMissed`，确立每步末尾威胁守恒不变量 |
+| A-4-06 | 已应用 | §3.2.6、§3.3.1、§4.2、§6 #2：`LaunchAtSec` 与 `InterceptAtSec` 写入前调用 `NormalizeTime`（吸附半开窗口 `(Tick - StepSec, Tick]` 边界 `1e-9` 漂移），发出 `InterceptResolved` 时规范化 `AtSec` |
+| B-T1-16, B-T2-36 | 已应用 | §3.8.6：`CarryOut` 汇总 `StoryChoiceResults` 与 `CustomMetrics["urban_nav_jam_triggered"]` |
+| B-T2-12..22, B-T2-61..92 | 已应用 | §1–§5、§8.1 Q-E1..Q-X4：全部 49 个设计/数值待决项定稿并在 §8.1 逐条标为“已决议”（含拦截弹速度、反应时间与射击间隔、34 发点射、5 次连射冷却 60s、光电火控精确航迹、修正链连乘、侦察平台全图升档单源 `spotterTierBoost`、电网无向 BFS 与 `fraction` 崩溃阈值、空袭警报参数、支援呼叫与大空袭拒绝退费等） |
+| B-T2-52 | 已应用 | §0.1、§3.5.6、§7 `T-03-38`：非碎片直接落地伤害在 `ApplyUnitEffect` 前调用 `EwQueries.ShieldHitProbMult`，当 `< 1.0` 时掷 1 次 `impact` 子流骰判定车载自卫电子战偏转 |
+| B-T2-89 | 已应用 | §2.1、§3.2.1、§3.5.6、§3.6.2、§3.8.6、§8.1 Q-S9：实现 `adjacent_sector_coverage`（`CarryIn.SectorCoverageSites` 在 `PostDeployInit` 生成 `IsVirtualSectorCoverage = true` 的场外虚拟火力单元，火控恒开、不受伤、不耗弹药池、不进入 `CarryOut`） |
+| B-T3-01 | 已应用 | §1.2、§3.8.3、§7 `T-03-51`、§8.1 Q-X1：潜在损失公式改为 `max(enemyCost, 2^(damageLevel - 1) × LossMusdBase(0.1 M$) × structureWeight)`，重算 `T-03-51` 全部断言值 |
+| B-T3-02, C-T1-14 | 已应用 | §3.2.2、§5 #49、§7 `T-03-20`、§8.1 Q-E9：多火力单元开火分配按期望单发成本 `shotCostMusd / max(p, 0.05)` 升序；昂贵武器就绪时若更便宜武器已锁定同一目标且在反应计时中、并在目标落地前留有至少 `ShotIntervalSec` 补射余地，则昂贵武器本步礼让 |
+| B-T3-03 | 已应用 | §1.3.2、§3.3.1、§8.1 Q-I3：确认敌方 `hp` 仅作百科/UI 展示，模拟层一击必杀（耐受度已折入基础拦截概率与 `interceptProbMult`） |
+| B-T3-08 | 已应用 | §3.5.3、§3.5.4、§8.1、§8.3 B4：读取 02 `ReconcileNavAccuracy` 统一合成后的 `AccuracyTierDrop` 与 `EwExtraOffsetM`，单位级导航干扰与国家级导航欺骗不双重叠加 |
+| C-T1-02 | 已应用 | `tools/spec_calc/03/calc_03.py` 归档入库；修复 `T-03-09` 第 3 条笔误（`0.5 × 0.7 = 0.35`）；重算并验证 `T-03-01..58` 全部数值 |
+| C-T1-04 | 已应用 | §0.3、§3.0、§3.1.2、§3.2.4：补充跨平台确定性约束（禁用 `Math.Hypot`，统一使用 `Math.Sqrt(dx*dx + dy*dy)` 与 `BitConverter.DoubleToInt64Bits`） |
+| C-T1-05 | 已应用 | §3.1.2、§3.2.4、§7 `T-03-56`：引入 `Threat.MaxSpeed3DMps` 粗筛、`k0` 采样起点下界裁剪、以及按几何最早拦截时间下界 `lbTime` 排序的惰性优先队列，保证与朴素全航迹扫描 100% 逐位等价（`calc_03.py` 2000 组随机压力场景 0 差异） |
+| C-T1-12 | 已应用 | §0.3：添加文档同步免责声明（本规格已与 GDD / 数值表 / WBS 同步收口，进入实现前无需再次停下询问） |
+| C-T1-16 | 已应用 | §3.2.2、§3.3.1、§3.5.2：`EngagementSystem`、`InterceptorSystem`、`ImpactSystem` 均补充空闲步 $O(1)$ 早退路径 |
+| C-T2-03 | 已应用 | §1.3.4、§2.8、§3.0、§3.8.1、§3.8.6、§7 `T-03-58`：`RestrictedZoneDef` 增加 `NeighborCountry`，`ScoringSystem` 检测落入邻国的拦截弹、拦截碎片与被诱偏弹药并记入 `LossesSummary.BorderViolations` |
+| C-T2-04 | 已应用 | §1.2、§3.7.1、§4.3、§7 `T-03-58`：`AlertRulesDef` 增加 `AvailableFromLevel = 6`；`SetAirRaidAlert` 在 `Meta.Number < AvailableFromLevel` 时拒绝并返回 `NotAvailable` |
+| C-T2-05 | 已应用 | §3.5.2、§3.5.6、§5 #27b、§7 `T-03-43`：当 `debris.UrbanRadiusM == 0`（`urbanInterceptRadiusCells == 0`）时，城区拦截碎片按 1 km 网格同格判定 `SameCell(e.Pos, target.Pos, cellM)` 施加碎片伤害 |
+| C-T2-10 | 已应用 | §3.1.2、§7 `T-03-01`..`T-03-06`、`T-03-11`、`T-03-20`、`T-03-26`、`T-03-34`：`InterceptSolver` 二分迭代固定为 32 次（精度 `< 2.4e-10 s`），并同步更新 §7 全部期望值 |
+| 数据文件与上位文档同步（`rules/engagement.json`、`rules/civil.json`、`rules/damage.json`、`support/fighters.json`、`GDD`、`塔防数值表`） | 留给后续（`data/`、`docs/游戏设计文档_GDD_v1.md`、`docs/塔防数值表_v1.md`，D2b-08 / D3 任务） | 03 规格正文与 §1 / §8.2 已完整定义所有新增规则文件、Schema 字段与默认值，实际 JSON 数据与上位文档在对应任务中修改 |
+
 ## 04_enemy_ai_commands.md
 
 ## 05_campaign_economy.md
