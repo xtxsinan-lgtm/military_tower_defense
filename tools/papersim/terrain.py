@@ -83,6 +83,9 @@ class HorizonProfile:
             target, self.terrain.elevation_at(target.x, target.y) + target_agl_m
         )
 
+    def __deepcopy__(self, memo: object) -> HorizonProfile:
+        return self
+
 
 class TerrainModel:
     """Bilinear terrain elevation and exact/cached line-of-sight model (01 §3.3)."""

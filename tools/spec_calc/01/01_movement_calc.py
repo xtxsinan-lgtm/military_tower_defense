@@ -1,50 +1,55 @@
 # Reference calculation for 01_spawn_movement_terrain.md (spawn + movement)
 import math, struct
 
-# ---------- SimRandom (from 00_core.md 3.1.2) ----------
+# ---------- SimRandom (PCG32 from 00_core.md 3.1.2, C-T1-02) ----------
 MASK64 = (1 << 64) - 1
+MASK32 = (1 << 32) - 1
+PCG_MULT = 6364136223846793005
 def u64(x): return x & MASK64
-def rotl(x, k): return u64((x << k) | (x >> (64 - k)))
 
-def splitmix64(x):
-    z = u64(x + 0x9E3779B97F4A7C15)
+def splitmix64_next(state):
+    state = u64(state + 0x9E3779B97F4A7C15)
+    z = state
     z = u64((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9)
     z = u64((z ^ (z >> 27)) * 0x94D049BB133111EB)
-    return u64(z ^ (z >> 31))
+    return state, u64(z ^ (z >> 31))
 
-def fnv1a64(ascii_str: str) -> int:
+def fnv1a64(s: str) -> int:
     h = 0xCBF29CE484222325
-    for b in ascii_str.encode("ascii"):
+    for b in s.encode("utf-8"):
         h ^= b
         h = u64(h * 0x00000100000001B3)
     return h
 
 class SimRandom:
     def __init__(self, seed_u64: int):
-        self.s0 = splitmix64(seed_u64)
-        self.s1 = splitmix64(u64(seed_u64 + 0x9E3779B97F4A7C15))
-        self.s2 = splitmix64(u64(seed_u64 + 0x3C6EF372FE94F82A))
-        self.s3 = splitmix64(u64(seed_u64 + 0xDAA66D2C7DFEF43F))
-        if (self.s0 | self.s1 | self.s2 | self.s3) == 0:
-            self.s0 = 1
+        self.seed = u64(seed_u64)
+        sm, s0 = splitmix64_next(self.seed)
+        _, s1 = splitmix64_next(sm)
+        self._state = 0
+        self._inc = u64((s1 << 1) | 1)
+        self.next_u32()
+        self._state = u64(self._state + s0)
+        self.next_u32()
+
+    def next_u32(self) -> int:
+        old = self._state
+        self._state = u64(old * PCG_MULT + self._inc)
+        xorshifted = (((old >> 18) ^ old) >> 27) & MASK32
+        rot = old >> 59
+        return ((xorshifted >> rot) | (xorshifted << ((-rot) & 31))) & MASK32
 
     def next_u64(self) -> int:
-        s0, s1, s2, s3 = self.s0, self.s1, self.s2, self.s3
-        result = u64(rotl(u64(s0 + s3), 23) + s0)
-        t = u64(s1 << 17)
-        s2 ^= s0; s3 ^= s1; s1 ^= s2; s0 ^= s3
-        s2 ^= t
-        s3 = rotl(s3, 45)
-        self.s0, self.s1, self.s2, self.s3 = s0, s1, s2, s3
-        return result
+        hi = self.next_u32()
+        lo = self.next_u32()
+        return u64((hi << 32) | lo)
 
     def next_double(self) -> float:
         return (self.next_u64() >> 11) * (1.0 / (1 << 53))
 
     def derive(self, name: str) -> "SimRandom":
-        tag = fnv1a64(name)
-        mixed = splitmix64(self.s0 ^ tag) ^ splitmix64(u64(self.s2 + tag))
-        return SimRandom(mixed)
+        _, child_seed = splitmix64_next(self.seed ^ fnv1a64(name))
+        return SimRandom(child_seed)
 
 # ---------- Seed 42 spawn stream ----------
 root = SimRandom(struct.unpack("<Q", struct.pack("<q", 42))[0])
@@ -68,7 +73,7 @@ def poly_cum(pts):
     for i in range(len(pts) - 1):
         dx = pts[i+1][0] - pts[i][0]
         dy = pts[i+1][1] - pts[i][1]
-        cum.append(cum[-1] + math.hypot(dx, dy))
+        cum.append(cum[-1] + math.sqrt(dx * dx + dy * dy))
     return cum
 
 def pos_dir_at_s(pts, cum, s):
@@ -223,7 +228,7 @@ print("\n=== T-01-25 Decoy exit ray from (1000, 200) through center (500, 500) =
 E = (1000.0, 200.0)
 C = (500.0, 500.0)
 dx, dy = C[0] - E[0], C[1] - E[1]
-norm = math.hypot(dx, dy)
+norm = math.sqrt(dx * dx + dy * dy)
 ux, uy = dx / norm, dy / norm
 # box [-200, 1200] x [-200, 1200]: ux < 0 -> x = -200; uy > 0 -> y = 1200
 tx = (-200.0 - E[0]) / ux
@@ -252,7 +257,7 @@ u = max(0.0, (-b - math.sqrt(disc)) / (2*a))
 seg_len = math.sqrt(a)
 s_rel = u * seg_len
 prel = (P0[0] + u*dx, P0[1] + u*dy)
-print(f"  Oblique Entry (2000,600)->(0,0), R=1000: seg={seg_len:.6f}, u={u:.12f}, s_rel={s_rel:.6f}, pos=({prel[0]:.6f},{prel[1]:.6f}), dist_to_T={math.hypot(prel[0], prel[1]):.6f}")
+print(f"  Oblique Entry (2000,600)->(0,0), R=1000: seg={seg_len:.6f}, u={u:.12f}, s_rel={s_rel:.6f}, pos=({prel[0]:.6f},{prel[1]:.6f}), dist_to_T={math.sqrt(prel[0]*prel[0] + prel[1]*prel[1]):.6f}")
 
 # ---------- Case G: T-01-28b Platform p_edge_r with releaseRangeKm=13.6 (ReleaseRangeM=13600, Mini01) ----------
 # Entry eE=(25000,10000) -> Target s1=(10000,10000), dist = 15000 m, p_edge_r: v=70 m/s, alt=8000, ReleaseRangeM=13600

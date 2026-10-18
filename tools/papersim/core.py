@@ -252,6 +252,37 @@ class Geo:
         return u if u >= 0.0 else None
 
     @staticmethod
+    def polyline_length(pts: Sequence[Vec2]) -> float:
+        total = 0.0
+        for i in range(len(pts) - 1):
+            total += pts[i].distance_to(pts[i + 1])
+        return total
+
+    @staticmethod
+    def point_at_distance(pts: Sequence[Vec2], dist_m: float) -> Tuple[Vec2, float]:
+        if not pts:
+            return (Vec2.zero(), 0.0)
+        if len(pts) == 1 or dist_m <= 0.0:
+            if len(pts) >= 2:
+                d = pts[1] - pts[0]
+                return (pts[0], math.atan2(d.x, d.y))
+            return (pts[0], 0.0)
+        rem = dist_m
+        for i in range(len(pts) - 1):
+            a = pts[i]
+            b = pts[i + 1]
+            seg = a.distance_to(b)
+            if seg <= 0.0:
+                continue
+            if rem <= seg or i == len(pts) - 2:
+                u = min(1.0, max(0.0, rem / seg))
+                pos = Vec2(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u)
+                d = b - a
+                return (pos, math.atan2(d.x, d.y))
+            rem -= seg
+        return (pts[-1], 0.0)
+
+    @staticmethod
     def sample_piecewise_linear(pts: Sequence[Tuple[float, float]], x: float) -> float:
         if not pts:
             return 0.0
@@ -268,6 +299,8 @@ class Geo:
                 t = (x - x0) / (x1 - x0)
                 return y0 + (y1 - y0) * t
         return pts[-1][1]
+
+    piecewise_linear = sample_piecewise_linear
 
     @staticmethod
     def lower_bound(arr: Sequence[float], x: float) -> int:
@@ -454,6 +487,24 @@ class SimRandom:
         _, out = splitmix64_next((run_seed & MASK64) ^ fnv1a64(f"night:{level_id}:{night_index}"))
         return out
 
+    @staticmethod
+    def parse_seed(seed_str: str) -> int:
+        if not seed_str:
+            raise ValueError("seed_str must be non-empty")
+        s = seed_str.strip()
+        try:
+            if s.startswith(("0x", "0X")):
+                val = int(s, 16)
+                if 0 <= val <= MASK64:
+                    return val
+            elif s.isdigit():
+                val = int(s, 10)
+                if 0 <= val <= MASK64:
+                    return val
+        except ValueError:
+            pass
+        return fnv1a64(s)
+
 
 class ScriptedRandom(SimRandom):
     """Test double providing scripted NextDouble / NextUInt32 values (00_core.md §3.1.4)."""
@@ -508,9 +559,12 @@ class StateHasher:
         self.write_bytes(struct.pack("<Q", int(v) & MASK64))
 
     def write_f64(self, v: float) -> None:
-        if v == 0.0:
-            v = 0.0
-        self.write_bytes(struct.pack("<d", float(v)))
+        fv = float(v)
+        if math.isnan(fv):
+            raise ValueError("StateHasher.write_f64: NaN is prohibited in canonical state hash")
+        if fv == 0.0:
+            fv = 0.0
+        self.write_bytes(struct.pack("<d", fv))
 
     def write_str(self, s: Optional[str]) -> None:
         if s is None:

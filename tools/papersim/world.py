@@ -859,8 +859,10 @@ class SimSnapshot:
 
     @staticmethod
     def capture(world: SimWorld) -> Dict[str, Any]:
+        st_copy = copy.deepcopy(world.state)
+        st_copy.rebind_stores()
         return {
-            "state": copy.deepcopy(world.state),
+            "state": st_copy,
             "events_outbox": copy.deepcopy(world.events._outbox),
             "events_prev": copy.deepcopy(world.events.previous_step),
             "command_queue": copy.deepcopy(world._command_queue),
@@ -872,6 +874,7 @@ class SimSnapshot:
     @staticmethod
     def restore(world: SimWorld, snap: Dict[str, Any]) -> None:
         world.state = copy.deepcopy(snap["state"])
+        world.state.rebind_stores()
         world.events = EventSink(lambda: world.state)
         world.events._outbox = copy.deepcopy(snap["events_outbox"])
         world.events.previous_step = copy.deepcopy(snap["events_prev"])

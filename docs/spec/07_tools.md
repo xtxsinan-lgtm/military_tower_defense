@@ -21,6 +21,7 @@
   - `tools/validate/Validate.csproj`（程序集 `Nightwatch.Tools.Validate`，命名空间 `Nightwatch.Tools.Validate`）：仅引用 `../../sim/Sim.csproj`。
   - `tools/simrun/SimRun.csproj`（程序集 `Nightwatch.Tools.SimRun`，命名空间 `Nightwatch.Tools.SimRun`）：仅引用 `../../sim/Sim.csproj`（及复用 `Nightwatch.Sim.Data`、`Nightwatch.Sim.Replay`）。
   - 测试位于 `sim.tests/Tools/`（`ValidateToolTests.cs`、`SimRunToolTests.cs`、`BenchStatsTests.cs`），直接调用两个工具公开的 `ValidateRunner` 与 `SimRunRunner` 纯入口函数（注入 `IDataSource` 与 `TextWriter`，不启动外部子进程即可单测）。
+  - **D3 纯 Python 纸面模拟器参考实现（`tools/papersim/`）**：使用纯 Python 3 标准库完整实现了 `00`–`04` 模拟层与本文件定义的 `validate` / `run` / `batch` / `test` 子命令（见 [`review/D3_GAP_LOG.md`](review/D3_GAP_LOG.md)），可在 C# 工程落地前及回归测试中作为黄金基准（Golden Reference）。
 
 ### 0.2 依据
 
@@ -596,9 +597,9 @@ public interface ISimStrategyBot
 | 对接文件 | 契约点 | 状态 |
 |---|---|---|
 | [`00_core.md`](00_core.md) | `DataLoader` 错误码 `E_*`、`DeploymentValidator` 错误码 `D_*`、`SimRng.NightSeed`、`SimWorld.ComputeStateChecksum`、`NightReplay` 格式、单步 `< 2.0 ms / P99 < 4.0 ms` 预算 | 已对齐 |
-| [`01_time_map_movement_waves.md`](01_time_map_movement_waves.md) | `BM`/`HBM`/`GB` 忽略 `waypointsM`（`W_IGNORED_WAYPOINTS`）、`storyEventOnly`（`W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`）、地图尺寸与弹道飞行窗口（`W_BALLISTIC_WINDOW_TOO_SHORT`） | 已对齐 |
+| [`01_spawn_movement_terrain.md`](01_spawn_movement_terrain.md) | `BM`/`HBM`/`GB` 忽略 `waypointsM`（`W_IGNORED_WAYPOINTS`）、`storyEventOnly`（`W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`）、地图尺寸与弹道飞行窗口（`W_BALLISTIC_WINDOW_TOO_SHORT`） | 已对齐 |
 | [`02_sensing_tracks_ew_emission.md`](02_sensing_tracks_ew_emission.md) | `DutyCycle` 占空比与 `exposureMult` 漂移检查（`W_EXPOSURE_MULT_DRIFT`）、实测暴露比校准（`ExposureCalibration`）、`CoverageQuery.ComputeGrid` 三态（`0 / 1 / 2`）契约 | 已对齐 |
-| [`03_engagement_weapons_collateral.md`](03_engagement_weapons_collateral.md) | 便宜优先交战分配子步骤耗时监控 `EngagementAllocationMeanMs <= 0.3 ms`、`EnemyLeakedEvent(LeakReason)` 分类统计 | 已对齐 |
-| [`04_layered_defense_decoys_saturation_ai.md`](04_layered_defense_decoys_saturation_ai.md) | `AiTag.Hunt` / `AiTag.Suppress` 与反辐射目标规则静态检查（`W_HUNT_NO_KNOWN_TARGETS_GROUP`、`W_SUPPRESS_NO_ARM_GROUP`、`W_ARM_STATIC_TARGET`）、单位暴露满 100 触发率统计 | 已对齐 |
+| [`03_engagement_impact_scoring.md`](03_engagement_impact_scoring.md) | 便宜优先交战分配子步骤耗时监控 `EngagementAllocationMeanMs <= 0.3 ms`、`EnemyLeakedEvent(LeakReason)` 分类统计 | 已对齐 |
+| [`04_enemy_ai_commands.md`](04_enemy_ai_commands.md) | `AiTag.Hunt` / `AiTag.Suppress` 与反辐射目标规则静态检查（`W_HUNT_NO_KNOWN_TARGETS_GROUP`、`W_SUPPRESS_NO_ARM_GROUP`、`W_ARM_STATIC_TARGET`）、单位暴露满 100 触发率统计 | 已对齐 |
 | [`05_campaign_economy.md`](05_campaign_economy.md) | `CampaignDataLoader`、`cross_level_links.json` 校验、`TimeStructure.E` 补给窗口检查（`W_E_NO_SUPPLY_WINDOWS`）、历史事件停用单位警告（`W_HISTORICAL_UNIT_UNAVAILABLE`）、单夜战果与战损权重 | 已对齐 |
 | [`06_client_graybox.md`](06_client_graybox.md) | `SimWorld.DrainEvents()` 每步排空契约、`CoverageQuery.ComputeGrid` 三态返回码（`0 / 1 / 2`） | 已对齐 |

@@ -36,7 +36,7 @@ class Heightmap:
 def has_los(hm: Heightmap, a, a_msl: float, b, b_msl: float, step_m: float, r_eff_m):
     dx = b[0] - a[0]
     dy = b[1] - a[1]
-    d = math.hypot(dx, dy)
+    d = math.sqrt(dx * dx + dy * dy)
     if d <= step_m:
         return True
     n = int(math.ceil(d / step_m))
@@ -80,7 +80,7 @@ class HorizonProfile:
     def has_los(self, target, target_msl_m: float) -> bool:
         dx = target[0] - self.obs[0]
         dy = target[1] - self.obs[1]
-        d = math.hypot(dx, dy)
+        d = math.sqrt(dx * dx + dy * dy)
         if d <= self.step_m:
             return True
         ang = math.atan2(dy, dx)

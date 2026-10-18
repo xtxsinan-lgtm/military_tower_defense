@@ -1338,6 +1338,12 @@ class SimState:
         self.structure_id_by_def_id: Dict[str, int] = {}
         self.grid_node_id_by_def_id: Dict[str, int] = {}
 
+    def rebind_stores(self) -> None:
+        tick_fn = lambda: self.tick
+        for store in self.all_stores:
+            store._ids = self.ids
+            store._tick_fn = tick_fn
+
     def request_end(self, outcome: NightOutcome, reason: NightEndReason, detail: Optional[str] = None) -> None:
         if self.end_request is None:
             self.end_request = EndRequest(outcome=outcome, reason=reason, detail=detail)

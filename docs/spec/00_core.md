@@ -861,6 +861,8 @@ public sealed class EntityStore<T> where T : Entity
 
 存储结构：每种实体一个 `List<T>`（类实例列表），按 ID 升序（ID 单调递增 + 只追加 ⇒ 天然有序）；按 ID 查找用二分。**不使用 `Dictionary` 存放实体**。
 
+> **实现注意（D3-GAP-02）**：`Add` 与 `Remove` 需要读取所属 `SimState` 的 `Ids` 与 `Tick`（写 `CreatedTick = State.Tick` / `RemovedTick = State.Tick`）。若实现层支持深拷贝克隆 `SimState`（如纸面模拟器的途中快照捕获与恢复），`EntityStore<T>` 持有对宿主 `SimState` 的引用或闭包（如 `() => state.Tick`）在克隆后**必须重绑定到新 `SimState` 实例**（或直接由 `SimState` 将自身引用传入），否则恢复快照后新创建的实体会读取旧世界的 `Tick`，导致 `CreatedTick` 状态哈希分歧。
+
 #### 2.2.3 遍历与删除规则
 
 1. **遍历顺序 = ID 升序**（即存储下标顺序）。所有"对每个实体……"的伪代码都按此顺序执行。
