@@ -317,6 +317,29 @@ class EngagementSystem:
                         continue
                     if wslot.rule == 1 and th.tag not in (TargetTag.BM, TargetTag.HBM):
                         continue
+                    if wslot.rule == 3 and th.tag not in (
+                        TargetTag.CM,
+                        TargetTag.SCM,
+                        TargetTag.BM,
+                        TargetTag.HBM,
+                        TargetTag.AC_HIGH,
+                        TargetTag.AC_LOW,
+                    ):
+                        continue
+                    wlist = getattr(wslot, "whitelist", None)
+                    if wlist is not None and th.tag not in wlist:
+                        continue
+                    ammo_res = int(getattr(wslot, "ammo_reserve", 0) or 0)
+                    if ammo_res > 0 and th.tag not in (
+                        TargetTag.CM,
+                        TargetTag.SCM,
+                        TargetTag.BM,
+                        TargetTag.HBM,
+                        TargetTag.AC_HIGH,
+                    ):
+                        tot_rounds = sum(ln.rounds for ln in wslot.launchers if not ln.destroyed)
+                        if tot_rounds <= ammo_res:
+                            continue
                     wp = WeaponParams.resolve_weapon_def(ctx, fu, wslot)
                     if th.tag not in wp["targets"]:
                         continue
@@ -415,77 +438,83 @@ class EngagementSystem:
         bursts_limit: int,
         cooldown_sec: float,
     ) -> None:
-        ln_idx = self._pick_launcher(wslot)
-        if ln_idx is None:
-            return
-        ln = wslot.launchers[ln_idx]
-        if wp["magazine"] is not None:
-            ln.rounds -= 1
-            if ln.rounds == 0 and wp["reload_sec"] > 0.0:
-                pool_rem = ctx.state.engagement.ammo_pool.get(wslot.weapon_id)
-                if pool_rem is None or pool_rem > 0:
-                    ln.reload_until_sec = ctx.time_sec + wp["reload_sec"]
+        eng_rules = ctx.level.catalog.rules.get("engagement", {})
+        tag_name = th.tag.name if th.tag is not None else ""
+        tag_rule = eng_rules.get("defaultRuleByTag", {}).get(wp["intercept_class"], {}).get(tag_name, {})
+        salvo_size = int(tag_rule.get("salvoSize", 1)) if not bool(tag_rule.get("shootLookShoot", True)) else 1
 
-        wslot.next_shot_sec = ctx.time_sec + wp["shot_interval_sec"]
-        if wp["barrel_cooldown"]:
-            wslot.continuous_fire_sec += 1.0
-            if wslot.continuous_fire_sec >= bursts_limit - EPS:
-                wslot.continuous_fire_sec = 0.0
-                wslot.cooldown_until_sec = ctx.time_sec + cooldown_sec
+        for _ in range(max(1, salvo_size)):
+            ln_idx = self._pick_launcher(wslot)
+            if ln_idx is None:
+                break
+            ln = wslot.launchers[ln_idx]
+            if wp["magazine"] is not None:
+                ln.rounds -= 1
+                if ln.rounds == 0 and wp["reload_sec"] > 0.0:
+                    pool_rem = ctx.state.engagement.ammo_pool.get(wslot.weapon_id)
+                    if pool_rem is None or pool_rem > 0:
+                        ln.reload_until_sec = ctx.time_sec + wp["reload_sec"]
 
-        wid = wslot.weapon_id
-        cost = wp["shot_cost_musd"]
-        ctx.state.scoring.defense_cost_musd += cost
-        ctx.state.scoring.shots_fired_by_weapon[wid] = ctx.state.scoring.shots_fired_by_weapon.get(wid, 0) + 1
-        ctx.state.engagement.per_level_used[wid] = ctx.state.engagement.per_level_used.get(wid, 0) + 1
-        th.shots_taken += 1
+            wslot.next_shot_sec = ctx.time_sec + wp["shot_interval_sec"]
+            if wp["barrel_cooldown"]:
+                wslot.continuous_fire_sec += 1.0
+                if wslot.continuous_fire_sec >= bursts_limit - EPS:
+                    wslot.continuous_fire_sec = 0.0
+                    wslot.cooldown_until_sec = ctx.time_sec + cooldown_sec
 
-        if wp["kind"] == "gun":
+            wid = wslot.weapon_id
+            cost = wp["shot_cost_musd"]
+            ctx.state.scoring.defense_cost_musd += cost
+            ctx.state.scoring.shots_fired_by_weapon[wid] = ctx.state.scoring.shots_fired_by_weapon.get(wid, 0) + 1
+            ctx.state.engagement.per_level_used[wid] = ctx.state.engagement.per_level_used.get(wid, 0) + 1
+            th.shots_taken += 1
+
+            if wp["kind"] == "gun":
+                ctx.events.emit(
+                    SimEventType.GunFired,
+                    fields=(fu.id, wid, tr.id, th.id, sol.pos, p_hit),
+                    fire_unit_id=fu.id,
+                    weapon_id=wid,
+                    track_id=tr.id,
+                    threat_id=th.id,
+                )
+
+            ic = Interceptor(
+                pos=fu.pos,
+                alt_m=0.0,
+                fire_unit_id=fu.id,
+                support_asset_id=0,
+                launcher_index=ln_idx,
+                weapon_id=wid,
+                track_id=tr.id,
+                threat_id=th.id,
+                target_path_version=th.path_version,
+                launch_sec=ctx.time_sec,
+                intercept_sec=ctx.time_sec + sol.dt_sec,
+                launch_pos=fu.pos,
+                intercept_pos=sol.pos,
+                intercept_alt_m=sol.alt_m,
+                speed_mps=wp["speed_mps"],
+                hit_prob=p_hit,
+            )
+            ctx.state.interceptors.add(ic)
             ctx.events.emit(
-                SimEventType.GunFired,
-                fields=(fu.id, wid, tr.id, th.id, sol.pos, p_hit),
+                SimEventType.InterceptorLaunched,
+                fields=(ic.id, fu.id, wid, tr.id, th.id, ic.intercept_sec, sol.pos),
+                interceptor_id=ic.id,
                 fire_unit_id=fu.id,
                 weapon_id=wid,
                 track_id=tr.id,
                 threat_id=th.id,
+                intercept_sec=ic.intercept_sec,
+                pos=sol.pos,
             )
 
-        ic = Interceptor(
-            pos=fu.pos,
-            alt_m=0.0,
-            fire_unit_id=fu.id,
-            support_asset_id=0,
-            launcher_index=ln_idx,
-            weapon_id=wid,
-            track_id=tr.id,
-            threat_id=th.id,
-            target_path_version=th.path_version,
-            launch_sec=ctx.time_sec,
-            intercept_sec=ctx.time_sec + sol.dt_sec,
-            launch_pos=fu.pos,
-            intercept_pos=sol.pos,
-            intercept_alt_m=sol.alt_m,
-            speed_mps=wp["speed_mps"],
-            hit_prob=p_hit,
-        )
-        ctx.state.interceptors.add(ic)
-        ctx.events.emit(
-            SimEventType.InterceptorLaunched,
-            fields=(ic.id, fu.id, wid, tr.id, th.id, ic.intercept_sec, sol.pos),
-            interceptor_id=ic.id,
-            fire_unit_id=fu.id,
-            weapon_id=wid,
-            track_id=tr.id,
-            threat_id=th.id,
-            intercept_sec=ic.intercept_sec,
-            pos=sol.pos,
-        )
-
-        # Check ammo depletion across all launchers of wslot
-        if wp["magazine"] is not None and not wslot.depleted_emitted:
-            if all(l.destroyed or (l.rounds == 0 and l.reload_until_sec <= 0.0) for l in wslot.launchers):
-                wslot.depleted_emitted = True
-                ctx.events.emit(SimEventType.AmmoDepleted, fields=(fu.id, wid), unit_id=fu.id, weapon_id=wid)
+            # Check ammo depletion across all launchers of wslot
+            if wp["magazine"] is not None and not wslot.depleted_emitted:
+                if all(l.destroyed or (l.rounds == 0 and l.reload_until_sec <= 0.0) for l in wslot.launchers):
+                    wslot.depleted_emitted = True
+                    ctx.events.emit(SimEventType.AmmoDepleted, fields=(fu.id, wid), unit_id=fu.id, weapon_id=wid)
 
 
 class InterceptorSystem:
@@ -730,6 +759,10 @@ class ImpactSystem:
         tiers_map = acc_rules.get("tiers", {})
         tier_obj = tiers_map.get(eff_tier, {"hitProb": 0.5, "missOffsetM": {"min": 100.0, "max": 500.0}})
         p_hit = float(tier_obj.get("hitProb", 0.5)) * th.arm_hit_prob_mult
+        if th.accuracy_tier_drop > 0:
+            p_hit *= 0.5 ** th.accuracy_tier_drop
+        if th.ew_extra_offset_m > 0.0:
+            p_hit *= 1000.0 / (1000.0 + th.ew_extra_offset_m)
         if th.target_unit_id > 0:
             p_hit *= EwQueries.shield_hit_prob_mult(ctx.state, cat, th.target_unit_id, eid)
 
@@ -792,7 +825,7 @@ class ImpactSystem:
             return
         # Prepared position survival bonus
         pos_rules = ctx.level.catalog.rules.get("positions", {})
-        if u.alternate_position_id is None and not u.new_position_penalty:
+        if getattr(u, "alternate_position_id", None) is None and not u.new_position_penalty:
             pass
 
         if dmg_level <= 2:

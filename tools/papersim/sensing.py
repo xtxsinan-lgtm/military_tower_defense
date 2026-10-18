@@ -1012,6 +1012,24 @@ class ElectronicWarfareSystem:
             if mdef.get("ewImmune"):
                 continue
 
+            # Check active NationalSpoof support assets (support_kind == 1)
+            if th.national_spoof == 0:
+                for sa in ctx.state.support_assets.alive_list():
+                    if sa.support_kind == 1 and sa.state == 1 and sa.pos is not None:
+                        s_rad = sa.radius_m if sa.radius_m > 0.0 else 30000.0
+                        if sa.pos.distance_to(th.pos) <= s_rad + 1e-9:
+                            ref_ew = cat.ew_units.get("area_nav_jammer", {})
+                            eff_ag = ref_ew.get("effectiveAgainst") or ["UAV", "DECOY", "CM", "GB"]
+                            tag_str = th.tag.name if th.tag is not None else ""
+                            if not eff_ag or tag_str in eff_ag or (th.def_id or "") in eff_ag:
+                                ai_vis = 0.5 if mdef.get("aiVisionActive") else 1.0
+                                p_sp = eff_nav * ai_vis
+                                if ctx.rng.chance(p_sp):
+                                    th.national_spoof = 2
+                                else:
+                                    th.national_spoof = 1
+                            break
+
             covering: List[Tuple[EwUnit, Dict[str, Any], float]] = []
             for u, edef, m_u in active_ew:
                 r_m = float(edef.get("radiusM", 0.0) or 0.0)
@@ -1021,21 +1039,18 @@ class ElectronicWarfareSystem:
                     if not eff_against or tag_str in eff_against or (th.def_id or "") in eff_against:
                         covering.append((u, edef, m_u))
 
-            if not covering:
-                continue
-
-            if not th.ew_ever_covered:
+            if covering and not th.ew_ever_covered:
                 th.ew_ever_covered = True
                 ctx.state.scoring.threats_ever_ew_covered += 1
 
             ai_vis_mult = 0.5 if mdef.get("aiVisionActive") else 1.0
 
             # 1. Link cut
-            if th.link_cut_state == 0:
+            if covering and th.link_cut_state == 0:
                 link_units = [(u, edef, m_u) for u, edef, m_u in covering if edef.get("effect") in ("link_cut", "link_cut_directional")]
                 if link_units:
                     u0, edef0, m0 = link_units[0]
-                    p_cut = float(edef0.get("linkCutProb", 0.5)) * m0
+                    p_cut = float(edef0.get("linkCutProb", 1.0)) * m0
                     if ctx.rng.chance(p_cut):
                         weights = ew_rules.get("linkCutOutcomeWeights", {"crash": 0.5, "hover": 0.25, "return": 0.25})
                         w_c = float(weights.get("crash", 0.5))
@@ -1053,40 +1068,62 @@ class ElectronicWarfareSystem:
                         elif roll < w_c + w_h:
                             th.link_cut_state = 2
                             th.link_cut_at_tick = ctx.tick
-                            ThreatRouting.hover(th, ctx.time_sec)
+                            ThreatRouting.hover(ctx, th)
                             ctx.events.emit(SimEventType.EwLinkCut, fields=(u0.id, th.id, "hover"), unit_id=u0.id, threat_id=th.id, outcome="hover")
                         else:
                             th.link_cut_state = 3
-                            w_m = float(ctx.level.meta.get("map", {}).get("widthM", 20000.0))
-                            h_m = float(ctx.level.meta.get("map", {}).get("heightM", 20000.0))
-                            ThreatRouting.begin_egress(th, ctx.time_sec, w_m, h_m)
+                            ThreatRouting.begin_egress(ctx, th)
                             ctx.events.emit(SimEventType.EwLinkCut, fields=(u0.id, th.id, "return"), unit_id=u0.id, threat_id=th.id, outcome="return")
                     else:
                         th.link_cut_state = 1
 
             # 2. Nav jam / spoof
-            if th.ew_nav == 0:
+            if covering and th.ew_nav == 0:
                 nav_units = [(u, edef, m_u) for u, edef, m_u in covering if edef.get("effect") in ("nav_jam", "nav_spoof")]
                 if nav_units:
                     u0, edef0, m0 = nav_units[0]
                     p_nav = float(edef0.get("degradeProb", 1.0)) * m0 * ai_vis_mult
                     if ctx.rng.chance(p_nav):
                         th.ew_nav = 2
-                        th.accuracy_tier_drop = max(th.accuracy_tier_drop, int(edef0.get("accuracyTierDrop", 1)))
-                        th.ew_extra_offset_m = max(th.ew_extra_offset_m, float(edef0.get("extraOffsetM", 500.0)))
                     else:
                         th.ew_nav = 1
 
-            if th.ew_pull == 0:
+            # ReconcileNavAccuracy (02 §3.4.5: non-stacking max expected offset between unit nav jam and national spoofing)
+            if th.ew_nav == 2 or th.national_spoof == 2:
+                acc_rules = cat.rules.get("accuracy", {})
+                tier_order = acc_rules.get("tierOrder", ["D", "C", "B", "A"])
+                tiers_map = acc_rules.get("tiers", {})
+                base_tier = mdef.get("accuracy", "C")
+                b_idx = tier_order.index(base_tier) if base_tier in tier_order else 1
+                base_tdef = tiers_map.get(base_tier, {})
+                b_off = base_tdef.get("offsetM", {"min": 0.0, "max": 2000.0})
+                base_mean = 0.5 * (float(b_off.get("min", 0.0)) + float(b_off.get("max", 2000.0)))
+                unit_extra = float(base_tdef.get("ewExtraM", 2000.0)) if th.ew_nav == 2 else 0.0
+                unit_mean = base_mean + unit_extra
+                nat_idx = max(0, b_idx - 2) if th.national_spoof == 2 else b_idx
+                nat_tier = tier_order[nat_idx]
+                nat_tdef = tiers_map.get(nat_tier, {})
+                n_off = nat_tdef.get("offsetM", {"min": 0.0, "max": 2000.0})
+                nat_mean = 0.5 * (float(n_off.get("min", 0.0)) + float(n_off.get("max", 2000.0)))
+                if th.ew_nav == 2 and (th.national_spoof != 2 or unit_mean >= nat_mean):
+                    th.accuracy_tier_drop = 0
+                    th.ew_extra_offset_m = unit_extra
+                else:
+                    th.accuracy_tier_drop = b_idx - nat_idx
+                    th.ew_extra_offset_m = 0.0
+
+            if covering and th.ew_pull == 0:
                 spoof_units = [(u, edef, m_u) for u, edef, m_u in covering if edef.get("effect") == "nav_spoof"]
                 if spoof_units:
                     u0, edef0, m0 = spoof_units[0]
-                    p_pull = float(edef0.get("pullToEmptyProb", 0.3)) * m0 * ai_vis_mult
+                    p_pull = float(edef0.get("pullChance", edef0.get("pullToEmptyProb", 0.3))) * m0 * ai_vis_mult
                     if ctx.rng.chance(p_pull):
                         th.ew_pull = 2
                         lure = u0.lure_point or (u0.pos + Vec2(1500.0, 0.0))
                         th.ew_divert_pos = lure
-                        ThreatRouting.retarget(th, ctx.time_sec, lure, 0, 0)
+                        th.target_structure_id = 0
+                        th.target_unit_id = 0
+                        ThreatRouting.retarget(ctx, th, lure)
                         ctx.events.emit(SimEventType.EwDiverted, fields=(u0.id, th.id, lure), unit_id=u0.id, threat_id=th.id, pos=lure)
                     else:
                         th.ew_pull = 1
