@@ -199,7 +199,7 @@ class GameSession:
             self.start_night({})
         assert self.world is not None
 
-        ticks = max(1, min(int(ticks), 240))
+        ticks = max(1, min(int(ticks), 28800))
         collected_evs: List[SimEvent] = []
         hard_pause = False
         pause_reason: Optional[str] = None
@@ -221,10 +221,11 @@ class GameSession:
                     hard_pause = True
                     pause_reason = "choice_requested"
                     break
-            for ev in step_evs:
-                if ev.type == SimEventType.EarlyWarning and ev.data.get("ballistic"):
-                    pause_reason = "ballistic_warning"
-                    break
+            if self.bot is None:
+                for ev in step_evs:
+                    if ev.type == SimEventType.EarlyWarning and ev.data.get("ballistic"):
+                        pause_reason = "ballistic_warning"
+                        break
             if pause_reason:
                 break
 
@@ -301,7 +302,7 @@ class GameSession:
             if ok and u and u.emitter:
                 u.emitter.on = pol in ("continuous", "always_on", "blink")
                 setattr(u.emitter, "arm_silenced", pol == "silent")
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "Command", "level": "info", "text": f"📡 指令下达：单位 #{uid} 切换辐射策略为【{pol}】（消耗 1 CP）"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "Command", "level": "command", "text": f"📡 指令下达：单位 #{uid} 切换辐射策略为【{pol}】"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=ok)
 
         if ctype_str == "BurstScan":
@@ -314,13 +315,15 @@ class GameSession:
                 u.emitter.fc_window_until_sec = self.world.ctx.time_sec + 180.0
                 setattr(u.emitter, "arm_silenced", False)
                 u.exposure = min(100.0, u.exposure + 8.0)
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "BurstScan", "level": "warn", "text": f"⚡ 脉冲开机扫描：单位 #{uid} 强制全功率开机刷新高精度航迹（暴露度 +8%）"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "BurstScan", "level": "alert", "text": f"⚡ 脉冲开机扫描：单位 #{uid} 强制全功率开机刷新高精度航迹（暴露度 +8%）"})
                 return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
             return {"ok": False, "error": "Unit has no active radar emitter"}
 
-        if ctype_str == "NationalSpoof":
+        if ctype_str in ("NationalSpoof", "TriggerNationalSpoof"):
             already = any(sa.support_kind == 1 and sa.state == 1 for sa in st.support_assets.alive_list())
-            if not already:
+            if not already and st.commands.command_points > 0:
+                st.commands.command_points -= 1
+                st.commands.command_points_spent += 1
                 sa = SupportAsset(
                     def_id="national_gnss_spoof",
                     pos=Vec2(10000.0, 10000.0),
@@ -332,10 +335,10 @@ class GameSession:
                     radius_m=30000.0,
                 )
                 st.support_assets.add(sa)
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "NationalSpoof", "level": "success", "text": "🟣 国家级 GNSS 导航欺骗网已激活！全图卫星制导武器精度大幅降级"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "NationalSpoof", "level": "command", "text": "🟣 国家级 GNSS 导航欺骗网已激活（消耗 1 CP）！全图卫星制导武器精度大幅降级"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
 
-        if ctype_str == "RelocateUnit":
+        if ctype_str in ("RelocateUnit", "Relocate"):
             uid = int(cmd_data.get("unitId", 0))
             alt_id = cmd_data.get("alternatePositionId")
             dest = cmd_data.get("dest")
@@ -347,37 +350,40 @@ class GameSession:
             cmd = SimCommand(type=SimCommandType.RelocateUnit, effective_tick=st.tick + 1, params=params)
             ok = CommandStage.apply_command(self.world.ctx, cmd)
             if ok:
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "RelocateUnit", "level": "warn", "text": f"🚚 阵地转移：单位 #{uid} 开始撤收并机动前往备用阵地 {alt_id or ''}（消耗 1 CP）"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "RelocateUnit", "level": "command", "text": f"🚚 阵地转移：单位 #{uid} 开始撤收并机动前往备用阵地 {alt_id or ''}（消耗 1 CP）"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=ok)
 
-        if ctype_str == "SetAirRaidAlert":
+        if ctype_str in ("SetAirRaidAlert", "ToggleCivilAlert"):
             on = bool(cmd_data.get("on", not st.civil.alert_on))
             cmd = SimCommand(type=SimCommandType.SetAirRaidAlert, effective_tick=st.tick + 1, params={"on": on})
             ok = CommandStage.apply_command(self.world.ctx, cmd)
             if ok:
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "AirRaidAlert", "level": "warn" if on else "info", "text": "🚨 全城防空警报拉响，市民进入掩体！" if on else "🔔 全城防空警报解除"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "AirRaidAlert", "level": "alert" if on else "info", "text": "🚨 全城防空警报拉响，市民进入掩体！" if on else "🔔 全城防空警报解除"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=ok)
 
-        if ctype_str == "SetEngagementRule":
+        if ctype_str in ("SetEngagementRule", "SetAmmoReserve", "SetTargetWhitelist", "SetShootLookShoot"):
             uid = int(cmd_data.get("unitId", 0))
             fu = st.fire_units.try_get(uid)
             if fu is None:
                 return {"ok": False, "error": "FireUnit not found"}
             rmap = {"any": 0, "ballistic_only": 1, "hold_fire": 2, "high_value_only": 3}
-            rule_str = str(cmd_data.get("rule", "any"))
-            r_int = rmap.get(rule_str, 0)
-            res_cnt = cmd_data.get("ammoReserve")
-            wl_raw = cmd_data.get("whitelist")
-            sls = cmd_data.get("shootLookShoot")
+            rule_str = cmd_data.get("rule")
+            res_cnt = cmd_data.get("ammoReserve", cmd_data.get("reserve"))
+            wl_raw = cmd_data.get("whitelist", cmd_data.get("tags"))
+            sls = cmd_data.get("shootLookShoot", cmd_data.get("enabled") if ctype_str == "SetShootLookShoot" else None)
+            wid = cmd_data.get("weaponId")
             for ws in fu.weapons:
-                ws.rule = r_int
+                if wid and ws.weapon_id != wid:
+                    continue
+                if rule_str is not None:
+                    ws.rule = rmap.get(str(rule_str), 0)
                 if res_cnt is not None:
                     setattr(ws, "ammo_reserve", int(res_cnt))
                 if isinstance(wl_raw, list):
                     setattr(ws, "whitelist", {parse_target_tag(t) for t in wl_raw if parse_target_tag(t) is not None})
                 if sls is not None:
                     setattr(ws, "shoot_look_shoot", bool(sls))
-            self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "EngagementRule", "level": "info", "text": f"🎯 交战规则更新：单位 #{uid} 规则={rule_str}，保留弹药={res_cnt if res_cnt is not None else '不变'}"})
+            self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "EngagementRule", "level": "command", "text": f"🎯 射击学说更新：单位 #{uid} ({ctype_str})"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
 
         if ctype_str == "AnswerChoice":
@@ -388,10 +394,10 @@ class GameSession:
                 ChoiceStage.resolve(self.world.ctx, ch, opt, timed_out=False)
                 st.choices.compact()
                 opt_txt = "选项A：立即关机规避反辐射导弹" if opt == 0 else "选项B：坚持开机引导拦截巡航导弹"
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "ChoiceResolved", "level": "success" if opt == 0 else "warn", "text": f"⚡ 紧急抉择已下达：【{opt_txt}】"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "ChoiceResolved", "level": "choice", "text": f"⚡ 紧急抉择已下达：【{opt_txt}】"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
 
-        if ctype_str == "TriggerChoice":
+        if ctype_str in ("TriggerChoice", "TriggerArmChoiceDemo"):
             self.arm_choice_fired_tonight = False
             u = next((s for s in st.sensors.alive_list() if not s.automatic), None) or (st.fire_units.alive_list()[0] if st.fire_units.alive_list() else None)
             if u is not None:
