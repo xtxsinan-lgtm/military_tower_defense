@@ -184,6 +184,10 @@ class Vec2:
         dy = self.y - other.y
         return math.sqrt(dx * dx + dy * dy)
 
+    @staticmethod
+    def lerp(a: Vec2, b: Vec2, t: float) -> Vec2:
+        return Vec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+
 
 class Geo:
     """Cross-spec geometry and interpolation functions (00_core.md §0.4.6)."""
@@ -313,17 +317,26 @@ class SpatialGrid:
             self._cells.setdefault(cell, []).append((item_id, pos))
 
     def query_circle(self, center: Vec2, radius_m: float) -> List[int]:
+        if not self._cells:
+            return []
         min_pt = Vec2(center.x - radius_m, center.y - radius_m)
         max_pt = Vec2(center.x + radius_m, center.y + radius_m)
         cx0, cy0 = self._cell_coords(min_pt)
         cx1, cy1 = self._cell_coords(max_pt)
         r_sq = radius_m * radius_m
         out: List[int] = []
-        for cx in range(cx0, cx1 + 1):
-            for cy in range(cy0, cy1 + 1):
-                for item_id, pos in self._cells.get((cx, cy), ()):
-                    if center.distance_sq_to(pos) <= r_sq:
-                        out.append(item_id)
+        if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > len(self._cells):
+            for (cx, cy), bucket in self._cells.items():
+                if cx0 <= cx <= cx1 and cy0 <= cy <= cy1:
+                    for item_id, pos in bucket:
+                        if center.distance_sq_to(pos) <= r_sq:
+                            out.append(item_id)
+        else:
+            for cx in range(cx0, cx1 + 1):
+                for cy in range(cy0, cy1 + 1):
+                    for item_id, pos in self._cells.get((cx, cy), ()):
+                        if center.distance_sq_to(pos) <= r_sq:
+                            out.append(item_id)
         out.sort()
         return out
 
@@ -425,6 +438,8 @@ class SimRandom:
         if max_val < min_val:
             raise ValueError(f"max_val ({max_val}) < min_val ({min_val})")
         return min_val + (max_val - min_val) * self.next_double()
+
+    next_float = range
 
     @staticmethod
     def child_seed(parent_seed: int, name: str) -> int:
