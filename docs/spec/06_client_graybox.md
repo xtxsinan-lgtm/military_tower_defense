@@ -424,16 +424,18 @@ Main (Node, Main.cs)                                   阶段状态机、帧流�
 | 字段 | C# 类型 | 初值 | 说明 |
 |---|---|---|---|
 | `Mode` | `TimeMode { Finished = 0, Paused = 1, ChoiceSlow = 2, BallisticSlow = 3, FastForward = 4, Normal = 5 }` | `Normal` | 每次输入后重算 |
-| `Rate` | `double`（只读） | `UserSpeeds[0]` | 当前播放倍率（1 = 每现实秒 1 游戏秒） |
+| `Rate` | `double`（只读） | `UserSpeeds[0]` | 当前播放倍率（1 = 每现实秒 1 游戏秒 = 60 世界秒） |
 | `UserSpeedIndex` | `int` | `0` | `UserSpeeds` 下标 |
 | `ManualPaused` | `bool` | `false` | |
-| `AllowManualPause` | `bool` | `!Args.Hardcore` | |
+| `AllowManualPause` | `bool` | `!Args.Hardcore` | 叙事/普通模式为 `true`，硬核模式为 `false` |
 | `AutoFastForward` | `bool` | `Config.AutoFastForwardDefault` | |
 | `LockedRate` | `double?` | `null` | **仅烟雾测试**：非 null 时除 `Finished` 外一律使用该倍率 |
 | `Finished` | `bool` | `false` | 收到 `NightEnded` |
-| `PendingChoiceIds` | `SortedSet<int>` | 空 | 未回答的二选一 |
+| `PendingChoiceIds` | `SortedSet<int>` | 空 | 未回答的二选一（按 `ChoiceId` 升序） |
+| `PendingChoiceTimers` | `SortedDictionary<int, ChoiceTimerState>` | 空 | `ChoiceTimerState(double RemainingRealSec, int DefaultOption)`；初值 `Config.ChoiceTimeoutRealSec`（8.0 现实秒，C-T3-01） |
 | `IdleSinceTick` | `int?` | `null` | 连续空闲的起始步 |
 | `BallisticUntilTick` | `int` | `-1` | 弹道慢放持续到此步（不含） |
+| `EffectiveBallisticSlowRate` | `double` | `Config.BallisticSlowRate` | 当前自适应弹道慢放倍率（C-T3-01，3.5.3） |
 | `BallisticAlarmPending` | `bool` | `false` | 收到弹道预警后置 true；界面报警后由界面调用 `ClearBallisticAlarm()` 清除（3.10.2） |
 | `CurrentTick` | `int` | `0` | 最近一次输入的世界步 |
 | `FfEnterDelayTicks` | `int` | `SimTime.SecToTicksCeil(FastForwardEnterDelaySec, StepSec)` | |
@@ -651,14 +653,16 @@ public interface ISimWorldFacade<TSnap> where TSnap : class
     IReadOnlyList<SimEvent> DrainEvents();
     SimCommand Enqueue(SimCommand command);
     ulong ComputeStateHash();
-    FrameCounts CountsOf(TSnap snapshot);      // 变速状态机需要的三个量（3.5.3）
+    FrameCounts CountsOf(TSnap snapshot);      // 变速状态机需要的场内计数与弹道剩余窗口（3.5.3）
 }
-public readonly record struct FrameCounts(int Tracks, int Interceptors, bool AnyBallisticTrack);
+public readonly record struct FrameCounts(int Tracks, int Interceptors, bool AnyBallisticTrack, double? MinBallisticRemWorldSec = null);
 public sealed class SimDriver<TSnap> where TSnap : class { /* 3.3.2 */ }
 
 // 正式实现：SimWorldFacade : ISimWorldFacade<SimSnapshot>，包装 SimWorld，逐成员转发；
-//   CountsOf(s) = new FrameCounts(s.Tracks.Count, s.Interceptors.Count, s.Tracks.Any(t => t.Tag is TargetTag.BM or TargetTag.HBM))
-//   （TrackView.Tag，02 2.9；Tag 为 null 的航迹不算弹道）
+//   CountsOf(s) = new FrameCounts(s.Tracks.Count, s.Interceptors.Count,
+//       s.Tracks.Any(t => t.Tag is TargetTag.BM or TargetTag.HBM), EstimateMinBallisticRemWorldSec(s))
+//   （TrackView.Tag，02 2.9；Tag 为 null 的航迹不算弹道；EstimateMinBallisticRemWorldSec 按弹道航迹距最近存活保护目标的
+//     平面距离 Math.Sqrt(dx*dx + dy*dy) / |VelMps| 估算最短剩余窗口，无弹道航迹或无法估算时返回 null）
 // 客户端使用 SimDriver<SimSnapshot>；单元测试使用 SimDriver<FakeSnap> + FakeWorld（7.0），无需构造 SimSnapshot
 ```
 
@@ -667,6 +671,10 @@ public sealed class SimDriver<TSnap> where TSnap : class { /* 3.3.2 */ }
 ```
 if Fault != null or World.IsFinished:
     LastFrame = (0, 0, false, false); return
+
+# 先推进二选一现实秒倒计时（unscaledDeltaTime，C-T3-01）；若超时则自动入队默认选项并解除硬暂停
+foreach (choiceId, defaultOpt) in Time.TickChoiceTimers(realDeltaSec):
+    Enqueue(new AnswerChoice { ChoiceId = choiceId, Option = defaultOpt })
 
 rate0 = Time.Rate
 stepsPerRealSec = rate0 × GameSecToWorldSec / World.StepSec          # 1× = 60 步/现实秒
@@ -691,7 +699,7 @@ if k > 0:
     Prev = capturedPrev
     InterpolationValid = (capturedPrev != null) and (Fault == null)
 c = World.CountsOf(Cur)
-Time.OnFrameEnd(World.Tick, c.Tracks, c.Interceptors, c.AnyBallisticTrack)   # 3.5.3
+Time.OnFrameEnd(World.Tick, c.Tracks, c.Interceptors, c.AnyBallisticTrack, c.MinBallisticRemWorldSec)   # 3.5.3
 LastFrame = (n, k, rateDropped, budgetStopped)
 ```
 
@@ -703,7 +711,7 @@ LastFrame = (n, k, rateDropped, budgetStopped)
 
 #### 3.3.3 发命令
 
-`Driver.Enqueue(SimCommand cmd)` → `World.Enqueue(cmd with { EffectiveTick = 0 })`（00 3.4.1：规范化为"下一步生效"）。结果通过 `CommandApplied` / `CommandRejected` 事件反馈（3.6）。灰盒只发 `AnswerChoice`（3.10.4）；其余夜间命令属于 WS04-007 / 008。
+`Driver.Enqueue(SimCommand cmd)` → `World.Enqueue(cmd with { EffectiveTick = 0 })`（00 3.4.1：规范化为"下一步生效"）。若 `cmd is AnswerChoice ac`，同时调用 `Time.OnChoiceAnswered(ac.ChoiceId)`，立即从 `PendingChoiceIds` 移除该二选一并重算 `Rate`（使叙事模式下因 `ChoiceSlow` 处于 `Rate == 0` 硬暂停的世界在下一帧恢复推进并结算 `AnswerChoice`，避免死锁）。结果通过 `CommandApplied` / `CommandRejected` 事件反馈（3.6）。灰盒只发 `AnswerChoice`（3.10.4）；其余夜间命令属于 WS04-007 / 008。
 
 ### 3.4 步数累加器（`StepAccumulator`，Core）
 
@@ -739,12 +747,21 @@ double Alpha => Math.Clamp(Acc, 0, 1)
 | 1 | `Finished` | `Finished` | `0` |
 | 2 | `LockedRate != null` | `Normal` | `LockedRate` |
 | 3 | `ManualPaused` | `Paused` | `0` |
-| 4 | `PendingChoiceIds.Count > 0` | `ChoiceSlow` | `ChoiceSlowRate` |
-| 5 | `CurrentTick < BallisticUntilTick` | `BallisticSlow` | `Math.Min(UserSpeed, BallisticSlowRate)` |
+| 4 | `PendingChoiceIds.Count > 0` | `ChoiceSlow` | `AllowManualPause ? 0.0 : ChoiceSlowRate` |
+| 5 | `CurrentTick < BallisticUntilTick` | `BallisticSlow` | `Math.Min(UserSpeed, EffectiveBallisticSlowRate)` |
 | 6 | `AutoFastForward` 且 `IdleSinceTick != null` 且 `CurrentTick − IdleSinceTick ≥ FfEnterDelayTicks` | `FastForward` | `Math.Max(UserSpeed, FastForwardRate)` |
 | 7 | 其他 | `Normal` | `UserSpeed` |
 
 `UserSpeed = UserSpeeds[UserSpeedIndex]`。
+
+**C-T3-01 二选一与弹道慢放规则**：
+- **二选一（`ChoiceSlow`）**：
+  - **叙事 / 普通模式**（`AllowManualPause == true`）：弹出二选一时切换为**硬暂停**（`Rate = 0.0`，`SimWorld.Step()` 暂停调用），同时在客户端以真实时间（`unscaledDeltaTime`）启动 `ChoiceTimeoutRealSec`（默认 `8.0` 现实秒）倒计时；玩家点击选项或 8.0 现实秒超时自动提交 `DefaultOption` 后，立即调用 `OnChoiceAnswered(choiceId)` 退出 `ChoiceSlow` 并恢复原倍速。
+  - **硬核模式**（`AllowManualPause == false`，关闭手动暂停）：不硬暂停，强制慢放至 `ChoiceSlowRate`（默认 `1/60×`，即 1 现实秒 = 1 世界秒），同样给足 `8.0` 现实秒（= 8 世界秒）反应窗口，超时自动提交 `DefaultOption`。
+- **高超音速 / 弹道慢放（`BallisticSlow`）**：
+  - 采用**动态自适应慢放倍率**（C-T3-01）：当已知场内弹道 / 高超音速航迹的最短剩余窗口 $T_{\text{remWorldSec}}$ 时，
+    $$\text{EffectiveBallisticSlowRate} = \text{Clamp}\!\left(\frac{T_{\text{remWorldSec}}}{\text{GameSecToWorldSec} \times \text{BallisticMinRealWindowSec}},\; \frac{1}{\text{GameSecToWorldSec}},\; \text{BallisticSlowRate}\right)$$
+    确保玩家至少拥有 `BallisticMinRealWindowSec`（`6.0` 现实秒）的反应窗口（例如锆石 $T_{\text{rem}} = 12\,\text{s} \Rightarrow 12/360 = 1/30\times$，匕首 $T_{\text{rem}} = 22\,\text{s} \Rightarrow 22/360 \approx 0.0611\times$，伊斯坎德尔 $T_{\text{rem}} = 35\,\text{s} \Rightarrow 35/360 \approx 0.0972\times$）。当 $T_{\text{remWorldSec}}$ 未知（`null`，如仅有发射预警尚未建轨或处于命中后的保持期）时，`EffectiveBallisticSlowRate = BallisticSlowRate`（默认 `0.5×`）。
 
 #### 3.5.2 `OnStepEvents(IReadOnlyList<SimEvent> events, int tick)`
 
@@ -755,28 +772,36 @@ double Alpha => Math.Clamp(Acc, 0, 1)
 | `TrackCreated` | `IdleSinceTick = null`（出现新航迹：立即退出快进） |
 | `InterceptorLaunched` | `IdleSinceTick = null` |
 | `EarlyWarning` 且 `Ballistic == true` | `BallisticUntilTick = max(BallisticUntilTick, tick + BallisticHoldTicks, SecToTicksCeil(ExpectedAtSec, StepSec) + BallisticHoldTicks)`；设 `BallisticAlarmPending = true`（供界面报警，3.10.2） |
-| `ChoiceRequested` | `PendingChoiceIds.Add(ChoiceId)`；`IdleSinceTick = null` |
-| `ChoiceResolved` | `PendingChoiceIds.Remove(ChoiceId)` |
+| `ChoiceRequested` | `PendingChoiceIds.Add(ChoiceId)`；`PendingChoiceTimers[ChoiceId] = new ChoiceTimerState(Config.ChoiceTimeoutRealSec, DefaultOption)`；`IdleSinceTick = null` |
+| `ChoiceResolved` | `PendingChoiceIds.Remove(ChoiceId)`；`PendingChoiceTimers.Remove(ChoiceId)` |
 | `NightEnded` | `Finished = true` |
 | 其他 | 无 |
 
 最后 `Recompute()`。
 
-#### 3.5.3 `OnFrameEnd(int tick, int trackCount, int interceptorCount, bool anyBallisticTrack)`
+#### 3.5.3 `OnFrameEnd(int tick, int trackCount, int interceptorCount, bool anyBallisticTrack, double? minBallisticRemWorldSec = null)`
 
 ```
 CurrentTick = tick
 idleNow = (trackCount == 0) and (interceptorCount == 0) and (PendingChoiceIds.Count == 0)
 if not idleNow:        IdleSinceTick = null
 elif IdleSinceTick == null: IdleSinceTick = tick
-if anyBallisticTrack:  BallisticUntilTick = max(BallisticUntilTick, tick + BallisticHoldTicks)
+if anyBallisticTrack:
+    BallisticUntilTick = max(BallisticUntilTick, tick + BallisticHoldTicks)
+    if minBallisticRemWorldSec != null:
+        rawRate = minBallisticRemWorldSec.Value / (GameSecToWorldSec × Config.BallisticMinRealWindowSec)
+        EffectiveBallisticSlowRate = Math.Clamp(rawRate, 1.0 / GameSecToWorldSec, Config.BallisticSlowRate)
+    else:
+        EffectiveBallisticSlowRate = Config.BallisticSlowRate
+else:
+    EffectiveBallisticSlowRate = Config.BallisticSlowRate
 Recompute()
 ```
 
 - 空闲判定只看**玩家可见**的航迹与拦截弹（C5）。未被探测的来袭目标不阻止快进——这是战争迷雾的正常结果；国家预警（`EarlyWarning`）不创建航迹（02 3.2.8 第 3 条），因此预警本身不退出快进（Q4）。
 - 弹道慢放持续到"最后一次看到弹道航迹 / 预期到达时刻之后 `BallisticHoldSec`"。
 
-#### 3.5.4 玩家操作
+#### 3.5.4 玩家操作与二选一计时
 
 | 方法 | 效果 | 返回 |
 |---|---|---|
@@ -784,8 +809,10 @@ Recompute()
 | `SetUserSpeedIndex(int i)` | `UserSpeedIndex = Clamp(i, 0, UserSpeeds.Length − 1)` | — |
 | `ToggleAutoFastForward()` | `AutoFastForward = !AutoFastForward` | — |
 | `SetLockedRate(double? r)` | 仅烟雾测试；`r ≤ 0` 抛 `ArgumentOutOfRangeException` | — |
+| `OnChoiceAnswered(int choiceId)` | `PendingChoiceIds.Remove(choiceId)`；`PendingChoiceTimers.Remove(choiceId)`；`Recompute()` | 是否原在集合中（`bool`） |
+| `TickChoiceTimers(double realDeltaSec)` | 若 `PendingChoiceIds.Count > 0` 且 `!ManualPaused` 且 `!Finished`：对队首 `id = PendingChoiceIds.Min` 扣减 `Math.Max(0, realDeltaSec)`；若 `RemainingRealSec ≤ 0`，调用 `OnChoiceAnswered(id)` 并返回 `[(id, DefaultOption)]`，否则返回空列表 | 超时自动提交项 `IReadOnlyList<(int ChoiceId, int DefaultOption)>` |
 
-每个方法末尾 `Recompute()`。
+每个改变状态的方法末尾调用 `Recompute()`。
 
 ### 3.6 事件分发（`SimEventRouter`，Core）
 
@@ -833,6 +860,7 @@ public sealed class SimEventRouter
 | `ChoiceRequested`(402) / `ChoiceResolved`(403) | ChoicePlaceholder | 显示 / 关闭（3.10.4） |
 | `UnitDeployStateChanged`(405) | CoverageService | `To == Deployed` 时夜间覆盖重算（3.9.8） |
 | `DialogueShown`(407) | NotificationFeed | `Tr(DialogueKey)` |
+| `EnemyGroupsReleased`(408) | DebugOverlay | 决策日志（`WaveId, GroupIds, Reason`，04 4.1 / B-T2-06） |
 | 全部 | DebugOverlay（`SubscribeAll`） | 计数（抬头显示每类事件累计数） |
 
 单位 / 武器 / 保护目标名称：从 `Driver.Cur` 中按实体 ID 查视图（二分查找，视图数组按 ID 升序）得到 `DefId`，再查目录 `NameKey`；查不到（已删除）→ 用上一个快照 `Driver.Prev`；仍查不到 → `"#" + id`。
@@ -990,11 +1018,12 @@ public interface IPlacementValidator
     IReadOnlyList<PlacementError> ValidateAll(DeploymentPlan plan);
 }
 public sealed record PlacementError(string Code, int UnitIndex, string Detail);
-// 正式实现 Sim04PlacementValidator：转发到 04 的 DeploymentValidator（依赖接口 D-04-1，8.3），把 04 的错误类型转换为 PlacementError
+// 正式实现 Sim04PlacementValidator：转发到 04 §3.5.1 的 Nightwatch.Sim.EnemyAi.DeploymentValidator（8.3 D-04-1），
+//   把 04 的 DeploymentError(string Code, int Index, string? UnitDefId, string Detail) 转换为 PlacementError(e.Code, e.Index, e.Detail)
 // 测试：FakeValidator（7.0）
 ```
 
-客户端**不自己判断**任何部署规则（区域、禁止区、数量、设置合法性）。显示文字：`Tr("ui.deploy.error." + Code)`；该键不存在时显示 `Detail`。
+客户端**不自己判断**任何部署规则（区域、禁止区、数量、设置合法性）。显示文字：`Tr("ui.deploy.error." + Code)`；该键不存在时显示 `Detail`（04 §3.5.1 的 `D_*` 错误码见 8.2-E 与 8.3 D-04-1）。
 
 #### 3.9.3 放置预览（每帧，`SelectedEntryIndex ≥ 0` 时）
 
@@ -1044,23 +1073,25 @@ Grid = CoverageGridSpec(MinX = 0, MaxY = HeightM, CellM = cell, Cols, Rows)
 格 (col, row) 的中心 = (MinX + (col + 0.5) × cell,  MaxY − (row + 0.5) × cell)      # 第 0 行 = 北
 ```
 
-**单个单位**：调用 02 的覆盖查询（依赖接口 D-02-1，8.3）：
+**单个单位**：调用 `02_sensing_tracks_ew_emission.md` §3.8 的覆盖查询（8.3 D-02-1）：
 
 ```
-byte[] g = CoverageQuery.ComputeGrid(level, terrain, nightIndex: 1, unit: placedUnit,
-                                     targetAglM: CoverageAltitudesM[CoverageAltIndex], grid: Grid)
-# 每格：0 = 名义距离外；1 = 名义距离内但在该高度不可探测（低空倍率 / 视线遮挡 = 盲区）；2 = 可探测
+byte[]? g = CoverageQuery.ComputeGrid(level, terrain, nightIndex: 1, unit: placedUnit,
+                                      targetAglM: CoverageAltitudesM[CoverageAltIndex], grid: Grid)
+# 每格：0 = 名义距离外；1 = 名义距离内但在该高度不可探测（低空倍率 / 视线遮挡 = 盲区）；2 = 可探测（A-2-16）
 # 返回 null：该单位没有探测能力（电子战、欺骗、无火控无自主捕获的火力单元）
 ```
 
-**合成**（`CoverageComposer.Compose(IReadOnlyList<byte[]> grids, int cellCount)`）：逐格取最大值（`2 > 1 > 0`：任一单位可探测即可探测；否则任一单位"盲区"即盲区）。输出纹理字节（`Image.Format.Rg8`，每格 2 字节）：`R = (v == 2) ? 255 : 0`，`G = (v == 1) ? 255 : 0`。
+> **C-T1-12 / C-T2-01 地形包络与三态兼容说明**：`02 §3.8` 的 `CoverageQuery.ComputeGrid` 内部调用 `terrain.BuildHorizon(sensorPos, sensorAntH)`（01 的 720-bin 径向最大遮挡仰角包络 `HorizonProfile`，每传感器只建一次，约 1.2 ms），随后对全部格做 $O(1)$ 查表（`terrain.HasLineOfSight(profile, targetPos, targetMsl)`），单单位 `200 × 200` 格计算耗时 `≤ 2 ms`（远低于 16.6 ms 帧预算）。若 `02 §3.8` 实现仅返回二值 `0 / 1`（`1 = 覆盖`）而未区分 `1 = 盲区 / 2 = 可探测`（见 `APPLY_LOG.md` 留给后续项），`CoverageComposer` 在检测到输入网格最大值为 `1` 且不含 `2` 时将 `1` 提升为 `2`（可探测），以保证覆盖层正常渲染。
+
+**合成**（`CoverageComposer.Compose(IReadOnlyList<byte[]?> grids, int cellCount)`）：跳过 `null` 网格，逐格取最大值（`2 > 1 > 0`：任一单位可探测即可探测；否则任一单位"盲区"即盲区）。输出纹理字节（`Image.Format.Rg8`，每格 2 字节）：`R = (v == 2) ? 255 : 0`，`G = (v == 1) ? 255 : 0`。
 
 **纹理放置**：`CoverageLayer`（`Sprite2D`）`Centered = false`，`Position = MapProjection.ToWorldPx(MinX, MaxY)`，`Scale = (cell × k, cell × k)`，`TextureFilter = Nearest`；`coverage.gdshader`（`shader_type canvas_item;`）：`R > 0.5` → `coverageVisible`；否则 `G > 0.5` → `coverageBlind` 并叠加 45° 斜线（`mod(FRAGCOORD.x + FRAGCOORD.y, 8.0) < 2.0` 时 α × 2）；否则透明。
 
 **异步与缓存**（`CoverageService`）：
 
 1. 触发：`Plan.Version` 变化、`CoverageAltIndex` 变化（部署阶段）；夜间见 3.9.8。
-2. `Generation++`；对每个需要覆盖的单位计算 `CoverageKey(UnitDefId, Pos.X, Pos.Y, TargetAglM, NightAidsKey)`（`NightAidsKey = string.Join(",", Settings.NightAids ?? [])`）；缓存命中直接用，否则对缺失者启动一个 `Task.Run`（**只在 `game/` 中使用 Task**；`LevelData`、`TerrainModel` 不可变，可跨线程只读）。
+2. `Generation++`；对每个需要覆盖的单位计算 `CoverageKey(UnitDefId, Pos.X, Pos.Y, TargetAglM, NightAidsKey)`（`NightAidsKey = string.Join(",", Settings.NightAids ?? [])`）；缓存命中直接用，否则对缺失者启动一个 `Task.Run`（**只在 `game/` 中使用 Task**；`LevelData`、`TerrainModel` 不可变，可跨线程只读；因 720-bin 包络已将单单位耗时压至 `≤ 5 ms`，主线程同步计算亦不卡顿，保留 `Task.Run` 以应对多单位批量重算）。
 3. 后台任务按 `Units` 顺序依次计算缺失网格，再合成纹理字节，连同 `Generation` 返回。
 4. `Poll()`（主线程每帧）：结果的 `Generation` 等于当前值 → 写缓存、生成 / 更新 `ImageTexture`；否则丢弃（只把网格写入缓存）。
 5. 放置预览（ghost）**不计算**覆盖，只画距离圈（避免鼠标移动时反复计算）。
@@ -1073,7 +1104,8 @@ byte[] g = CoverageQuery.ComputeGrid(level, terrain, nightIndex: 1, unit: placed
 ```
 errors = Validator.ValidateAll(Plan.Build())
 if errors.Count > 0: 面板显示全部错误（每条 "单位 n：<文字>"），保持 Deploy；return
-config = new SimConfig { NightIndex = 1, Deployment = Plan.Build(), CaptureDebug = true }   # 其余字段取 00 默认值；CaptureDebug 见 8.2-A
+config = new SimConfig { NightIndex = 1, Deployment = Plan.Build(),
+                         AutoChoicePrompts = !Args.Hardcore, CaptureDebug = true }   # 00 2.6；硬核模式默认关闭自动二选一（B-T2-11）
 seed   = Args.Seed ?? SimRandom.NightSeed(Config.DefaultRunSeed, Level.Id, 1)
 try: World = SimWorld.Create(Level, config, seed)
 catch SimSetupException e: 面板显示 e.Message 的每一行；return
@@ -1101,10 +1133,10 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | 暂停按钮 | `⏸` / `▶`（= `time_pause`）；硬核模式隐藏 |
 | 速度按钮 | 每个 `UserSpeeds` 一个：`"{v:0.##}×"`，当前项高亮 |
 | 自动快进开关 | `ui.time.auto_ff`（= `time_toggle_auto_ff`） |
-| 模式标签 | `Tr("ui.time.mode." + Mode)` + 实际倍率 `"{Rate:0.##}×"`；`FastForward` 时附 `»`，`BallisticSlow` 时文字用 `hostile` 色 |
+| 模式标签 | `Tr("ui.time.mode." + Mode)` + 实际倍率（`Rate == 0` 且 `Mode == ChoiceSlow` 时显示剩余决策时间 `"{RemainingRealSec:0.0}s"`，否则 `"{Rate:0.##}×"`）；`FastForward` 时附 `»`，`BallisticSlow` 时文字用 `hostile` 色 |
 | 时钟 | `"{Tr(ui.time.night, NightIndex)}  T+{ClockFormat(RenderFrame.TimeSec)} / {ClockFormat(DurationTicks × StepSec)}"` |
 | 进度条 | `Tick / DurationTicks` |
-| 指挥点 | `GlobalView` 中 04 定义的指挥点字段（依赖，04 未定稿时隐藏） |
+| 指挥点 | `"{Cur.Global.CommandPoints} / {Cur.Global.CommandPointsInitial}"`（`04 §2.6` / P45） |
 | 落后提示 | 本帧 `DroppedSteps` 增加时显示 `ui.time.lagging` 1 现实秒 |
 
 `ClockFormat(sec)`：`t = (int)Math.Floor(sec + 1e-9)`，输出 `"{t/3600:00}:{t%3600/60:00}:{t%60:00}"`（世界时间，即真实世界的时分秒；8 小时夜晚 = `08:00:00`）。
@@ -1120,11 +1152,12 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 
 #### 3.10.4 二选一占位面板（`ChoicePlaceholder`）
 
-正式弹窗属 WS04-008；灰盒只保证流程可走通：
+正式弹窗属 WS04-008；灰盒实现完整走通 C-T3-01 的二选一交互与超时协议：
 
-- `ChoiceRequested { ChoiceId, ChoiceKey, DeadlineTick, DefaultOption }` → 显示标题 `Tr(ChoiceKey)`、两个按钮 `Tr(ChoiceKey + ".opt0")` / `Tr(ChoiceKey + ".opt1")`（键格式待 04 定，Q18）、默认项加 `(默认)` 后缀、倒计时 `ClockFormat((DeadlineTick − Cur.Tick) × StepSec)`。
-- 点击按钮 → `Driver.Enqueue(new AnswerChoice { ChoiceId = id, Option = 0 或 1 })`，按钮置灰等待 `ChoiceResolved`。
-- `ChoiceResolved` → 关闭；多个请求同时存在时按 `ChoiceId` 升序排队显示。
+- `ChoiceRequested { ChoiceId, ChoiceKey, DeadlineTick, DefaultOption }` → 显示标题 `Tr(ChoiceKey)`、两个按钮 `Tr(ChoiceKey + ".opt_a")` / `Tr(ChoiceKey + ".opt_b")`（按 `04 §3.7` 约定；若本地化表中不存在 `.opt_a` / `.opt_b` 则回退尝试 `.opt0` / `.opt1`）、默认项加 `Tr("ui.choice.default")` 后缀、现实秒倒计时 `"{RemainingRealSec:0.0}s"`（来自 `Time.PendingChoiceTimers[ChoiceId]`，初值 `Config.ChoiceTimeoutRealSec = 8.0` 现实秒，C-T3-01）。
+- 点击按钮 → `Driver.Enqueue(new AnswerChoice { ChoiceId = id, Option = 0 或 1 })`（内部同步调用 `Time.OnChoiceAnswered(id)` 解除 `ChoiceSlow` 硬暂停 / 慢放，3.3.3），面板立即切换至下一条待决请求或隐藏。
+- 超时自动提交：若 8.0 现实秒内未点击，`SimDriver.Advance` 开头的 `Time.TickChoiceTimers(realDeltaSec)` 自动入队 `AnswerChoice { ChoiceId = id, Option = DefaultOption }` 并解除 `ChoiceSlow`（3.3.2 / 3.5.4）。
+- `ChoiceResolved` → 确保对应请求已关闭（幂等）；多个请求同时存在时按 `ChoiceId` 升序排队显示。
 
 ### 3.11 调试可视化（WS06-009，`F3` 一键开关）
 
@@ -1134,13 +1167,13 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 |---|---|---|
 | 抬头（恒显示） | `Tick`、`T+时钟`、`Mode`、`Rate`、本帧计划 / 执行步数、`DroppedSteps`、`StepWallMsEma`、FPS（`Engine.GetFramesPerSecond()`）、各类实体数、事件累计数、`Seed`（`0x` + 16 位大写十六进制）、`DataHash` 前 12 字符、最近一次 `F4` 的状态哈希 | `Driver`、`Cur`、路由计数 |
 | `Truth` | 敌方真值：`debugTruth` 色 × 字（5 px）+ 文字 `"#{Id} {Tr(def.NameKey)} {AltM:0}m"`。不画真值与航迹之间的连线（`TrackView` 不含 `ThreatId`，02 2.9） | `Cur.Threats`（插值） |
-| `Los` | 本步每条探测：从来源单位到目标真值位置画 `debugLos` 细线 | `SimSnapshot.Debug.Detections`（8.2-A，需 `SimConfig.CaptureDebug = true`） |
+| `Los` | 本步每条探测：从来源单位到目标真值位置画 `debugLos` 细线（02 内部基于 01 的 720-bin 径向地平线包络 `HorizonProfile` 判定视线，C-T1-12） | `SimSnapshot.Debug.Detections`（00 2.7，需 `SimConfig.CaptureDebug = true`） |
 | `Blind` | 本步**未被任何探测覆盖**的真值目标：外加 `debugTruth` 空心圆（10 px）并标 `未探测`；覆盖纹理的盲区通道加倍不透明 | `Cur.Threats` 与 `Debug.Detections` 的 `ThreatId` 集合之差（显示用集合运算，不是规则） |
 | `Exposure` | 每个我方单位旁：`"E {Exposure:0.0} / {ExposurePeak:0.0}"`；`EmitterOn` 时加 `RAD`；`FcMode` 非 `Off` 时加其名称 | 我方单位视图（02 2.9） |
-| `Reasons` | 单位头顶最近一条 `EngagementHeld.Reason`（3 现实秒后消失）；右侧"决策日志"（最近 50 条）：`WaveStarted.AiTags`、`EmitterSwitched.Cause`、`KnownTargetAdded / Removed.Reason`、`EngagementHeld` | 事件（3.6） |
+| `Reasons` | 单位头顶最近一条 `EngagementHeld.Reason`（3 现实秒后消失）；右侧"决策日志"（最近 50 条）：`WaveStarted.AiTags`、`EmitterSwitched.Cause`、`KnownTargetAdded / Removed.Reason`、`EnemyGroupsReleased(WaveId, GroupIds, Reason)`、`EngagementHeld` | 事件（3.6） |
 | `Log` | 交战日志（环形缓冲 `EngagementLogCapacity` 条，最新在上）：事件 300–311 按 `EventText.Format(e, names)` 格式化，例 `"[T+01:23:45] FU#6 发射 nasams_aim120 → TR#12"` | 事件（3.6） |
 
-- 打开调试层时 `SimConfig.CaptureDebug` 必须在 `SimWorld.Create` 时已为 `true` 才有 `Los` / `Blind` 数据：灰盒**总是**以 `CaptureDebug = true` 创建世界（它不影响状态与哈希，8.2-A；T-06-45 验证）。`Debug == null` 时这两个子层显示 `ui.debug.no_capture`。
+- 打开调试层时 `SimConfig.CaptureDebug` 必须在 `SimWorld.Create` 时已为 `true` 才有 `Los` / `Blind` 数据：灰盒**总是**以 `CaptureDebug = true` 创建世界（它不影响状态与哈希，00 2.6；T-06-45 验证）。`Debug == null` 时这两个子层显示 `ui.debug.no_capture`。
 - `F4`：`hash = World.ComputeStateHash()`，抬头显示 `"0x" + hash.ToString("X16", CultureInfo.InvariantCulture)`，并 `GD.Print`。
 - 调试层**不发任何命令**、不修改模拟。
 
@@ -1154,7 +1187,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 
 - `World.IsFinished` 后：`Phase = Result`；`ResultPanel` 显示 `World.Result` 的 `Outcome`（`ui.result.outcome.<Outcome>`）、`EndReason`（`ui.result.reason.<EndReason>`）、`EndTimeSec`（`ClockFormat`）、`FinalStateHash`，以及 `NightResult` 用 `System.Text.Json`（缩进、枚举字符串）序列化的全文（可滚动；灰盒以此代替正式复盘，WS04-009）。
 - 按钮：`ui.result.redeploy`（回到 `Deploy`，保留 `Plan`，释放 `World` / `Driver`）、`ui.result.rerun`（同方案同种子立即重开：直接执行 3.9.7）、`ui.result.quit`（`GetTree().Quit(0)`）。
-- 多夜关卡的"下一夜"（需要 `CarryIn`，05）不在灰盒范围：`Meta.Nights > 1` 时 `ResultPanel` 显示 `ui.result.multi_night_unsupported`。
+- 多夜关卡的"下一夜"（需要 `CarryIn` 与战役控制器 `CampaignController`，见 `05_campaign_economy.md`；含 `WatchAutoNight(true)` 自动夜的逐帧播放入口，B-T3-07）不在 M1 灰盒范围：`Meta.Nights > 1` 时 `ResultPanel` 显示 `ui.result.multi_night_unsupported`。
 
 ### 3.14 性能预算（灰盒，目标 60 FPS）
 
@@ -1162,7 +1195,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 
 | 项 | 每帧预算 | 说明 |
 |---|---|---|
-| 模拟推进 | ≤ `StepTimeBudgetMs`（10 ms） | 超出即停止本帧剩余步（3.3.2），积压整步丢弃 |
+| 模拟推进 | ≤ `StepTimeBudgetMs`（10 ms） | 单步目标 `≤ 2 ms/step`（常规规模，C-T2-02）；单帧累计超出 10 ms 即停止本帧剩余步（3.3.2），积压整步丢弃 |
 | 快照（每帧最多 2 次构建）+ 插值 | ≤ 1.5 ms | 1× 时只构建 1 次 |
 | 绘制（`_Draw` 提交） | ≤ 3 ms | 指挥层 + 底图矢量层；静态矢量层只在相机变化时重绘 |
 | 界面刷新 | ≤ 1 ms | |
@@ -1180,7 +1213,7 @@ Phase  = Night；DeployPanel 隐藏；Plan 保留（用于"重新部署"）
 | 瞬时标记 | `FxMaxCount`（256） |
 
 - 指挥层绘制复杂度 O(实体数)；每个航迹最多 1 个图标 + 1 个圈（≤ 64 段）+ 1 条线。
-- 覆盖网格计算在后台线程，单个单位（`test_01`，200 × 200 格）目标 ≤ 200 ms；不阻塞主线程。
+- 覆盖网格计算：得益于 01 的 720-bin 径向最大遮挡仰角包络（`HorizonProfile`，C-T1-12 / C-T2-01），单个单位（`test_01`，200 × 200 格）计算耗时 `≤ 5 ms`（其中包络构建约 1.2 ms、网格 $O(1)$ 查表约 0.5 ms），即使在主线程同步执行亦满足帧预算；`CoverageService` 仍通过后台线程 `Task.Run` + 缓存（3.9.6）异步合成多单位覆盖，完全不阻塞主线程。
 - 性能测量：`--smoke perf`（7.3 T-06-48）只打印统计，不判失败（CI 机器差异大）。
 
 ---
