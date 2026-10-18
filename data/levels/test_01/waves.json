@@ -22,7 +22,8 @@
           "id": "w2_shahed", "atGameSec": 120,
           "groups": [
             { "enemy": "shahed_136", "count": 8, "entry": "entry_east", "spacingGameSec": 2, "route": { "direct": true }, "target": { "structure": "tpp" } },
-            { "enemy": "shahed_136", "count": 4, "entry": "entry_east", "spacingGameSec": 2, "route": { "waypointsM": [[16000, 17000]] }, "target": { "structure": "substation_central" } }
+            { "enemy": "shahed_136", "count": 2, "entry": "entry_east", "spacingGameSec": 2, "route": { "waypointsM": [[16000, 17000]] }, "target": { "structure": "substation_central" } },
+            { "enemy": "shahed_136", "count": 2, "entry": "entry_east", "spacingGameSec": 2, "route": { "waypointsM": [[16000, 17000]] }, "target": { "structure": "water_plant" } }
           ]
         },
         {
@@ -65,7 +66,8 @@
         {
           "id": "w7_saturate_n2", "atGameSec": 300, "aiTags": ["saturate"],
           "groups": [
-            { "enemy": "shahed_136", "count": 8, "entry": "entry_east", "spacingGameSec": 1.5, "route": { "direct": true }, "target": { "structure": "substation_central" } },
+            { "enemy": "shahed_136", "count": 6, "entry": "entry_east", "spacingGameSec": 1.5, "route": { "direct": true }, "target": { "structure": "substation_central" } },
+            { "enemy": "shahed_136", "count": 2, "entry": "entry_east", "spacingGameSec": 1.5, "route": { "direct": true }, "target": { "structure": "water_plant" } },
             { "enemy": "kh101", "count": 3, "entry": "entry_northwest", "spacingGameSec": 1,
               "route": { "waypointsM": [[0, 15500], [5000, 13000]] }, "target": { "structure": "water_plant" } }
           ]

@@ -11,7 +11,7 @@
       "weapons": [
         { "id": "manpads_missile", "nameKey": "weapon.manpads_missile.name", "kind": "missile", "interceptClass": "manpads",
           "rangeKm": 6.5, "ceilingKm": 4, "shotCostMusd": 0.25, "magazine": 1, "ammoSupply": "limited",
-          "targets": ["UAV", "DECOY", "HELI", "AC_LOW"] }
+          "targets": ["UAV", "DECOY", "CM", "HELI", "AC_LOW"], "lowEfficiencyTargets": ["CM"] }
       ],
       "_source": { "name": "单兵防空（Igla / Stinger / Piorun）", "weapons[0].rangeKm": "4.5–6.5", "weapons[0].ceilingKm": "3.5–4", "weapons[0].shotCostMusd": "0.1–0.4", "moveSpeedKmh": "步兵/皮卡 60" }
     },
@@ -25,7 +25,7 @@
       "weapons": [
         { "id": "starstreak_martlet_missile", "nameKey": "weapon.starstreak_martlet_missile.name", "kind": "missile", "interceptClass": "manpads",
           "rangeKm": 7, "ceilingKm": 5, "shotCostMusd": 0.25, "magazine": 1, "ammoSupply": "limited",
-          "targets": ["UAV", "HELI", "AC_LOW"] }
+          "targets": ["UAV", "CM", "HELI", "AC_LOW"], "lowEfficiencyTargets": ["CM"] }
       ]
     },
     {
@@ -38,7 +38,7 @@
       "weapons": [
         { "id": "mobile_fire_team_gun", "nameKey": "weapon.mobile_fire_team_gun.name", "kind": "gun", "interceptClass": "gun",
           "rangeKm": 2.5, "ceilingKm": 2, "shotCostMusd": 0.001, "magazine": null, "ammoSupply": "ample", "barrelCooldown": true,
-          "targets": ["UAV", "DECOY", "GB"] }
+          "targets": ["UAV", "DECOY", "CM", "GB"], "lowEfficiencyTargets": ["CM"] }
       ],
       "_source": { "name": "机动火力组（皮卡 + 机枪/ZU‑23）", "weapons[0].rangeKm": "1.5–2.5", "weapons[0].ceilingKm": "1.5–2", "weapons[0].shotCostMusd": "≈ 0.001", "weapons[0].magazine": "弹药充足，换枪管冷却" }
     },
@@ -52,7 +52,7 @@
       "weapons": [
         { "id": "zu23_2_gun", "nameKey": "weapon.zu23_2_gun.name", "kind": "gun", "interceptClass": "gun",
           "rangeKm": 2.5, "ceilingKm": 2, "shotCostMusd": 0.002, "magazine": null, "ammoSupply": "ample",
-          "targets": ["UAV", "DECOY", "HELI", "GB"] }
+          "targets": ["UAV", "DECOY", "CM", "HELI", "GB"], "lowEfficiencyTargets": ["CM"] }
       ],
       "_source": { "name": "ZU‑23‑2 / S‑60 牵引高炮", "weapons[0].rangeKm": "2.5–6（合并行）", "weapons[0].ceilingKm": "2–4（合并行）" }
     },
@@ -66,7 +66,7 @@
       "weapons": [
         { "id": "s60_gun", "nameKey": "weapon.s60_gun.name", "kind": "gun", "interceptClass": "gun",
           "rangeKm": 6, "ceilingKm": 4, "shotCostMusd": 0.002, "magazine": null, "ammoSupply": "ample",
-          "targets": ["UAV", "DECOY", "HELI", "GB"] }
+          "targets": ["UAV", "DECOY", "CM", "HELI", "GB"], "lowEfficiencyTargets": ["CM"] }
       ],
       "_source": { "name": "ZU‑23‑2 / S‑60 牵引高炮", "weapons[0].rangeKm": "2.5–6（合并行）", "weapons[0].ceilingKm": "2–4（合并行）" }
     },
@@ -80,7 +80,7 @@
       "weapons": [
         { "id": "sky_sentinel_gun", "nameKey": "weapon.sky_sentinel_gun.name", "kind": "gun", "interceptClass": "gun",
           "rangeKm": 1.5, "ceilingKm": 1.5, "shotCostMusd": 0.001, "magazine": null, "ammoSupply": "ample",
-          "targets": ["UAV", "DECOY", "GB"] }
+          "targets": ["UAV", "DECOY", "CM", "GB"], "lowEfficiencyTargets": ["CM"] }
       ],
       "_source": { "moveSpeedKmh": "固定/卡车" }
     },
@@ -405,12 +405,13 @@
       "weapons": [
         { "id": "pac2", "nameKey": "weapon.pac2.name", "kind": "missile", "interceptClass": "pac2",
           "rangeKm": 160, "rangeByTagKm": { "BM": 20 }, "ceilingKm": 24, "shotCostMusd": 3, "magazine": 4, "launchers": null, "ammoSupply": "limited",
-          "targets": ["CM", "SCM", "BM", "AC_HIGH"] },
+          "targets": ["CM", "SCM", "BM", "AC_LOW", "AC_HIGH"] },
         { "id": "pac3_mse", "nameKey": "weapon.pac3_mse.name", "kind": "missile", "interceptClass": "pac3",
           "rangeKm": 60, "ceilingKm": 24, "shotCostMusd": 4, "magazine": 16, "launchers": null, "ammoSupply": "limited",
+          "shotIntervalGameSec": 0.02,
           "targets": ["CM", "SCM", "BM", "HBM"] }
       ],
-      "_source": { "name": "Patriot PAC‑2 / PAC‑3", "systemPriceMusd": "1000（连）", "weapons[].rangeKm": "160 / 反导 35–60", "weapons[].magazine": "4–16 / 发射架", "weapons[].targets": "CM, SCM, BM, HBM, AC_HIGH（整个 Patriot）" }
+      "_source": { "name": "Patriot PAC‑2 / PAC‑3", "systemPriceMusd": "1000（连）", "weapons[].rangeKm": "160 / 反导 35–60", "weapons[].magazine": "4–16 / 发射架", "weapons[].targets": "CM, SCM, BM, HBM, AC_LOW, AC_HIGH（整个 Patriot）" }
     },
     {
       "id": "s200",
@@ -421,8 +422,8 @@
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "s200_missile", "nameKey": "weapon.s200_missile.name", "kind": "missile", "interceptClass": "s200",
-          "rangeKm": 250, "ceilingKm": 40, "shotCostMusd": 1, "magazine": 1, "perLevelLimit": 1, "ammoSupply": "none",
-          "targets": ["AC_HIGH"], "restrictToEnemies": ["a50u", "tu22m3"] }
+          "rangeKm": 250, "ceilingKm": 40, "shotCostMusd": 1, "magazine": 2, "perLevelLimit": 2, "ammoSupply": "none",
+          "targets": ["AC_LOW", "AC_HIGH"], "restrictToEnemies": ["a50u", "tu22m3", "su34"] }
       ],
       "_source": { "name": "S‑200（复活）", "deployTier": "固定阵地，不可移动", "weapons[0].shotCostMusd": "极少量", "weapons[0].perLevelLimit": "每局限 1–3 发", "weapons[0].targets": "AC_HIGH（大型机：A‑50、Tu‑22M3）" }
     },

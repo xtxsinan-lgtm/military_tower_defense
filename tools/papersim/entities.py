@@ -1043,6 +1043,8 @@ class ScoringState:
     enemy_total_value_musd: float = 0.0
     shots_fired_by_weapon: Dict[str, int] = field(default_factory=dict)
     hits_by_weapon: Dict[str, int] = field(default_factory=dict)
+    raw_enemy_cost_by_weapon: Dict[str, float] = field(default_factory=dict)
+    wasteful_shots_by_weapon: Dict[str, int] = field(default_factory=dict)
     kills_by_enemy: Dict[str, int] = field(default_factory=dict)
     leaks_by_enemy: Dict[str, int] = field(default_factory=dict)
     threats_ew_downed: int = 0

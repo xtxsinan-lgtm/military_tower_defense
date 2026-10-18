@@ -46,6 +46,7 @@
       "fog": 0.3
     },
     "opticalNightRangeMult": 0.3,
+    "opticalSearchlightRangeMult": 0.7,
     "unpoweredActiveRangeMult": 0.5,
     "winterActiveRangeMult": 0.9
   },

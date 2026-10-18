@@ -12,9 +12,9 @@
     "medium":                { "UAV": 0.85, "JET_UAV": 0.80, "CM": 0.85, "SCM": 0.40, "GB": 0.30, "HELI": 0.80, "AC_LOW": 0.75, "AC_HIGH": 0.70 },
     "s300":                  { "CM": 0.70, "SCM": 0.40, "BM": 0.15, "AC_HIGH": 0.70 },
     "samp_t":                { "CM": 0.85, "SCM": 0.70, "BM": 0.60, "HBM": 0.30, "AC_HIGH": 0.85 },
-    "pac2":                  { "CM": 0.85, "SCM": 0.60, "BM": 0.30, "AC_HIGH": 0.85 },
+    "pac2":                  { "CM": 0.85, "SCM": 0.60, "BM": 0.30, "AC_LOW": 0.80, "AC_HIGH": 0.85 },
     "pac3":                  { "CM": 0.90, "SCM": 0.75, "BM": [{ "from": "2022-02", "value": 0.75 }, { "from": "2025-08", "value": 0.55 }], "HBM": 0.60 },
-    "s200":                  { "AC_HIGH": 0.60 },
+    "s200":                  { "AC_LOW": 0.60, "AC_HIGH": 0.60 },
     "fighter_aam":           { "UAV": 0.70, "CM": 0.70, "SCM": 0.30, "HELI": 0.80, "AC_LOW": 0.70, "AC_HIGH": 0.50 },
     "fighter_apkws":         { "UAV": 0.80 }
   },

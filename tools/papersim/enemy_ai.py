@@ -264,6 +264,7 @@ class EnemyAiHooks(IEnemyAiHooks):
             threat_w *= float(a50_cfg.get("threatWeightMult", 2.0))
 
         sites: List[Tuple[Vec2, float]] = []
+        dest_pt = path[-1] if path else None
         for kt in state.enemy_intel.known_targets:
             if kt.kind in (0, 1):
                 udef = cat.air_defense_units.get(kt.unit_def_id, {})
@@ -271,6 +272,8 @@ class EnemyAiHooks(IEnemyAiHooks):
                     (float(cat.weapons[wid].get("rangeM", 10000.0)) for wid in udef.get("weaponIds", []) if wid in cat.weapons),
                     default=float(b_rules.get("fakeLauncherAssumedRangeM", 10000.0)),
                 )
+                if dest_pt is not None and kt.pos.distance_to(dest_pt) <= rmax:
+                    rmax = min(rmax, 4500.0)
                 sites.append((kt.pos, rmax))
 
         if req.a50_active:
@@ -279,6 +282,8 @@ class EnemyAiHooks(IEnemyAiHooks):
                 if fu.pos is not None and fu.exposure >= min_exp:
                     udef = cat.air_defense_units.get(fu.def_id or "", {})
                     rmax = max((float(cat.weapons[wid].get("rangeM", 10000.0)) for wid in udef.get("weaponIds", []) if wid in cat.weapons), default=10000.0)
+                    if dest_pt is not None and fu.pos.distance_to(dest_pt) <= rmax:
+                        rmax = min(rmax, 4500.0)
                     if not any(sp.distance_to(fu.pos) <= 100.0 for sp, _ in sites):
                         sites.append((fu.pos, rmax))
 
@@ -476,7 +481,12 @@ class EnemyIntelSystem:
             if ev.type in (SimEventType.InterceptorLaunched, SimEventType.GunFired):
                 fuid = int(ev.data.get("fire_unit_id", 0) or 0)
                 fu = ctx.state.fire_units.try_get(fuid) if fuid > 0 else None
-                if fu is not None and fu.pos is not None and fu.id not in ctx.state.enemy_intel.probe_observed_unit_ids:
+                if (
+                    fu is not None
+                    and fu.pos is not None
+                    and fu.id not in ctx.state.enemy_intel.probe_observed_unit_ids
+                    and (fu.exposure >= 15.0 or (fu.emitter is not None and fu.emitter.on))
+                ):
                     if self._near_probe_threat(ctx, fu.pos, probe_rad_m):
                         ctx.state.enemy_intel.probe_observed_unit_ids.append(fu.id)
                         self._add_or_update_known_target(

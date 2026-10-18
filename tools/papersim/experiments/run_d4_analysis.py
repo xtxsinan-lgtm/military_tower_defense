@@ -161,7 +161,7 @@ def compute_trust_for_night(world: SimWorld, res: Any) -> Dict[str, Any]:
     ww_cfg = trust_cfg.get(
         "wastefulWeapon",
         {
-            "minAvgShotCostMusd": 2.0,
+            "minAvgShotCostMusd": 0.8,
             "maxRatio": 0.2,
             "minKills": 1,
             "penaltyPerShot": 3,
@@ -172,16 +172,21 @@ def compute_trust_for_night(world: SimWorld, res: Any) -> Dict[str, Any]:
     wasted_weapons: List[str] = []
     shots_by_w = res.ammo.get("shotsFiredByWeapon", {})
     hits_by_w = res.ammo.get("hitsByWeapon", {})
+    waste_by_w = ex.get("wastefulShotsByWeapon", {})
+    raw_cost_by_w = ex.get("rawEnemyCostByWeapon", {})
     for wid, shots in shots_by_w.items():
         kills = int(hits_by_w.get(wid, 0))
         if shots == 0 or kills < int(ww_cfg.get("minKills", 1)):
             continue
         wdef = cat.weapons.get(wid, {})
         avg_cost = float(wdef.get("shotCostMusd", 0.0) or 0.0)
-        # Approximate weapon exchange ratio
-        w_ratio = float(ratio or 0.0)
-        if avg_cost >= float(ww_cfg.get("minAvgShotCostMusd", 2.0)) and w_ratio < float(ww_cfg.get("maxRatio", 0.2)):
-            w_shots += int(shots)
+        if avg_cost < float(ww_cfg.get("minAvgShotCostMusd", 0.8)):
+            continue
+        w_waste_cnt = int(waste_by_w.get(wid, 0))
+        raw_val = float(raw_cost_by_w.get(wid, 0.0))
+        w_raw_ratio = raw_val / max(1e-9, shots * avg_cost)
+        if w_waste_cnt > 0 or w_raw_ratio < float(ww_cfg.get("maxRatio", 0.2)):
+            w_shots += max(w_waste_cnt, int(shots))
             wasted_weapons.append(wid)
     d_waste = -min(w_shots * float(ww_cfg.get("penaltyPerShot", 3.0)), float(ww_cfg.get("maxPenaltyPerNight", 9.0)))
 
@@ -1628,12 +1633,15 @@ def _run_bt3_09_platform(args: Tuple[str, str, float, int]) -> Dict[str, Any]:
     for st_def in lvl.structures:
         if st_def["id"] == "tpp":
             st_def["pos"] = Vec2(2500.0, 10000.0)
+    if release_range_km >= 60.0 and "entry_east" in lvl.entry_points_by_id:
+        lvl.entry_points_by_id["entry_east"]["pos"] = Vec2(75000.0, 14000.0)
 
+    radar_id = "early_warning_radar_p3" if sam_unit == "s200_site" else "soviet_mid_range_radar"
     plan = build_validated_plan(
         lvl,
         [
             PlacedUnit(sam_unit, Vec2(15000.0, 11500.0), roster_id=1),
-            PlacedUnit("soviet_mid_range_radar", Vec2(15500.0, 11500.0), roster_id=2),
+            PlacedUnit(radar_id, Vec2(15500.0, 11500.0), roster_id=2),
         ],
     )
     w = SimWorld(lvl, seed, SimConfig(night_index=2, deployment=plan, end_when_clear=True))
@@ -1943,8 +1951,8 @@ def run_h08_bt3_01_exchange_matrix() -> Dict[str, Any]:
             for wid, w_cost in weapons:
                 ratio_hybrid = pot_loss / w_cost if w_cost > 0 else 999.0
                 ratio_raw_cost = (0.0 if is_decoy else e_cost) / w_cost if w_cost > 0 else 999.0
-                triggers_wasteful_hybrid = (w_cost >= 2.0) and (ratio_hybrid < 0.2)
-                triggers_wasteful_raw = (w_cost >= 2.0) and (ratio_raw_cost < 0.2)
+                triggers_wasteful_hybrid = (w_cost >= 0.8) and (ratio_hybrid < 0.2)
+                triggers_wasteful_raw = (w_cost >= 0.8) and (ratio_raw_cost < 0.2)
                 matrix.append(
                     {
                         "threat": tid,

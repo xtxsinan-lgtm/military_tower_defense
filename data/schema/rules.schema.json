@@ -341,7 +341,7 @@
         },
         "detectionRules": {
           "type": "object",
-          "required": ["lowAltitudeBelowM", "lowAltitudeRangeMult", "largeBlindZoneLowAltitudeRangeMult", "coverageLowAltitudeMinCapability", "closeRangeFraction", "errorRadiusM", "fastUpdateErrorRadiusMult", "trackLostGameSec", "falseAlarmsPerGameSec", "reportDelayGameSec", "opticalWeatherRangeMult", "opticalNightRangeMult", "unpoweredActiveRangeMult", "winterActiveRangeMult"],
+          "required": ["lowAltitudeBelowM", "lowAltitudeRangeMult", "largeBlindZoneLowAltitudeRangeMult", "coverageLowAltitudeMinCapability", "closeRangeFraction", "errorRadiusM", "fastUpdateErrorRadiusMult", "trackLostGameSec", "falseAlarmsPerGameSec", "reportDelayGameSec", "opticalWeatherRangeMult", "opticalNightRangeMult", "opticalSearchlightRangeMult", "unpoweredActiveRangeMult", "winterActiveRangeMult"],
           "properties": {
             "lowAltitudeBelowM": { "type": "number", "minimum": 0 },
             "lowAltitudeRangeMult": { "type": "object", "additionalProperties": { "$ref": "#/$defs/mult" } },
@@ -355,6 +355,7 @@
             "reportDelayGameSec": { "type": "number", "minimum": 0 },
             "opticalWeatherRangeMult": { "type": "object", "additionalProperties": { "$ref": "#/$defs/mult" } },
             "opticalNightRangeMult": { "$ref": "#/$defs/mult" },
+            "opticalSearchlightRangeMult": { "$ref": "#/$defs/mult" },
             "unpoweredActiveRangeMult": { "$ref": "#/$defs/mult" },
             "winterActiveRangeMult": { "$ref": "#/$defs/mult" }
           },

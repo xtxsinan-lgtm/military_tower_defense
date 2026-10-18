@@ -25,7 +25,7 @@
       { "minRatio": 10,  "delta": 3 }
     ],
     "minShotCostForExchangeMusd": 0.5,
-    "wastefulWeapon": { "minAvgShotCostMusd": 2.0, "maxRatio": 0.2, "minKills": 1, "penaltyPerShot": 3, "maxPenaltyPerNight": 9 },
+    "wastefulWeapon": { "minAvgShotCostMusd": 0.8, "maxRatio": 0.2, "minKills": 1, "penaltyPerShot": 3, "maxPenaltyPerNight": 9 },
     "inquiry": { "minWastefulShots": 2, "penalty": 3 },
     "hoardedLeak": { "penaltyPerLeak": 2, "maxPenaltyPerNight": 6 },
     "borderViolation": { "penaltyPerViolation": 2, "maxPenaltyPerNight": 6 },

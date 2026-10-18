@@ -97,6 +97,17 @@ class InterceptSolver:
         for k in range(k0, k_max + 1):
             t = k * sample_sec
             if predict_fn(t)[2]:
+                # Check if intercept is possible in (lo, t) right before arrival
+                a_lo, a_hi = lo, t
+                for _ in range(16):
+                    a_mid = 0.5 * (a_lo + a_hi)
+                    if predict_fn(a_mid)[2]:
+                        a_hi = a_mid
+                    else:
+                        a_lo = a_mid
+                if a_lo > lo + EPS and not predict_fn(a_lo)[2] and reach(a_lo):
+                    hi = a_lo
+                    break
                 return None
             if reach(t):
                 hi = t
@@ -173,12 +184,15 @@ class WeaponParams:
             "kind": w_kind,
             "intercept_class": ic_class,
             "range_m": range_m,
+            "range_by_tag_m": dict(wdef.get("rangeByTagM") or {}),
             "ceiling_m": ceiling_m,
             "speed_mps": speed_mps,
             "reaction_sec": reaction_sec,
             "shot_interval_sec": shot_interval_sec,
             "shot_cost_musd": shot_cost_musd,
             "magazine": wdef.get("magazine"),
+            "per_level_limit": wdef.get("perLevelLimit"),
+            "restrict_to_enemies": wdef.get("restrictToEnemies"),
             "reload_sec": float(wdef.get("reloadSec") or 0.0),
             "targets": [parse_target_tag(t) for t in (wdef.get("targets") or [])],
             "barrel_cooldown": bool(wdef.get("barrelCooldown", False)),
@@ -215,6 +229,8 @@ class WeaponParams:
             if w_kind != "gun":
                 return 0.0
             p *= float(mods.get("trackVague", {}).get("gunProbMult", 0.5))
+        elif tr is not None and tr.cued and w_kind == "gun":
+            p *= 1.10
 
         if fu is not None:
             if fu.new_position_penalty:
@@ -236,6 +252,9 @@ class WeaponParams:
             ev_mod = mods.get("evasiveTargetVsInterceptorDrone", {})
             if ev_mod.get("active") and (th.def_id or "") in (ev_mod.get("enemies") or []):
                 p *= float(ev_mod.get("probMult", 0.6))
+
+        if ctx.config.carry_in.auto_resolve:
+            p *= float(ctx.config.carry_in.auto_resolve.get("interceptProbMult", 1.0))
 
         return min(0.95, max(0.0, p))
 
@@ -343,8 +362,20 @@ class EngagementSystem:
                     wp = WeaponParams.resolve_weapon_def(ctx, fu, wslot)
                     if th.tag not in wp["targets"]:
                         continue
+                    if wp["restrict_to_enemies"] and (th.def_id or "") not in wp["restrict_to_enemies"]:
+                        continue
+                    if wp["per_level_limit"] is not None:
+                        if ctx.state.engagement.per_level_used.get(wslot.weapon_id, 0) >= int(wp["per_level_limit"]):
+                            continue
                     if tr.quality == TrackQuality.Vague and wp["kind"] != "gun":
                         continue
+                    holder_ids = getattr(tr, "precise_holder_ids", None)
+                    if holder_ids is not None:
+                        net_q = getattr(tr, "network_quality", None)
+                        if not tr.cued and fu.id not in holder_ids and net_q is None:
+                            continue
+                        if wp["kind"] in ("missile", "rocket") and not tr.cued and fu.id not in holder_ids:
+                            continue
                     if ctx.time_sec < wslot.next_shot_sec - EPS or ctx.time_sec < wslot.cooldown_until_sec - EPS:
                         continue
                     avail_ln = self._pick_launcher(wslot)
@@ -366,8 +397,9 @@ class EngagementSystem:
                     if in_restr and not tr.classified:
                         continue
 
+                    eff_range_m = float(wp["range_by_tag_m"].get(th.tag.name, wp["range_m"])) if th.tag is not None else wp["range_m"]
                     sol = InterceptSolver.solve_threat(
-                        fu.pos, wp["speed_mps"], wp["range_m"], wp["ceiling_m"], th, ctx.time_sec
+                        fu.pos, wp["speed_mps"], eff_range_m, wp["ceiling_m"], th, ctx.time_sec
                     )
                     if sol is None:
                         continue
@@ -444,6 +476,9 @@ class EngagementSystem:
         salvo_size = int(tag_rule.get("salvoSize", 1)) if not bool(tag_rule.get("shootLookShoot", True)) else 1
 
         for _ in range(max(1, salvo_size)):
+            pl_lim = wp.get("per_level_limit")
+            if pl_lim is not None and ctx.state.engagement.per_level_used.get(wslot.weapon_id, 0) >= pl_lim:
+                break
             ln_idx = self._pick_launcher(wslot)
             if ln_idx is None:
                 break
@@ -578,6 +613,21 @@ class InterceptorSystem:
             )
             if hit:
                 ctx.state.scoring.hits_by_weapon[ic.weapon_id] = ctx.state.scoring.hits_by_weapon.get(ic.weapon_id, 0) + 1
+                cat = ctx.level.catalog
+                mdef = cat.munitions.get(th.def_id or "") or cat.platforms.get(th.def_id or "") or {}
+                raw_cost = 0.0 if mdef.get("isDecoy") else float(mdef.get("costMusd", 0.0) or 0.0)
+                ctx.state.scoring.raw_enemy_cost_by_weapon[ic.weapon_id] = (
+                    ctx.state.scoring.raw_enemy_cost_by_weapon.get(ic.weapon_id, 0.0) + raw_cost
+                )
+                wdef_hit = cat.weapons.get(ic.weapon_id, {})
+                w_cost = float(wdef_hit.get("shotCostMusd", 0.0) or 0.0)
+                waste_cfg = cat.rules.get("economy", {}).get("trust", {}).get("nightPenalties", {}).get("wastefulWeapon", {})
+                min_shot_cost = float(waste_cfg.get("minAvgShotCostMusd", 0.8))
+                max_ratio = float(waste_cfg.get("maxExchangeRatio", 0.2))
+                if w_cost >= min_shot_cost and (raw_cost / max(w_cost, EPS)) < max_ratio:
+                    ctx.state.scoring.wasteful_shots_by_weapon[ic.weapon_id] = (
+                        ctx.state.scoring.wasteful_shots_by_weapon.get(ic.weapon_id, 0) + 1
+                    )
                 if fu is not None:
                     fu.kills_tonight += 1
                     if fu.emitter is not None and fu.emitter.after_firing == 1 and fu.pending_relocation_alt_id:
@@ -605,11 +655,15 @@ class InterceptorSystem:
                 ctx.events.emit(SimEventType.InterceptorExpired, fields=(other.id, th.id), interceptor_id=other.id)
                 ctx.state.interceptors.remove(other.id)
 
-        # Debris check if intercept_pos is inside urban polygon
+        # Debris check if intercept_pos is inside urban polygon (only for non-decoy munitions with L >= 1)
+        mdef = cat.munitions.get(eid) or cat.platforms.get(eid) or {}
+        is_decoy = bool(mdef.get("isDecoy", False))
+        dmg_lvl = int(mdef.get("damageLevel", 0) or 0)
         deb_rules = cat.rules.get("debris", {})
-        if Geo.in_urban(ctx.level.urban_polygons, pos):
+        if not is_decoy and dmg_lvl > 0 and Geo.in_urban(ctx.level.urban_polygons, pos):
             dmg_frac = float(deb_rules.get("urbanInterceptDamageFraction", 0.3))
-            if dmg_frac > 0.0:
+            eff_debris_lvl = int(math.floor(dmg_lvl * dmg_frac + 0.5))
+            if eff_debris_lvl >= 1:
                 deb = Debris(pos=pos, alt_m=0.0)
                 ctx.state.debris.add(deb)
                 ctx.state.scoring.debris_count += 1
@@ -769,9 +823,9 @@ class ImpactSystem:
         is_hit = ctx.rng.chance(p_hit)
         impact_pos = aim
         if not is_hit:
-            off_cfg = tier_obj.get("missOffsetM", {"min": 100.0, "max": 500.0})
+            off_cfg = tier_obj.get("offsetM") or tier_obj.get("missOffsetM") or {"min": 0.0, "max": 500.0}
             if isinstance(off_cfg, dict):
-                r_off = ctx.rng.next_float(float(off_cfg.get("min", 100.0)), float(off_cfg.get("max", 500.0)))
+                r_off = ctx.rng.next_float(0.0, float(off_cfg.get("max", 500.0)))
             else:
                 r_off = float(off_cfg)
             r_off += th.ew_extra_offset_m
@@ -1040,6 +1094,8 @@ class ScoringSystem:
                 "killsByEnemy": dict(sorted(st.scoring.kills_by_enemy.items())),
                 "leaksByEnemy": dict(sorted(st.scoring.leaks_by_enemy.items())),
                 "threatsEwDowned": st.scoring.threats_ew_downed,
+                "rawEnemyCostByWeapon": dict(sorted(st.scoring.raw_enemy_cost_by_weapon.items())),
+                "wastefulShotsByWeapon": dict(sorted(st.scoring.wasteful_shots_by_weapon.items())),
             },
             debris={
                 "debrisCount": st.scoring.debris_count,

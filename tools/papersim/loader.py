@@ -484,6 +484,9 @@ class DataLoader:
             elif k.endswith("GameSec"):
                 new_k = k[: -len("GameSec")] + "Sec"
                 out[new_k] = DataLoader._convert_leaf_or_minmax(conv_v, g2w)
+            elif "GameSec" in k:
+                new_k = k.replace("GameSec", "Sec")
+                out[new_k] = DataLoader._convert_leaf_or_minmax(conv_v, g2w)
             elif k.endswith("Kmh") and k != "machKmh":
                 new_k = k[: -len("Kmh")] + "Mps"
                 out[new_k] = DataLoader._convert_leaf_or_minmax(conv_v, 1.0, 3.6)

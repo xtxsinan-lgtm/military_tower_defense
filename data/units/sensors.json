@@ -64,7 +64,7 @@
     {
       "id": "visual_observer",
       "nameKey": "sensor.visual_observer.name",
-      "layer": "local", "detectionRangeKm": 8,
+      "layer": "local", "detectionRangeKm": 5,
       "nightRangeMult": 0.3, "nightPenaltyNegatedBy": ["searchlight", "thermal"],
       "lowAltitude": "very_good", "trackQuality": "vague",
       "trackQualityUpgrades": [{ "to": "approximate", "condition": "close_range" }],

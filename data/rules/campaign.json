@@ -4,7 +4,7 @@
   "_source": { "spec": "docs/spec/05_campaign_economy.md §1.3" },
   "crew": { "aceDeathChanceOnUnitDestroyed": 0.5, "woundedNights": 2, "xpPerHit": 1 },
   "alert": { "dayRecovery": 0.2 },
-  "autoResolve": { "interceptProbMult": 1.0, "exposureGainMult": 1.0, "watchTrustBonus": 1 },
+  "autoResolve": { "interceptProbMult": 0.95, "exposureGainMult": 1.0, "watchTrustBonus": 1 },
   "adaptation": {
     "alpha": 0.5,
     "hysteresis": 0.1,

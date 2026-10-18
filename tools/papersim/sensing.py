@@ -488,7 +488,7 @@ class SensorSystem:
                         continue
             q = _QUALITY_MAP.get(sdef.get("trackQuality", "vague"), TrackQuality.Vague)
             for upg in sdef.get("trackQualityUpgrades") or []:
-                cond = upg.get("when")
+                cond = upg.get("condition") or upg.get("when")
                 to_q = _QUALITY_MAP.get(upg.get("to", "approximate"), TrackQuality.Approximate)
                 if cond == "close_range":
                     cf = float(det_rules.get("closeRangeFraction", 0.5))
@@ -633,9 +633,14 @@ class SensorSystem:
             r = float(self_acq)
             if fdef.get("selfAcquisition") == "optical":
                 settings = (f.placement.settings if f.placement else {}) or {}
-                has_aid = bool(settings.get("nightAids"))
+                aids = set(settings.get("nightAids") or [])
                 tod = night.get("timeOfDay", "night")
-                night_mult = 1.0 if (tod == "day" or has_aid) else float(det_rules.get("opticalNightRangeMult", 0.3))
+                if tod == "day" or "thermal" in aids:
+                    night_mult = 1.0
+                elif "searchlight" in aids:
+                    night_mult = float(det_rules.get("opticalSearchlightRangeMult", 0.7))
+                else:
+                    night_mult = float(det_rules.get("opticalNightRangeMult", 0.3))
                 weather = night.get("weather")
                 w_map = det_rules.get("opticalWeatherRangeMult", {"clear": 1.0, "moonlit": 1.5, "low_cloud": 0.6, "fog": 0.25})
                 w_mult = 1.0 if weather is None else float(w_map.get(weather, 1.0))
@@ -822,8 +827,9 @@ class TrackFusionSystem:
                     tr.precise_first_tick = ctx.tick
 
             setattr(tr, "network_quality", net_q)
+            setattr(tr, "precise_holder_ids", sorted({d.source_id for d in dets if d.source_kind in (1, 2)}))
             tr.cued = FireControlQueries.cued(tr, tr_rules)
-            self._check_decoy_discrimination(ctx, tr, prev_q, is_new, tr_rules)
+            self._check_decoy_discrimination(ctx, tr, prev_q, is_new, tr_rules, dets)
 
             if key[0] > 0:
                 th = ctx.state.threats.try_get(key[0])
@@ -864,6 +870,11 @@ class TrackFusionSystem:
                 ctx.events.emit(SimEventType.TrackLost, fields=(tr.id, tr.threat_id), track_id=tr.id)
                 ctx.state.tracks.remove(tr.id)
                 continue
+            setattr(tr, "precise_holder_ids", [])
+            setattr(tr, "network_quality", None)
+            tr.cued = False
+            if tr.quality == TrackQuality.Precise:
+                tr.quality = TrackQuality.Approximate
             if tr.pos is not None:
                 tr.pos = tr.pos + tr.vel_mps * ctx.step_sec
 
@@ -905,7 +916,13 @@ class TrackFusionSystem:
         return best_q, net_q, best_det
 
     def _check_decoy_discrimination(
-        self, ctx: Any, tr: Track, prev_q: TrackQuality, is_new: bool, tr_rules: Dict[str, Any]
+        self,
+        ctx: Any,
+        tr: Track,
+        prev_q: TrackQuality,
+        is_new: bool,
+        tr_rules: Dict[str, Any],
+        dets: Optional[List[RawDetection]] = None,
     ) -> None:
         if tr.threat_id <= 0 or tr.identified_as_decoy or tr.quality < TrackQuality.Approximate:
             return
@@ -915,6 +932,17 @@ class TrackFusionSystem:
         q_table = {q["id"]: float(q.get("decoyDiscrimination", 0.0)) for q in tr_rules.get("qualities", [])}
         p_approx = q_table.get("approximate", 0.7)
         p_prec = q_table.get("precise", 0.95)
+        has_fast_update = False
+        for d in dets or []:
+            if d.source_kind == 0:
+                su = ctx.state.sensors.try_get(d.source_id)
+                if su is not None:
+                    sdef = ctx.level.catalog.sensors.get(su.def_id or "", {})
+                    if sdef.get("fastUpdate"):
+                        has_fast_update = True
+                        break
+        if not has_fast_update:
+            p_approx *= 0.5
         bonus = float(getattr(ctx.config, "dossier_decoy_bonus", 0.0))
         p_approx = min(1.0, p_approx + bonus)
         p_prec = min(1.0, p_prec + bonus)
@@ -1097,20 +1125,23 @@ class ElectronicWarfareSystem:
                 b_idx = tier_order.index(base_tier) if base_tier in tier_order else 1
                 base_tdef = tiers_map.get(base_tier, {})
                 b_off = base_tdef.get("offsetM", {"min": 0.0, "max": 2000.0})
-                base_mean = 0.5 * (float(b_off.get("min", 0.0)) + float(b_off.get("max", 2000.0)))
+                b_max = float(b_off.get("max", 2000.0))
                 unit_extra = float(base_tdef.get("ewExtraM", 2000.0)) if th.ew_nav == 2 else 0.0
-                unit_mean = base_mean + unit_extra
-                nat_idx = max(0, b_idx - 2) if th.national_spoof == 2 else b_idx
+                unit_mean = 0.5 * (b_max + unit_extra)
+                raw_nat_idx = (b_idx - 2) if th.national_spoof == 2 else b_idx
+                nat_idx = max(0, raw_nat_idx)
+                nat_overflow_extra = max(0.0, float(-raw_nat_idx) * 1000.0) if th.national_spoof == 2 else 0.0
                 nat_tier = tier_order[nat_idx]
                 nat_tdef = tiers_map.get(nat_tier, {})
                 n_off = nat_tdef.get("offsetM", {"min": 0.0, "max": 2000.0})
-                nat_mean = 0.5 * (float(n_off.get("min", 0.0)) + float(n_off.get("max", 2000.0)))
-                if th.ew_nav == 2 and (th.national_spoof != 2 or unit_mean >= nat_mean):
+                n_max = float(n_off.get("max", 2000.0))
+                nat_mean = 0.5 * (n_max + nat_overflow_extra)
+                if th.ew_nav == 2 and (th.national_spoof != 2 or unit_mean > nat_mean):
                     th.accuracy_tier_drop = 0
                     th.ew_extra_offset_m = unit_extra
                 else:
                     th.accuracy_tier_drop = b_idx - nat_idx
-                    th.ew_extra_offset_m = 0.0
+                    th.ew_extra_offset_m = nat_overflow_extra
 
             if covering and th.ew_pull == 0:
                 spoof_units = [(u, edef, m_u) for u, edef, m_u in covering if edef.get("effect") == "nav_spoof"]
@@ -1217,7 +1248,7 @@ class EmissionSystem:
                     )
 
     def _has_warning_or_approx_track(self, ctx: Any) -> bool:
-        if ctx.state.sensing.emitted_early_warnings:
+        if ctx.state.threats.count_alive() > 0:
             return True
         for tr in ctx.state.tracks.alive_list():
             if tr.quality >= TrackQuality.Approximate:
@@ -1345,6 +1376,12 @@ class ExposureSystem:
                         rate = float(sensor_rates.get("high", 1.0 / 60.0))
                     elif ddef.get("effect") == "visual_decoy" and u.deploy_state == UnitDeployState.Deployed:
                         rate = float(ew_rates.get("low", 0.3 / 60.0))
+
+                if emitting and kind != EntityKind.DeceptionUnit and u.emitter is not None:
+                    if u.emitter.policy_id == "on_warning":
+                        rate *= 0.70
+                    elif u.emitter.policy_id == "decoy_coordinated":
+                        rate *= 0.25
 
                 if u.pos is not None and any(u.pos.distance_to(rp) <= recon_rad_m + 1e-9 for rp in recon_positions):
                     rate += r_recon
