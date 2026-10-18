@@ -1390,7 +1390,7 @@ public abstract record CampaignAction { public abstract CampaignActionType Type 
 | 508 | `RequestReinforcement` | `string RequestId, Line? PaidBy` | `Deployment` / `Day` | 3.4.5 |
 | 509 | `BuyCityItem` | `string ItemId` | `Deployment` / `Day` | 3.5.2 |
 | 510 | `AssignAceCrew` | `string AceId, int RosterId` | `Deployment` / `Day` | 3.7.2 |
-| 511 | `WatchAutoNight` | `bool Watch` | `Day` | 3.7.2 |
+| 511 | `WatchAutoNight` | `bool Watch` | `Day` / `Review`（自动结算后消耗 1 次重打手打覆盖，`B-T3-07`） | 3.7.2 / 3.8.2 |
 | 512 | `EndDay` | — | `Day` | 3.2.2 |
 | 513 | `ChooseCard` | `string CardId` | 有待选卡 | 3.11 |
 | 514 | `ChooseInterlude` | `int OptionIndex` | 有待选插曲 | 3.9.2 |
@@ -1489,14 +1489,14 @@ public abstract record CampaignAction { public abstract CampaignActionType Type 
 | 20 | 申请的单位在期限内被毁 | 移除；剩余期限作废；不退信任度 |
 | 21 | 作战控制单位到期时正在维修 | 照常归还（移除） |
 | 22 | 白天转移到当前所在位置 | 允许，照常扣时间槽并重算暴露度（玩家自担） |
-| 23 | 白天转移到已被敌方侦察过的阵地 | 暴露度 × `toScoutedPositionMult`（与 02 夜间转移同一函数） |
+| 23 | 白天转移到已被敌方侦察过的阵地 | 暴露度 × `toScoutedPositionMult`（由 `KnownTargetCarryOps.IsScouted(KnownTargets, pos, rules.EnemyAi.KnownTargets)` 判定，与 02 夜间转移同一规则，`A-2-18`）；旧位置的敌方已知目标快照保留（不随转移更新） |
 | 24 | 维修中的单位出现在部署方案中 | 拒绝 `UnitUnavailable` |
 | 25 | 轻伤单位不维修直接部署 | 允许；03 按 `DamageEfficiencyMult` 降效 |
 | 26 | `Crippled` 单位 | 必须先维修才能部署 |
 | 27 | 城市资源不足 1e-9 以内 | 视为足够（`CityResource + 1e-9 ≥ cost`），扣后若为负置 0 |
 | 28 | `cityResourcePerDay == null` 的关卡 | `CityResource = 0`；商店拒绝 `NotAvailable` |
 | 29 | 城市商店单位上限由 `UnitCountDelta` 改变 | 上限 = 修改后的 `count'` |
-| 30 | 自动结算夜以 `Defeated` 结束 | 计挫折，不使关卡失败（Q-F3） |
+| 30 | 自动结算夜以 `Defeated` 结束 | 计挫折，不使关卡失败（`B-T2-108`）；玩家亦可在 `Review` 阶段调用 `WatchAutoNight(true)` 消耗 1 次重打（`Attempt + 1`）恢复 `PreAutoNightSnapshot` 并进入 `Deployment` 手打覆盖（`B-T3-07`） |
 | 31 | 关键夜 `AllClear` 提前结束 | `survive_game_sec` 按整夜时长计 |
 | 32 | 最后一个条目是 `Quiet` | 处理后直接做关卡结束判定 |
 | 33 | 同日两个战斗条目（第 18 关白天段 + 夜间段） | 中间开白天但不 `DayStep`；班组夜数按连续计 |
@@ -1515,6 +1515,8 @@ public abstract record CampaignAction { public abstract CampaignActionType Type 
 | 46 | 夜间中途读档哈希不一致 | 从该夜开头重来，`NightRestartedOnLoad` |
 | 47 | 重试关卡 | 恢复开局快照，但保留 `Setbacks` 与失败扣除后的 `Trust`；种子不变 |
 | 48 | 有待选奖励卡 / 插曲时 `StartLevel` | 拒绝 `PendingChoice` |
+| 49 | 上一夜触发城区导航干扰惩罚（`UrbanNavJamTriggered == true`） | 结算写回时 `CityResource = Max(0, CityResource − urbanNavJamPenalty)`（默认 −1.0，`B-T2-36`） |
+| 50 | 白天推进 `g` 天后空袭警报响应度恢复 | `AlertResponsiveness = Min(1.0, AlertResponsiveness + alert.dayRecovery × g)`（默认 +0.2 / 天，`B-T2-81`） |
 
 ---
 
@@ -1533,10 +1535,11 @@ public abstract record CampaignAction { public abstract CampaignActionType Type 
 9. `Phase == Night` ⇔ 宿主持有未结算的夜晚；`Completed / Failed` 时 `NextNightIndex == flow.nights.Count` 或最后结算的夜为 `Defeated`。
 10. 序列化往返：`Serialize(Deserialize(Serialize(s))) == Serialize(s)`（逐字节）。
 11. 被拒绝的动作前后 `Serialize(s)` 相同。
+12. 战役层所有随机数子流名（`SimRandom.ChildSeed` 的 `name`）必须以 `"campaign:"` 开头，严禁以 `"night:"` 开头（`A-5-01`）。
 
 ### 6.2 代码约束
 
-- 遵守 00 第 6.2 节全部禁用项；`sim/Campaign`、`sim/Economy`、`sim/Save`、`sim/Production`、`sim/Research` 中不得出现 `Dictionary<`、`HashSet<`（`NoUnorderedCollectionsTests` 扫描源码）。
+- 遵守 00 第 6.2 节全部禁用项（含禁用 `Math.Hypot`，`C-T1-04`）；`sim/Campaign`、`sim/Economy`、`sim/Save`、`sim/Production`、`sim/Research` 中不得出现 `Dictionary<`、`HashSet<`（`NoUnorderedCollectionsTests` 扫描源码）。
 - 战役层不得调用 `SimWorld` 的内部成员；只通过 00 2.6 的公开接口。
 - 所有数值来自 `data/`；代码中只允许 0、1、`1e-9` / `1e-12` 容差这类非玩法常数。
 
