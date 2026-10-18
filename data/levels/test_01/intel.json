@@ -5,8 +5,15 @@
     {
       "night": 1,
       "items": [
-        { "textKey": "intel.test_01.n1_drones_east", "accurate": false, "relatedWave": "w2_shahed" },
-        { "textKey": "intel.test_01.n1_bombers_airborne", "accurate": true, "relatedWave": "w3_cruise_valley" }
+        { "textKey": "intel.test_01.n1_drones_east", "accurate": false, "confidence": "rumor", "relatedWave": "w2_shahed" },
+        { "textKey": "intel.test_01.n1_bombers_airborne", "accurate": true, "confidence": "confirmed", "relatedWave": "w3_cruise_valley" }
+      ]
+    },
+    {
+      "night": 2,
+      "items": [
+        { "textKey": "intel.test_01.n2_drones_east", "accurate": true, "confidence": "probable", "relatedWave": "w5_known_hunt" },
+        { "textKey": "intel.test_01.n2_cruise_northwest", "accurate": true, "confidence": "confirmed", "relatedWave": "w6_platform_cruise" }
       ]
     }
   ]

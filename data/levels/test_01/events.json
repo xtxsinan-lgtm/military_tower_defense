@@ -6,6 +6,11 @@
       "id": "ev_night1_start",
       "trigger": { "type": "night_start", "night": 1 },
       "actions": [{ "type": "dialogue", "dialogueKey": "dialogue.test_01.night1_start" }]
+    },
+    {
+      "id": "ev_night2_start",
+      "trigger": { "type": "night_start", "night": 2 },
+      "actions": [{ "type": "dialogue", "dialogueKey": "dialogue.test_01.night2_start" }]
     }
   ]
 }

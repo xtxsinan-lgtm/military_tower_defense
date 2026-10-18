@@ -41,10 +41,40 @@
           ]
         }
       ]
+    },
+    {
+      "night": 2,
+      "date": "2022-11-16",
+      "durationGameSec": 480,
+      "weather": "low_cloud",
+      "season": "autumn",
+      "waves": [
+        {
+          "id": "w5_known_hunt", "atGameSec": 45, "aiTags": ["hunt"],
+          "groups": [
+            { "enemy": "shahed_136", "count": 6, "entry": "entry_east", "spacingGameSec": 2, "route": { "direct": true }, "target": { "mode": "known_targets" } }
+          ]
+        },
+        {
+          "id": "w6_platform_cruise", "atGameSec": 180, "aiTags": ["bypass"],
+          "groups": [
+            { "enemy": "su24m", "count": 1, "entry": "entry_northwest", "spacingGameSec": 1,
+              "route": { "waypointsM": [[0, 15500], [5000, 13000], [9000, 11000]] }, "target": { "structure": "tpp" } }
+          ]
+        },
+        {
+          "id": "w7_saturate_n2", "atGameSec": 300, "aiTags": ["saturate"],
+          "groups": [
+            { "enemy": "shahed_136", "count": 8, "entry": "entry_east", "spacingGameSec": 1.5, "route": { "direct": true }, "target": { "structure": "substation_central" } },
+            { "enemy": "kh101", "count": 3, "entry": "entry_northwest", "spacingGameSec": 1,
+              "route": { "waypointsM": [[0, 15500], [5000, 13000]] }, "target": { "structure": "water_plant" } }
+          ]
+        }
+      ]
     }
   ],
   "_source": {
-    "nights": "GDD 7.3 一夜典型顺序的简化版：诱饵与试探 → Shahed 消耗 → 巡航导弹（沿河谷低飞）→ 多方向饱和",
+    "nights": "GDD 7.3 一夜典型顺序的简化版：第 1 夜（诱饵与试探 → Shahed 消耗 → 巡航导弹 → 饱和）；第 2 夜验证跨夜 known_targets 猎杀与平台（Su-24M）远程投放（C-T2-06、B-T3-09）",
     "entryPoints": "2 个来袭方向（WBS WS02-002）：东（无人机）、西北（巡航导弹沿河谷）"
   }
 }
