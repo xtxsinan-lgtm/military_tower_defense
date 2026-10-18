@@ -555,6 +555,7 @@ public sealed record EnemyCount(string EnemyDefId, int Count);
 > 战役层不在 `SimWorld.Step()` 内，没有 WBS 01.B 序号；"时机"写在每个操作上。所有操作是**同步、确定**的函数：输入 `CampaignState` + 数据 + 动作，输出新状态（原地修改）+ `CampaignEvent` 列表（按产生顺序）。遍历顺序：花名册按 `RosterId` 升序，有序字典按键的序数顺序，数据数组按数据顺序。
 > 公共取整函数（`Nightwatch.Sim.Economy.Num`，全目录只此一处）：
 > `RoundHalfAway(x) = Math.Round(x, MidpointRounding.AwayFromZero)`；`FloorEps(x) = (int)Math.Floor(x + 1e-9)`；`CeilEps(x) = (int)Math.Ceiling(x − 1e-9)`；`Clamp(v, lo, hi) = Math.Min(hi, Math.Max(lo, v))`。
+> 距离计算禁用 `Math.Hypot`，一律用 `Math.Sqrt(dx*dx + dy*dy)` 或平方距离比较 `dx*dx + dy*dy <= r*r`（`C-T1-04`）。
 
 ### 3.1 新战役与随机数
 
@@ -565,18 +566,19 @@ public sealed record EnemyCount(string EnemyDefId, int Count);
 3. `NationalStock[w] = StockEntry(rounds, floor)`（`campaign.json` `nationalStock`；校验 `rounds ≥ floor ≥ 0`，否则 `E_RANGE`；`w` 必须在 `economy.ammoTiers` 中 `replenish = false` 的层，否则 `E_UNKNOWN_REF`）。
 4. 其余集合为空，`CurrentLevel = null`。
 
-#### 3.1.2 种子与子流名
+#### 3.1.2 种子与子流名（`A-5-01`、`B-T2-07`）
 
 | 用途 | 种子 | 消耗 |
 |---|---|---|
 | 一夜模拟（关键夜、自动结算夜） | `SimRandom.NightSeed(RunSeed, LevelId, index + 1)`，`index` = 该夜在 `flow.nights[]` 中的下标（`Quiet` 也占下标） | 交给 `SimWorld.Create` |
-| 奖励卡抽取 | `ChildSeed(RunSeed, $"cards:{LevelId}")` | 每抽一张 1 次 `NextDouble` |
-| 王牌阵亡判定 | `ChildSeed(RunSeed, $"crew:{LevelId}:{index + 1}")` | 每个需判定的王牌 1 次 `NextDouble`（王牌 ID 序数顺序） |
-| 生产随机事件（M5） | `ChildSeed(RunSeed, $"production:{LevelId}:{day}")` | 每个事件定义 1 次 `NextDouble`（数据顺序） |
+| 奖励卡抽取 | `ChildSeed(RunSeed, $"campaign:cards:{LevelId}")` | 每抽一张 1 次 `NextDouble` |
+| 王牌阵亡判定 | `ChildSeed(RunSeed, $"campaign:crew:{LevelId}:{index + 1}")` | 每个需判定的王牌 1 次 `NextDouble`（王牌 ID 序数顺序） |
+| 生产随机事件（M5） | `ChildSeed(RunSeed, $"campaign:production:{LevelId}:{day}")` | 每个事件定义 1 次 `NextDouble`（数据顺序） |
 
+- **命名前缀隔离（`A-5-01`）**：战役层 `ChildSeed` 的所有子流名**必须以 `"campaign:"` 开头**，严禁以 `"night:"` 开头（`SimRandom.NightSeed` 内部使用 `$"night:{levelId}:{nightSeq}"`，00 §3.1.5），保证战役随机流与任何夜晚种子在结构上永不碰撞。
 - 字符串内的整数用 `CultureInfo.InvariantCulture` 格式化。
-- 同一关重试（3.9.3）**使用相同的种子**（关卡同名、下标同号）。
-- 00 3.1.5 推荐 `NightSeed(runSeed, level.Id, config.NightIndex)`；本文件改为按 `flow.nights[]` 下标取序号（E 结构多个普通夜复用同一个 `wavesNight`，若用 `NightIndex` 会得到相同种子）。无 `flow.json` 的关卡两者相等（8.3 R-00-3）。
+- 同一关重试（3.9.3）与自动结算夜手打覆盖（3.8.2）**使用相同的种子**（关卡同名、下标同号，`B-T2-07`）。
+- 00 §3.1.5 的 `NightSeed(runSeed, levelId, nightSeq)` 第三参数在战役模式下传 `flow.nights[]` 下标 `+ 1`（E 结构多个普通夜复用同一个 `wavesNight`，用 `flow` 下标区分；无 `flow.json` 的关卡与 `NightIndex` 相等，`B-T2-07`）。
 
 ### 3.2 关卡流程状态机（`LevelFlow`）
 
@@ -585,7 +587,7 @@ public sealed record EnemyCount(string EnemyDefId, int Count);
 前置：`CurrentLevel == null`、`PendingCardOffer == null`、`PendingInterlude == null`、关卡已解锁（3.9.1），否则拒绝 `WrongPhase` / `LevelLocked`。
 
 1. `LevelStartSnapshot = SaveCodec.SerializeState(state with { CurrentLevel = null, LevelStartSnapshot = null })`（3.15.1 的规范序列化）。
-2. 加载 `LevelData`（00 `DataLoader.LoadLevel`）与 `LevelFlowDef`（1.4，含缺省流程）。
+2. 加载 `LevelData`（00 `DataLoader.LoadLevel(source, levelId, nightIndex: null)`，按整关 `dateRange.from` 解析开局时期数值，`B-T2-17`）与 `LevelFlowDef`（1.4，含缺省流程）。
 3. 本关涉及的线（A / B / AB → 两条）：`EmergencyGrantedThisLevel = false`；`crews.json` 中 `joinLevel ≤ Number` 且 `Status == NotJoined` 的王牌 → `Available`（`AceCrewJoined`）；所有王牌 `ConsecutiveNights = 0`、`LastFoughtDay = 0`。
 4. `CurrentLevel = new LevelRunState { Attempt = 1（重试时由 3.9.3 设置）, Phase = Briefing, Day = 3.2.3 的初值, NextNightIndex = 0 }`。
 5. 开局资源（3.3）。
@@ -599,7 +601,8 @@ public sealed record EnemyCount(string EnemyDefId, int Count);
 | `Deployment`（`InitialPlacement`） | `ConfirmDeployment(plan)` | 应用 3.7.1 的放置部分（不装填、不准备夜晚），`InitialPlacement = false`，`Advance(FromStart)` |
 | `Deployment` | `ConfirmDeployment(plan)` | 3.7.1 → `Phase = Night`，宿主取 `PrepareNight()` 创建 `SimWorld` |
 | `Night` | `ApplyNightResult(r)` | 3.7.4 → `Phase = Review` |
-| `Review` | `AcknowledgeReview` | 关卡结束（3.2.5）→ `Completed` / `Failed`；否则 `Advance(FromReview)` |
+| `Review`（刚完成自动结算夜） | `WatchAutoNight(true)` | 消耗 1 次重打次数（`Attempt += 1`）恢复 `PreAutoNightSnapshot` 并转为 `Phase = Deployment` 手打覆盖该夜（3.7.2、3.8.2，`B-T3-07`） |
+| `Review` | `AcknowledgeReview` | `PreAutoNightSnapshot = null`；关卡结束（3.2.5）→ `Completed` / `Failed`；否则 `Advance(FromReview)` |
 | `Day` | `EndDay` | `Advance(FromDay)` |
 
 ```
@@ -626,9 +629,9 @@ OpenDay(): 3.2.4 第 9–10 步（时间槽、运力）；检查紧急支援（3
 ```
 
 - 结构 A / B：`Briefing → Deployment → Night → Review → Completed / Failed`。
-- 结构 C / D：每个间隔一次 `DayStep(g)`、一个 `Day` 阶段（GDD 11.2"白天单一管理界面，跳过的天数用文字交代"）；D 的白天缺省为 `Interlude`（只有时间槽，补给窗口按 `supplyWindows`）。
+- 结构 C / D：每个间隔一次 `DayStep(g)`、一个 `Day` 阶段（GDD 11.2"白天单一管理界面，跳过的天数用文字交代"）；D 的白天缺省为 `Interlude`（只有时间槽，补给窗口按 `supplyWindows`，`B-T2-121`）。
 - 结构 E：日历逐日推进，每天一个 `Day` 阶段（GDD 11.4"每天简短经营回合"）；没有夜晚条目的日子只有白天。
-- `WatchNext`：由 `WatchAutoNight(bool)` 设置。`InitialPlacement`（`bool`，`LevelRunState` 字段）。
+- `WatchNext`：由 `Day` 阶段的 `WatchAutoNight(bool)` 设置；`Review` 阶段的 `WatchAutoNight(true)` 支持对刚自动结算完的普通夜消耗重打次数手打覆盖（`B-T3-07`）。`InitialPlacement`（`bool`，`LevelRunState` 字段）。
 - 进入 `Deployment`（非 `InitialPlacement`）时同样检查紧急支援（3.6）。
 
 #### 3.2.3 日历起点
@@ -641,9 +644,11 @@ OpenDay(): 3.2.4 第 9–10 步（时间槽、运力）；检查紧急支援（3
 
 1. `Day = prev + g`。
 2. 城市资源积累（3.5.1）。
-3. 白天暴露度衰减：每个花名册单位 `Exposure = Max(0, Exposure − relocation.dayExposureDecayPerDay × g)`。
+3. 白天暴露度衰减与警报疲劳恢复：
+   - 每个花名册单位 `Exposure = Max(0, Exposure − relocation.dayExposureDecayPerDay × g)`；
+   - 民众警报响应度恢复：`AlertResponsiveness = Min(1.0, AlertResponsiveness + campaignRules.Alert.DayRecovery × g)`（默认每天恢复 `+0.2`，上限 `1.0`，`B-T2-81`）。
 4. 保护目标修复：对 `Structures` 中 `!Destroyed` 的每项：`add = FloorEps(MaxHp × repair.structureHpFracPerDay × g)`；`Hp = Min(MaxHp, Hp + add)`；`LossHp = Max(0, LossHp − add)`；`Hp == MaxHp` 时移除该项（= 满血）。`MaxHp` 取自关卡数据。被毁者本关不修复。
-5. 单位维修：`RepairDaysLeft > 0` 的单位 `RepairDaysLeft = Max(0, RepairDaysLeft − g)`；变为 0 时：`Condition = Intact`、`DamageEfficiencyMult = 1.0`；若原为 `Crippled`：每个武器的发射架数恢复为 `LauncherCount(def)`（新增发射架 `RoundsLeft = 0`）。发出 `UnitRepaired`。
+5. 单位维修：`RepairDaysLeft > 0` 的单位 `RepairDaysLeft = Max(0, RepairDaysLeft − g)`；变为 0 时：`Condition = Intact`、`DamageEfficiencyMult = 1.0`；若原为 `Crippled`：每个武器的发射架数恢复为 `WeaponParams.LauncherCount(def, rules.Engagement, level.Meta, u.UnitDefId)`（`Gun` 恒为 1，新增发射架 `RoundsLeft = 0`，`A-2-30`）。发出 `UnitRepaired`。
 6. 生产、飞手训练、研发：`ProductionRules.Advance(g, a)`、`ResearchRules.Advance(g)`（3.13、3.14；无则跳过）。
 7. 到达：`PendingArrivals` 中 `AvailableFromDay ≤ Day` 的项（申请顺序）→ 3.4.5 第 7 步加入；剧本增援 `prev < r.Day ≤ Day` → 加入花名册（`Source = Scripted`、`ReturnAfterNightIndex` 按 2.3 换算）。各发 `ReinforcementArrived`。
 8. 大空袭预警（3.8.4）。
@@ -652,13 +657,13 @@ OpenDay(): 3.2.4 第 9–10 步（时间槽、运力）；检查紧急支援（3
 
 #### 3.2.5 关卡结束判定（`Review` 阶段确认时）
 
-1. 本夜 `Kind == Key`（含"观看"的普通夜）且 `Outcome == Defeated` → `Failed`。
+1. 本夜 `Kind == Key`（或被亲自观看 / 手打覆盖的普通夜，`Watched == true` 或 `AutoResolved == false`）且 `Outcome == Defeated` → `Failed`。
 2. 否则若 `NextNightIndex == flow.nights.Count` → 判定胜利条件：
-   - `survive_nights{n}`：本关 `Kind == Key` 且 `Outcome == Survived` 的夜数 ≥ `n`。
+   - `survive_nights{n}`：本关 `Kind == Key` 且 `Outcome == Survived` 的夜数 ≥ `n`（只计关键夜，`B-T3-07` / Q-F8）。
    - `survive_game_sec{sec}`：`Σ_{Key 夜} (Outcome == Survived ? NightDef.DurationSec : EndTimeSec) ≥ Sec`（`AllClear` 提前结束视为撑满）。
    - 全部满足 → `Completed`，否则 `Failed`。
 3. 否则未结束。
-4. 普通夜（自动结算）以 `Defeated` 结束**不导致关卡失败**，只计为挫折（3.6；待决 Q-F3）。
+4. 普通夜（自动结算，`AutoResolved == true`）以 `Defeated` 结束**不导致关卡失败**，只计为挫折（3.6，`B-T3-07` / Q-F3）。
 5. `Completed` / `Failed` 时执行信任度关卡结算（3.4.4），然后 3.9.2 / 3.9.3。
 
 ### 3.3 开局资源（`EconomyRules.SetupLevel`）
@@ -667,7 +672,7 @@ OpenDay(): 3.2.4 第 9–10 步（时间槽、运力）；检查紧急支援（3
 
 1. 收集 `PendingEffects` 中 `TargetLevel == Number`，或 `TargetLine ∈ 本关线集合 且 TargetLevel == null` 的项（追加顺序）为 `E`，并从 `PendingEffects` 移除。线集合：A → {A}；B → {B}；AB → {A, B}。`Number == null`（测试关卡）不消耗任何待生效效果。
 2. 叙事难度（`Difficulty == Narrative`，GDD 14"关闭负面跨关影响"）：从 `E` 中丢弃"负面"效果：`AmmoFrac / CityResourceFrac / LogisticsFrac` 的 `frac < 0`；`UnitCountDelta / FighterSortiesDelta / CommandPointsDelta` 的 `delta < 0`；`TrustDelta` 的 `delta < 0`。
-3. 信任度修正（`TrustRules.QuotaMod`）：
+3. 信任度修正（`TrustRules.QuotaMod`，`B-T3-04` / `B-T2-103`）：
 
    ```
    T = 本关线的 Trust（AB：两条线 Trust 的算术平均）
@@ -676,7 +681,7 @@ OpenDay(): 3.2.4 第 9–10 步（时间槽、运力）；检查紧急支援（3
    叙事难度：mT = Max(0, mT)；信任度未启用（3.4.1）：mT = 0
    ```
 
-4. 比例修正键与求和（每个键各自求和后夹紧到 `[crossLevelModClamp.min, crossLevelModClamp.max]`，写入 `ResourceMods`）：
+4. 比例修正键与求和（每个键各自求和后夹紧到 `[crossLevelModClamp.min, crossLevelModClamp.max]`，写入 `ResourceMods`，`B-T2-120`）：
 
    | 键 | 求和项 |
    |---|---|
@@ -692,23 +697,23 @@ OpenDay(): 3.2.4 第 9–10 步（时间槽、运力）；检查紧急支援（3
 1. 对 `Meta.AvailableUnits` 每项（数据顺序），`src = Source ?? Quota`：
    - `count' = Count + Σ E.UnitCountDelta(unit)`；`Count ≥ 1` 时 `count' = Max(1, count')`（GDD 12.3"所有武器一周目都能用到"），否则 `Max(0, count')`。
    - 历史事件 `unit_unavailable` 对该单位 `Active` → 跳过，发 `HistoricalRestrictionApplied { EventId, UnitId }`（数据校验工具 WS06-004 应对此报警告）。
-   - `src == City`：**不加入**花名册；`count'` 记为该单位的城市商店上限（3.5.2）。
+   - `src == City`：**不加入**花名册；`count'` 记为该单位的城市商店上限（3.5.2，`B-T2-105`）。
    - `src ∈ {Quota, Stock}`：加入 `count'` 个 `RosterUnit`（`Source = src`，`Condition = Intact`，`DamageEfficiencyMult = 1.0`，`Exposure = 0`，`PositionKind = Initial`，`Pos = null`，`Deployed = false`，武器按 `WeaponIds` 建立、发射架 `RoundsLeft = 0`，待 3.3.3 装填）。
-2. `E` 中每个 `GrantUnit`：加入 `count` 个单位（`Source = Effect`，`Condition = condition ?? Intact`，`Tag = tag`，`NightsLeft = nights`，`DamageEfficiencyMult = condition == LightDamaged ? 03 轻伤倍率 : 1.0`），其弹药 = 满弹仓 × `ammoFrac ?? 1.0`（每个发射架 `RoundHalfAway(cap × ammoFrac)`），**不**从配额池扣、不受比例修正。`Crippled` 的单位先需维修（3.7.2）。
+2. `E` 中每个 `GrantUnit`：加入 `count` 个单位（`Source = Effect`，`Condition = condition ?? Intact`，`Tag = tag`，`NightsLeft = nights`，`DamageEfficiencyMult = condition == LightDamaged ? 03 轻伤倍率 : 1.0`），其弹药 = 满弹仓 × `ammoFrac ?? 1.0`（每个发射架 `RoundHalfAway(cap × ammoFrac)`），**不**从配额池扣、不受比例修正。`Crippled` 的单位先需维修（3.7.2，`B-T2-123`）。
 3. 剧本增援 `day ≤ Day`（3.2.3）。
 4. 每加入一个单位（任何来源，含之后的购买、到达）：`k` = 本关此前加入过的同 `UnitDefId` 单位数（含已移除）；若 `rosterTags` 有 `(UnitDefId, k)` → `Tag = tag`。
 5. `RosterId` 依加入顺序从 `NextRosterId` 分配。
 
-#### 3.3.3 弹药（配额级）
+#### 3.3.3 弹药（配额级，`A-2-30`）
 
 "配额级武器" = 花名册中火力单元的武器，且**不是**本关适用的全国库存武器（3.3.4）。对每种配额级武器 `w`（武器 ID 序数顺序）：
 
 ```
-cap(u, w)  = (def.Kind == Gun ? def.MagazineRounds : def.Magazine)；null → 不计数，跳过该武器
-launch(w)  = def.Kind == Gun ? 1 : (def.Launchers ?? engagement.defaultLaunchers)      # 03 的 LauncherCount
-base       = Meta.AmmoQuota 含 w ? 其 Count : Σ_{u ∈ 开局花名册中 Source ∈ {Quota, Stock} 且有 w} cap(u,w) × launch(w)
-m          = ResourceMods["ammo:" + w]
-alloc      = base ≥ 1 ? Max(1, RoundHalfAway(base × (1 + m))) : 0
+cap(u, w)    = (def.Kind == Gun ? def.MagazineRounds : def.Magazine)；null → 不计数，跳过该武器
+launch(u, w) = def.Kind == Gun ? 1 : WeaponParams.LauncherCount(def, rules.Engagement, level.Meta, u.UnitDefId)   # 复用 00 §0.5.1 / 03 §1.1 的唯一实现（A-2-30）
+base         = Meta.AmmoQuota 含 w ? 其 Count : Σ_{u ∈ 开局花名册中 Source ∈ {Quota, Stock} 且有 w} cap(u,w) × launch(u,w)
+m            = ResourceMods["ammo:" + w]
+alloc        = base ≥ 1 ? Max(1, RoundHalfAway(base × (1 + m))) : 0
 若历史事件 resupply_mult 对 w Active：alloc = FloorEps(alloc × mult)
 ResourceBase[w] = base
 装填：按 RosterId 升序、武器顺序、发射架顺序，每个发射架 take = Min(cap, 剩余)；剩余放入 Depot[w]
@@ -717,28 +722,28 @@ ResourceBase[w] = base
 - `GrantUnit` 带来的弹药已在 3.3.2 装好，不计入 `base`，也不参与装填分配。
 - `Meta.AmmoQuota` 中出现、但花名册中没有对应武器的条目：`alloc` 照算，全部放入 `Depot`（可能由后到的单位使用）。
 
-#### 3.3.4 全国共享库存（苏制导弹，GDD 9.6"只减不增"、13.3"有保底"）
+#### 3.3.4 全国共享库存（苏制导弹，GDD 9.6"只减不增"、13.3"有保底"，`B-T2-119`）
 
 适用条件：本关 `Protagonist ∈ {A, AB}` 且武器 `w` 属于 `economy.ammoTiers` 中 `replenish = false`、`sharedBy = line_a` 的层，且 `NationalStock` 含 `w`。不适用（B 线关卡）时 `w` 按配额级处理。
 
 ```
-req   = Meta.AmmoQuota 含 w ? Count : Σ cap × launch（同 3.3.3 的 base 算法）
+req   = Meta.AmmoQuota 含 w ? Count : Σ cap(u,w) × launch(u,w)（同 3.3.3 的 base 算法）
 issue = Min(req, NationalStock[w].Rounds)          # 不受比例修正、不受 resupply_mult
 装填同 3.3.3；剩余放入 Depot[w]
 ```
 
-- **库存只在"使用"时减少**（发放不减）：每夜结束 `Used(w) = Ammo.Weapons[w].Shots + Σ_{本夜被毁单位} 其该武器余弹`；`Rounds = Max(Floor, Rounds − Used(w))`（3.7.4 第 6 步）。
+- **库存只在"使用"时减少**（发放不减）：每夜结束 `Used(w) = Ammo.Weapons[w].Shots + Σ_{本夜被毁单位} 其该武器余弹`；`Rounds = Max(Floor, Rounds − Used(w))`（3.7.4 第 6 步，`B-T2-119`）。
 - 本关持有量 `Held(w) = Σ 花名册该武器各发射架余弹（≥ 0 者） + Depot[w]`。不变量：`Held(w) ≤ Rounds`（6.1）。
 - 白天从库存补给：可补数 = `Rounds − Held(w)`（3.7.2）。
 - 关卡结束时持有的库存弹药不需"归还"（从未扣减）。
 - `hasFloor = false` 的层：`Floor` 视为 0。
 
-#### 3.3.5 历史事件强制配额（`economy.historicalEvents`，`Active` 已由加载器按关卡日期解析）
+#### 3.3.5 历史事件强制配额（`economy.historicalEvents`，`Active` 已由加载器按关卡日期解析，`B-T2-118`）
 
 | `effect` | 作用点 | 规则 |
 |---|---|---|
 | `unit_unavailable`（`unit`） | 开局花名册（3.3.2）、城市商店（3.5.2）、信任度申请（3.4.5）、`GrantUnit` 效果、奖励卡（3.11 资格） | 该单位不得以任何途径进入本关花名册；对应动作拒绝 `HistoricallyUnavailable`；`GrantUnit` 效果被丢弃并发 `HistoricalRestrictionApplied` |
-| `resupply_mult`（`weapon`, `mult`） | 开局配额分配（3.3.3）、白天补给（3.7.2）、弹药类申请（3.4.5） | 数量 `FloorEps(n × mult)`；结果为 0 的白天补给 / 申请拒绝 `HistoricallyUnavailable`。不作用于全国库存层、不作用于已持有弹药 |
+| `resupply_mult`（`weapon`, `mult`） | 开局配额分配（3.3.3）、白天补给（3.7.2）、弹药类申请（3.4.5） | 数量 `FloorEps(n × mult)`；结果为 0 的白天补给 / 申请拒绝 `HistoricallyUnavailable`。不作用于全国库存层、不作用于已持有弹药（`B-T2-118`） |
 
 #### 3.3.6 测试关卡（`Number == null`）
 
@@ -749,7 +754,7 @@ issue = Min(req, NationalStock[w].Rounds)          # 不受比例修正、不受
 1. `CityResource`（3.5.1）。
 2. `SurveyedPositions` = 关卡 `deploy.alternatePositions` 中 `surveyed == true` 的 ID ∪ `E.SurveyedPositions` 的合计 `count` 个"未勘察"备用阵地（数据顺序取前 `count` 个）。
 3. `UnlockDoctrine` → 目标线 `Doctrines.Add`（`DoctrineUnlocked`）；`AceCrewsJoin(count)` → 目标线前 `count` 个 `NotJoined` 王牌 → `Available`；`Favor` → 3.10.5；`TrustDelta` → `Trust = Clamp(Trust + delta, min, max)`（`TrustChanged{Cause = Effect}`）；`SetFlag` → `Flags[key] = value`；`ProductionLineStart` → 3.13；`ReturnDeadlineExtend(unit, nights)` → 花名册中该单位 `ReturnAfterNightIndex += nights`（对剧本增援在加入时同样生效：记入 `LevelRunState.DeadlineExtensions[unit]`，加入时加上）。
-4. `Structures` 空（满血）；`KnownTargets = null`；`AlertResponsiveness = 1.0`。
+4. `Structures` 空（满血）；`KnownTargets = null`；`AlertResponsiveness = 1.0`（开局重置为满值 `1.0`，`B-T2-81`）。
 5. 生产 / 研发初始化（3.13、3.14；`flow.production == null` 时 `Production = null`）。
 
 ### 3.4 信任度（`TrustRules`）
@@ -758,20 +763,21 @@ issue = Min(req, NationalStock[w].Rounds)          # 不受比例修正、不受
 
 `TrustEnabled(level) = level.Number == null || level.Number ≥ trust.availableFromLevel`（GDD 12.3：交换比与信任度第 6 关引入）。未启用时 3.4.2–3.4.4 全部跳过（`TrustDelta = 0`），3.4.5 的申请拒绝 `NotYetAvailable`。
 
-#### 3.4.2 一夜结算 `TrustRules.ForNight(NightResult r, IReadOnlyList<ObjectiveDef> objectives, GameCatalog cat)`
+#### 3.4.2 一夜结算 `TrustRules.ForNight(NightResult r, IReadOnlyList<ObjectiveDef> objectives, GameCatalog cat)`（`B-T3-01`、`B-T3-04`、`C-T2-03`）
 
 ```
-# 1) 交换比档位
+# 1) 交换比档位（03 已按 B-T3-01 混合公式 PotentialLoss = max(enemyCost, 2^(damageLevel-1)*0.1*weight) 算出 ExchangeRatio）
 if r.Exchange.ExchangeRatio == null or r.Exchange.TotalShotCostMusd < minShotCostForExchangeMusd: dEx = 0
 else: dEx = bands 中 minRatio ≤ ratio 的最后一项的 delta        # bands 按 minRatio 严格升序，第一项 minRatio 必须为 0（加载校验）
 
-# 2) 浪费型武器（GDD 9.3 "用 PAC-3 打 Shahed"）
-W = 0
+# 2) 浪费型武器（GDD 9.3 "用 PAC-3 打 Shahed"，按武器聚合判定，B-T3-01 / B-T2-103）
+W = 0; wastedWeapons = []
 for x in r.Exchange.ByWeapon（序数顺序）:
-    if x.Shots == 0: continue
+    if x.Shots == 0 or x.Kills < wastefulWeapon.minKills: continue
     avg = x.ShotCostMusd / x.Shots
     ratio = x.Ratio ?? 0
-    if avg ≥ wastefulWeapon.minAvgShotCostMusd and ratio < wastefulWeapon.maxRatio: W += x.Shots
+    if avg ≥ wastefulWeapon.minAvgShotCostMusd and ratio < wastefulWeapon.maxRatio:   # 默认 minAvgShotCostMusd = 2.0, maxRatio = 0.2（PAC-3 打 Shahed 为 0.4/4 = 0.1 < 0.2）
+        W += x.Shots; wastedWeapons.Add(x.WeaponId)
 dWaste = −Min(W × penaltyPerShot, maxPenaltyPerNight)
 
 # 3) 指挥部质询
@@ -784,7 +790,10 @@ dHoard = −Min(r.Losses.HighThreatLeaksWithReserve × hoardedLeak.penaltyPerLea
 # 5) 上级目标（scope == Night 的目标，数据顺序）
 dObj = Σ (Holds(o, r) ? o.TrustOnSuccess : o.TrustOnFail)
 
-raw = dEx + dWaste + dInq + dHoard + dObj
+# 6) 邻国越界（GDD 8.10 "拦截碎片或诱偏弹药落入邻国"，03 Losses.BorderViolations，C-T2-03）
+dBorder = −Min(r.Losses.BorderViolations.Count × borderViolation.penaltyPerViolation, borderViolation.maxPenaltyPerNight)
+
+raw = dEx + dWaste + dInq + dHoard + dObj + dBorder
 applied = Clamp(raw, nightDeltaClamp.min, nightDeltaClamp.max)
 ```
 
@@ -799,8 +808,8 @@ applied = Clamp(raw, nightDeltaClamp.min, nightDeltaClamp.max)
 
 应用：对本关线集合中的每条线 `L`：`L.Trust = Clamp(L.Trust + applied, min, max)`；发出 `TrustChanged { Line, Before, After, Cause = Night }`；`inquiry` 为真时另发 `InquiryTriggered { NightIndex, WastefulShots = W }`（由叙事层显示质询事件）。
 
-- 自动结算夜照常结算；被"观看"的普通夜在 `applied` 之后另加 `autoResolve.watchTrustBonus`（再夹紧到 `[min, max]`，`Cause = WatchBonus`）。
-- `Breakdown = TrustBreakdown(dEx, dWaste, dInq, dHoard, dObj, raw, applied)` 存入 `NightRecord`（复盘界面显示）。
+- 自动结算夜照常结算；被"观看"的普通夜（`Watched == true`）在 `applied` 之后另加 `autoResolve.watchTrustBonus`（再夹紧到 `[min, max]`，`Cause = WatchBonus`）。
+- `Breakdown = TrustBreakdown(dEx, dWaste, dInq, dHoard, dObj, dBorder, raw, applied)` 存入 `NightRecord`（复盘界面显示）。
 
 #### 3.4.3 关卡目标（`scope == Level`）
 
@@ -808,7 +817,7 @@ applied = Clamp(raw, nightDeltaClamp.min, nightDeltaClamp.max)
 
 #### 3.4.4 关卡结算
 
-`dLevel = (Completed ? levelVictoryBonus : −levelDefeatPenalty) + Σ 关卡目标`；对线集合中每条线 `Trust = Clamp(Trust + dLevel, min, max)`（`Cause = Level`），**不**受 `nightDeltaClamp` 约束。重试同一关时，失败时扣的 `levelDefeatPenalty` 不随快照恢复而撤销（3.9.3）。
+`dLevel = (Completed ? levelVictoryBonus : −levelDefeatPenalty) + Σ 关卡目标`；对线集合中每条线 `Trust = Clamp(Trust + dLevel, min, max)`（`Cause = Level`），**不**受 `nightDeltaClamp` 约束。重试同一关时，失败时扣的 `levelDefeatPenalty` 不随快照恢复而撤销（3.9.3，`B-T3-04`）。
 
 #### 3.4.5 申请增援 `RequestReinforcement(requestId, Line? paidBy)`
 
@@ -817,10 +826,10 @@ applied = Clamp(raw, nightDeltaClamp.min, nightDeltaClamp.max)
 1. 阶段 ∈ {`Deployment`, `Day`}，否则 `WrongPhase`。
 2. 信任度启用（3.4.1），否则 `NotYetAvailable`。
 3. `firstAvailableLevel`：`Number != null && Number < firstAvailableLevel` → `NotYetAvailable`。`line` 非空且不在本关线集合 → `NotAvailable`（00 公共原因）。
-4. 付款线：本关单线 → 该线（`paidBy` 必须为 null 或相同）；AB → `paidBy` 必填，否则 `InvalidArgument`。
-5. 历史事件：`unit` 类且 `unit_unavailable` Active → `HistoricallyUnavailable`；`ammo` 类且 `resupply_mult` Active → `count = FloorEps(count × mult)`，为 0 → `HistoricallyUnavailable`。
+4. 付款线：本关单线 → 该线（`paidBy` 必须为 null 或相同）；AB → `paidBy` 必填，否则 `InvalidArgument`（`B-T3-04`）。
+5. 历史事件：`unit` 类且 `unit_unavailable` Active → `HistoricallyUnavailable`；`ammo` 类且 `resupply_mult` Active → `count = FloorEps(count × mult)`，为 0 → `HistoricallyUnavailable`（`B-T2-118`）。
 6. `cost = trust.requestCost[trustCost]`；`Trust − cost < trust.min − 1e-9` → `InsufficientTrust`。否则 `Trust −= cost`（`TrustChanged{Cause = Request}`），`PendingArrivals.Add(new PendingArrival(id = 关卡内自增, requestId, unit, weapon, count, AvailableFromDay = Day + arrivalDays, durationNights, paidBy))`。
-7. **到达**（`arrivalDays == 0` 时立即执行，否则在 `DayStep` 第 7 步）：`unit` → 加入 `count` 个单位（`Source = Request`、满弹仓、`NightsLeft = durationNights`、`AvailableFromDay`）；`ammo` → `Depot[weapon] += count`；`support` → `ActiveSupports.Add(new ActiveSupport(id, durationNights ?? 1))`。从 `PendingArrivals` 移除。
+7. **到达**（`arrivalDays == 0` 时立即执行，否则在 `DayStep` 第 7 步）：`unit` → 加入 `count` 个单位（`Source = Request`、满弹仓、`NightsLeft = durationNights`、`AvailableFromDay`）；`ammo` → `Depot[weapon] += count`；`support` → `ActiveSupports.Add(new ActiveSupport(id, durationNights ?? 1))`（如 `"adjacent_sector_coverage"`，在夜间由 03 在 `Level.Meta.SectorCoverageAnchors` 生成场外虚拟火力单元，`B-T2-89`）。从 `PendingArrivals` 移除。
 8. 可用性：单位只能在 `n.Day ≥ AvailableFromDay` 的夜晚部署（`Deployment` 阶段当天申请、`arrivalDays = 1` 的单位赶不上当夜）。
 
 ### 3.5 城市资源（`CityRules`）
@@ -834,15 +843,17 @@ m = ResourceMods["city"]
 DayStep(g)：CityResource = Min(cap, CityResource + p × (1 + m) × Max(0, g − alertPauseWeight × a))
 ```
 
-`a` 见 3.2.4（上一夜警报时长占比；GDD 8.6"警报暂停积累"——只折减夜晚那一天的一部分，`alertPauseWeight` = 夜晚在一天积累中的权重）。
+`a` 见 3.2.4（上一夜警报时长占比；GDD 8.6"警报暂停积累"——只折减夜晚那一天的一部分，`alertPauseWeight` = 夜晚在一天积累中的权重，`B-T2-104`）。
 
-#### 3.5.2 购买 `BuyCityItem(itemId)`
+#### 3.5.2 购买 `BuyCityItem(itemId)`（`B-T2-10`、`B-T2-105`）
 
 1. 阶段 ∈ {`Deployment`, `Day`}；`p != null`；否则 `WrongPhase` / `NotAvailable`。
-2. 条目 `kind == unit`：本关 `availableUnits` 必须有 `(unit, source = city)` 项，否则 `NotAvailable`；上限 = 该项的 `count'`（3.3.2）；`CityPurchases[itemId] ≥ 上限` → `CapReached`；`until` 非空且关卡年月 ≥ `until` → `HistoricallyUnavailable`；`unit_unavailable` Active → 同。
-3. 条目 `kind == repair_team`：`CityPurchases[itemId] ≥ perLevelCap` → `CapReached`。
-4. `CityResource + 1e-9 < cost` → `InsufficientCityResource`。
-5. 应用：`CityResource −= cost`（结果 < 0 时置 0）；`CityPurchases[itemId] += 1`；`unit` → 加入 1 个单位（`Source = City`、满弹仓、`AvailableFromDay = Day`）；`repair_team` → `RepairTeams += 1`，并立即 `LogisticsLeft += logisticsAdd`（仅 `Day` 阶段）。发出 `CityResourceChanged`。
+2. `item.AvailableFromLevel != null && Number != null && Number < item.AvailableFromLevel` → `NotYetAvailable`（如 `buy_drone_team` 自第 14 关起可买，`B-T2-10`）。
+3. 条目 `kind == unit`：本关 `availableUnits` 必须有 `(unit, source = city)` 项，否则 `NotAvailable`；上限 = 该项的 `count'`（3.3.2）；`CityPurchases[itemId] ≥ 上限` → `CapReached`；`until` 非空且关卡年月 ≥ `until` → `HistoricallyUnavailable`（如 `buy_drone_team` 在 `2025-10` 起转入国家配额，`B-T2-10`）；`unit_unavailable` Active → 同。
+4. 条目 `kind == repair_team`：`CityPurchases[itemId] ≥ perLevelCap` → `CapReached`。
+5. 条目 `kind == night_aid`（如 `buy_searchlight`，`B-T2-105`）：若配置了 `perLevelCap` 且 `CityPurchases[itemId] ≥ perLevelCap` → `CapReached`。
+6. `CityResource + 1e-9 < cost` → `InsufficientCityResource`。
+7. 应用：`CityResource −= cost`（结果 < 0 时置 0）；`CityPurchases[itemId] += 1`；`unit` → 加入 1 个单位（`Source = City`、满弹仓、`AvailableFromDay = Day`）；`repair_team` → `RepairTeams += 1`，并立即 `LogisticsLeft += logisticsAdd`（仅 `Day` 阶段）；`night_aid` → `NightAidStock[item.Aid] += 1`。发出 `CityResourceChanged`。
 
 ### 3.6 挫折与紧急支援（GDD 9.5 防死亡螺旋）
 
@@ -870,7 +881,7 @@ AB 关卡两条线各自判定，但同一次检查中只应用一次 `grants`�
 
 1. 阶段 `Deployment`，否则 `WrongPhase`。
 2. 每个 `RosterId` 存在，否则 `UnknownRosterUnit`；不重复，否则 `InvalidArgument`。
-3. 单位可用：`AvailableFromDay ≤ n.Day`、`RepairDaysLeft == 0`、`Condition != Crippled`；否则 `UnitUnavailable`。
+3. 单位可用：`AvailableFromDay ≤ n.Day`、`RepairDaysLeft == 0`、`Condition != Crippled`（`B-T2-123`）；否则 `UnitUnavailable`。
 4. 位置：已放置（`Pos != null`）的单位，`plan.Pos` 必须等于 `Pos`（逐分量 `==`），否则 `PositionChangeRequiresRelocation`——**例外**：本关尚未结算过任何夜晚时，可自由改变位置（GDD 11.3"关卡开始前的部署无惩罚"）。
 5. 飞手（3.13.3）：部署的拦截无人机班组数 × `pilotsPerTeam` ≤ `Pilots`（仅 `Production != null`），否则 `NoPilots`。
 6. 构造 `DeploymentPlan` 后调用 04 `DeploymentValidator.Validate(level, plan)`；有错误 → `InvalidDeployment`（错误列表附在拒绝事件中）。
@@ -878,12 +889,13 @@ AB 关卡两条线各自判定，但同一次检查中只应用一次 `grants`�
 应用：
 
 1. 列出的单位 `Deployed = true`，其余 `false`；`Settings` 保存。
-2. 首次放置（`Pos == null`）：`Pos = plan.Pos`、`AlternatePositionId = plan.AltId`；若本关尚未结算过夜晚 → `PositionKind = Initial`、`FirstNightAtNewPosition = false`；否则：`AltId ∈ SurveyedPositions` → `Surveyed`、false；其他 → `New`、`true`（新到单位进入未勘察阵地同样有首夜惩罚，待决 Q-F6）。
+2. 首次放置（`Pos == null`）：`Pos = plan.Pos`、`AlternatePositionId = plan.AltId`；若本关尚未结算过夜晚 → `PositionKind = Initial`、`FirstNightAtNewPosition = false`；否则：`AltId ∈ SurveyedPositions` → `Surveyed`、`false`；其他 → `New`、`true`（关卡中途到达的增援进入未勘察阵地同样有首夜 −30% 惩罚，经 `PlacedUnit.FirstNightAtNewPosition` 传入 `PlayerUnitCommon.NewPositionPenalty`，`B-T2-06`）。
 3. 夜前装填：对 `Deployed` 的火力单元（`RosterId` 升序、武器顺序、发射架顺序）：`take = Min(cap − RoundsLeft, Depot[w])`，`RoundsLeft += take`，`Depot[w] −= take`（`cap` 不计数的跳过）。
 4. 阶段 → `Night`，并由 `PrepareNight()` 返回 `NightSetup(LevelData, SimConfig, ulong Seed)`：
 
 ```
 n = flow.nights[NextNightIndex]
+levelForNight = DataLoader.LoadLevel(source, LevelId, nightIndex: n.WavesNight)   # B-T2-17：若该夜配置了 nights[].date 则按该夜日期解析时期数值，否则按整关 dateRange.from
 Seed = NightSeed(RunSeed, LevelId, NextNightIndex + 1)
 Deployment = Deployed 的单位按 RosterId 升序 → PlacedUnit { UnitDefId, Pos, AlternatePositionId, Settings,
              RosterId, FirstNightAtNewPosition }
@@ -899,10 +911,10 @@ SimConfig { NightIndex = n.WavesNight, Deployment, CarryIn = BuildCarryIn(n), En
 | `AmmoPool` | `Depot` 的全部条目（含 0） |
 | `PerLevelUsed` | `PerLevelUsed` 的全部条目 |
 | `AlertResponsiveness` | `AlertResponsiveness` |
-| `KnownTargets` | `KnownTargets`（加上 3.12.3 的优先打击位置、3.13.2 的生产设施目标由 04 接口写入的结果） |
+| `KnownTargets` | `KnownTargets`（`IReadOnlyList<KnownTargetCarry>?`，`A-2-18`；3.12.3 的长期不转移阵地通过 `Adaptation.PriorityPositions` 传入，由 04 在 `Initialize` 时合入已知目标） |
 | `CommandPointsBonus` | `CommandPointsBonusLevel + CommandPointsBonusNext`（使用后 `CommandPointsBonusNext = 0`） |
 | `FighterSortiesDelta` | `FighterSortiesDelta` |
-| `ActiveSupports` | `ActiveSupports` 的 ID（获得顺序） |
+| `ActiveSupports` | `ActiveSupports` 的 ID（获得顺序，如 `"adjacent_sector_coverage"`，`B-T2-89`） |
 | `Doctrines` | 线集合中各线 `Doctrines` 的并集（序数升序） |
 | `Dossier` | 3.10.3 |
 | `Adaptation` | 3.12.3 |
@@ -924,7 +936,7 @@ SimConfig { NightIndex = n.WavesNight, Deployment, CarryIn = BuildCarryIn(n), En
 **转移 `RelocateUnit(rosterId, Vec2 pos, string? altId)`**（GDD 11.3"白天转移消耗时间槽"）：
 
 1. 单位已放置（`Pos != null`），否则 `InvalidState`；`def.DeploySec` 与 `def.PackSec` 都非 null 且 `Mobility != Fixed`，否则 `CannotRelocate`。
-2. `altId` 非空时必须存在于 `deploy.alternatePositions`，且 `pos` 必须等于其 `Pos`，否则 `InvalidArgument`；位置合法性由 04 `DeploymentValidator.ValidatePosition(level, unitDefId, pos)` 判定，非法 → `InvalidArgument`。
+2. `altId` 非空时必须存在于 `deploy.alternatePositions`，且 `pos` 必须等于其 `Pos`，否则 `InvalidArgument`；位置合法性由 04 `DeploymentRules.CheckPosition(level, unitDefId, pos)`（00 §0.5.1、04 §3.5.2，`A-2-15`）判定，非法 → `InvalidArgument`。
 3. 时间槽：
 
    ```
@@ -934,13 +946,15 @@ SimConfig { NightIndex = n.WavesNight, Deployment, CarryIn = BuildCarryIn(n), En
    ```
 
    `TimeSlotsLeft < slots` → `InsufficientTimeSlots`。
-4. 应用：`TimeSlotsLeft −= slots`；`scouted = KnownTargets?.IsScouted(pos) ?? false`；`Exposure = ExposureRules.Relocated(Exposure, scouted)`（02 3.6.3 同一函数：`scouted ? e × onRelocate.toScoutedPositionMult : onRelocate.resetTo`）；`Pos = pos`；`AlternatePositionId = altId`；`PositionKind = surveyed ? Surveyed : New`；`FirstNightAtNewPosition = !surveyed`；`NightsAtPosition = 0`；`KnownTargets?.OnUnitRelocated(rosterId, pos)`；发出 `UnitRelocated { RosterId, Slots }`。
+4. 应用：`TimeSlotsLeft −= slots`；`scouted = KnownTargetCarryOps.IsScouted(KnownTargets, pos, rules.EnemyAi.KnownTargets.DedupeRadiusM)`（`A-2-18`）；`Exposure = ExposureRules.Relocated(Exposure, scouted)`（02 3.6.3 同一函数：`scouted ? e × onRelocate.toScoutedPositionMult : onRelocate.resetTo`）；`Pos = pos`；`AlternatePositionId = altId`；`PositionKind = surveyed ? Surveyed : New`；`FirstNightAtNewPosition = !surveyed`；`NightsAtPosition = 0`（注意：**不**修改 `KnownTargets` 中的旧坐标快照——敌方已知目标记住的是侦察时的旧阵地坐标，不随我方转移自动跟移，04 §3.2 K2 / `A-2-18`）；发出 `UnitRelocated { RosterId, Slots }`。
 
 **勘察 `SurveyPosition(altId)`**：`Number != null && Number < positions.preparedAlternate.availableFromLevel` → `NotYetAvailable`；`altId` 不存在 → `InvalidArgument`；已在 `SurveyedPositions` → `AlreadySurveyed`；`TimeSlotsLeft < relocation.surveyTimeSlots` → `InsufficientTimeSlots`；应用：扣槽、`SurveyedPositions.Add(altId)`。勘察对已在该阵地的单位不追溯（其 `FirstNightAtNewPosition` 不变）。
 
 **王牌配属 `AssignAceCrew(aceId, rosterId)`**（阶段 `Deployment` 或 `Day`）：王牌属于本关线集合，`Status == Available`，否则 `AceUnavailable`；`rosterId == 0` → 解除该王牌的配属；否则单位的 `UnitDefId ∈ crews.json eligibleUnits`，否则 `AceNotEligible`；应用：该王牌原单位 `AceId = null`；目标单位原有王牌被解除；目标 `AceId = aceId`。
 
-**观看 `WatchAutoNight(bool)`**：下一夜（`flow.nights[NextNightIndex]`）为 `Auto` 时设置 `WatchNext`，否则 `InvalidState`。
+**观看 / 手打覆盖 `WatchAutoNight(bool watch)`（`B-T3-07`）**：
+- 在 `Day` 阶段：下一夜（`flow.nights[NextNightIndex]`）为 `Auto` 时设置 `WatchNext = watch`（战前主动选择亲自观看，享 `+1` 指挥点与存活 `+1` 信任度奖励），否则 `InvalidState`。
+- 在 `Review` 阶段：当 `watch == true && Nights.Count > 0 && Nights[^1].AutoResolved && PreAutoNightSnapshot != null` 时，允许玩家**消耗 1 次重打次数手打覆盖**刚自动结算完的普通夜：记下 `newAttempt = Attempt + 1`，从 `PreAutoNightSnapshot` 反序列化恢复自动结算前的关卡与战役状态，置 `Attempt = newAttempt`、`PreAutoNightSnapshot = null`、`WatchNext = false`、`Phase = Deployment`（事后重打覆盖不享 `watchTrustBonus` 与额外指挥点奖励）；否则拒绝 `InvalidState`。
 
 **结束白天 `EndDay`**：无条件（剩余时间槽、运力作废）。
 
@@ -954,13 +968,16 @@ SimConfig { NightIndex = n.WavesNight, Deployment, CarryIn = BuildCarryIn(n), En
 
 1. 校验 `r.LevelId == LevelId`、`r.NightIndex == n.WavesNight`，否则抛 `InvalidOperationException`（宿主错误，不是玩家动作）。
 2. **单位**：对 `r.CarryOut.Units` 每项（`RosterId` 升序），找花名册单位 `u`（找不到 → 抛异常）：
-   - `!Alive`：若 `u.AceId != null` → 加入"待判定王牌"列表；`KnownTargets?.OnUnitRemoved(u.RosterId)`；从花名册移除（`RosterUnitLost { RosterId, UnitDefId }`）。
-   - `Alive`：`Exposure`；`Pos`（若与夜前不同 → `NightsAtPosition = 1`，`AlternatePositionId` = `Pos` 恰等于某备用阵地坐标时为其 ID，否则 null；相同 → `NightsAtPosition += 1`）；`Weapons` 逐架余弹（发射架数以 `CarryOut` 为准）；`LightDamaged → Condition = LightDamaged`、`DamageEfficiencyMult`；`RadarDestroyed || LaunchersLost > 0 → Condition = Crippled`（优先于轻伤）；`LevelHits += Hits`，王牌 `Xp += Hits × crew.xpPerHit`；`SeenThrough`；`FirstNightAtNewPosition = false`（首夜已过）。
+   - `!Alive`：若 `u.AceId != null` → 加入"待判定王牌"列表；`KnownTargets = KnownTargetCarryOps.OnUnitRemoved(KnownTargets, u.RosterId)`（`A-2-18`）；若 `Production != null` 且 `u` 为拦截无人机班组 → `Production.Pilots = Max(0, Production.Pilots − production.pilotsPerTeam)`（3.13.3）；从花名册移除（`RosterUnitLost { RosterId, UnitDefId }`）。
+   - `Alive`：`Exposure`；位置比较用平方距离 `dx = rUnit.Pos.X − u.Pos.X, dy = rUnit.Pos.Y − u.Pos.Y`（禁用 `Math.Hypot`，`C-T1-04`）：若 `dx*dx + dy*dy > adaptation.positionRadiusM * adaptation.positionRadiusM`（夜内发生了实质转移）→ `NightsAtPosition = 1`、`AlternatePositionId` = `rUnit.Pos` 恰等于某备用阵地坐标时为其 ID 否则 `null`；否则（未转移或微调在 `positionRadiusM` 内）→ `NightsAtPosition += 1`；更新 `u.Pos = rUnit.Pos`；`Weapons` 逐架余弹（发射架数以 `CarryOut` 为准）；`LightDamaged → Condition = LightDamaged`、`DamageEfficiencyMult`；`RadarDestroyed || LaunchersLost > 0 → Condition = Crippled`（优先于轻伤）；`LevelHits += Hits`，王牌 `Xp += Hits × crew.xpPerHit`；`SeenThrough`；`FirstNightAtNewPosition = false`（首夜已过）。
 3. **王牌判定**（3.7.5）。
 4. **班组夜数**：本夜 `Deployed` 的每个单位（含已毁者，在移除前记下）：班组 `c`（王牌或单位本身）`c.ConsecutiveNights = TonightCrewNights(u, n.Day)`、`c.LastFoughtDay = n.Day`；本关线集合中**未参战**的王牌与花名册中未部署的单位：`ConsecutiveNights = 0`。受伤王牌 `WoundedNightsLeft −= 1`，为 0 → `Available`（`AceCrewRecovered`）。
 5. **保护目标**：对 `r.Losses.Structures` 每项：`HpEnd == MaxHp` → 移除；否则 `Structures[id] = (HpEnd, LossHp, Destroyed)`。
 6. **弹药**：`PerLevelUsed[w] = r.Ammo.Weapons[w].PerLevelUsedTotal`（`perLevelLimit` 非 null 的武器）；`Depot` = `r.Ammo.PoolRemaining`（逐项覆盖；未出现的武器保持）；全国库存层：`Rounds = Max(Floor, Rounds − Used(w))`（3.3.4），变化时发 `StockChanged`。
-7. `AlertResponsiveness = r.Civil.ResponsivenessEnd`；`KnownTargets = r.CarryOut.KnownTargets`。
+7. **民情、城区导航干扰与已知目标**：
+   - `AlertResponsiveness = r.Civil.ResponsivenessEnd`；
+   - `KnownTargets = r.CarryOut.KnownTargets`（对步骤 2 本夜被毁的单位再调一次 `KnownTargetCarryOps.OnUnitRemoved` 确保不残留已毁单位，`A-2-18`）；
+   - **城区导航干扰误伤惩罚（`B-T2-36`）**：若 `(r.CarryOut.UrbanNavJamTriggered || r.CarryOut.CustomMetrics.Any(m => m.Key == "urban_nav_jam_triggered" && m.Value > 0))` 且 `Meta.CityResourcePerDay != null`：`CityResource = Max(0.0, CityResource − economy.cityResource.urbanNavJamPenalty)`（默认扣 `1.0`），发出 `CityResourceChanged`。
 8. **欺骗单位寿命**：本夜部署、存活、`Duration == Nights` 的欺骗单位 `NightsLeft −= 1`，为 0 → 移除（`RosterUnitExpired`）；`OneShot` 存活者保留（未被命中）；`SeenThrough` 保持为 true（敌方已识破，跨夜保留；02 8.x 对齐项）。
 9. **信任度**（3.4.2，启用时）。
 10. **挫折**（3.6）。
@@ -969,7 +986,7 @@ SimConfig { NightIndex = n.WavesNight, Deployment, CarryIn = BuildCarryIn(n), En
 13. **统计**：`Tallies` 累加（3.12.1）；敌情档案（3.10.3）；生产设施受损 / 断电（3.13）。
 14. 记录 `NightRecord`（`Setback`、`TrustDelta`、`Breakdown`、`WeightedLossFrac = r.Losses.WeightedLossFrac`）；更新 `LastAlertFrac = r.Civil.AlertActiveSec / NightDef(n.WavesNight).DurationSec` 与 `LastUnpoweredStructures`；`NightResult` 本身只在内存中保留供复盘，不进存档（3.15）；`NextNightIndex += 1`；阶段 → `Review`；发出 `NightResolved { Index, Outcome, AutoResolved }`。
 
-#### 3.7.5 班组疲劳与王牌班组（跨夜 / 跨关；WS01-025 的战役侧）
+#### 3.7.5 班组疲劳与王牌班组（跨夜 / 跨关；WS01-025 的战役侧，`A-5-01`、`B-T2-111`）
 
 ```
 TonightCrewNights(u, day):
@@ -977,38 +994,40 @@ TonightCrewNights(u, day):
     return (c.LastFoughtDay == day − 1 or c.LastFoughtDay == day) ? c.ConsecutiveNights + 1 : 1
 ```
 
-- 含义："包括今晚在内的连续作战夜数"；03 以 `CrewConsecutiveNights ≥ crewFatigue.minConsecutiveNights` 判疲劳（03 3.3），即默认数据下**第 3 个连续夜起** ×0.85（GDD 8.7"连续 3 夜以上"，按含 3 夜解释，待决 Q-C1）。
-- C 结构夜与夜相隔一周以上 → 永远是 1（不疲劳）；D / E 的连续日才会累积；同日的白天段与夜间段（第 18 关）算连续。
+- 含义："包括今晚在内的连续作战夜数"；03 以 `CrewConsecutiveNights ≥ crewFatigue.minConsecutiveNights` 判疲劳（03 3.3），即默认数据下**第 3 个连续夜起** ×0.85（GDD 8.7"连续 3 夜以上"，含第 3 夜，`B-T2-111`）。
+- C 结构夜与夜相隔一周以上 → 永远是 1（不疲劳）；D / E 的连续日才会累积；同日的白天段与夜间段（第 18 关）算连续（`B-T2-111`）。
 - 跨关：开始关卡时所有王牌 `ConsecutiveNights = 0`（关卡之间相隔数周）；普通班组随花名册重建。
-- **王牌阵亡**：3.7.4 第 3 步，"待判定王牌"按王牌 ID 序数顺序：叙事难度 → 一律 `Wounded`（`WoundedNightsLeft = crew.woundedNights`），不消耗随机数；否则 `rng = Stream("crew:{LevelId}:{index+1}")`，每个王牌 `rng.Chance(crew.aceDeathChanceOnUnitDestroyed)` → `Dead`（`AceCrewKilled`），否则 `Wounded`（`AceCrewWounded`）。
-- 王牌倍率本身（`aceCrew.probMult`）由 03 读取；本文件只给 `AceCrew = true`。`Xp` 目前只用于显示（特长解锁待决 Q-C3）。
+- **王牌阵亡**：3.7.4 第 3 步，"待判定王牌"按王牌 ID 序数顺序：叙事难度 → 一律 `Wounded`（`WoundedNightsLeft = crew.woundedNights`），不消耗随机数；否则 `rng = Stream($"campaign:crew:{LevelId}:{index+1}")`（`A-5-01`），每个王牌 `rng.Chance(crew.aceDeathChanceOnUnitDestroyed)` → `Dead`（`AceCrewKilled`），否则 `Wounded`（`AceCrewWounded`）。
+- 王牌倍率本身（`aceCrew.probMult`）由 03 读取；本文件只给 `AceCrew = true`。`Xp` 当前版本只记录与显示（`B-T2-111`）。
 
 #### 3.7.6 天气与昼夜（WS01-026 的数据侧）
 
 - 天气：`waves.json nights[].weather`（02 已读取 `NightDef.Weather`）。E 结构的普通夜复用波次夜模板，因此天气随模板；需要不同天气就写不同的波次夜。
-- 昼夜：新增 `waves.json nights[].timeOfDay`（`night` / `day`，缺省 `night`）→ `NightDef.TimeOfDay`（02 Q26 的建议，8.3 R-01-2）。第 18 关"白天无人机持续消耗"= 一个 `timeOfDay: day` 的波次夜作为 `Key` 条目，同日后接黄昏补给（`Day` 阶段）与夜间条目。
+- 昼夜：`waves.json nights[].timeOfDay`（`night` / `day`，缺省 `night`）→ `NightDef.TimeOfDay`（02 §1.10 / §3.2.3：白天 `day` 时光学传感器与目视自主捕获不乘夜间折减 `nightRangeMult`，`C-T2-07`）。第 18 关"白天无人机持续消耗"= 一个 `timeOfDay: day` 的波次夜作为 `Key` 条目，同日后接黄昏补给（`Day` 阶段）与夜间条目。
 - 季节：`EnvironmentResolver.SeasonFor(NightDef night, GameDate levelDate) = night.Season ?? FromMonth(levelDate.Month)`，`FromMonth`：12、1、2 → `Winter`；3–5 → `Spring`；6–8 → `Summer`；9–11 → `Autumn`。全目录只此一处实现（`sim/Environment/`），02 / 03 需要季节时调用它。
-- 冬季效能、电网压力等夜内效果不在本文件。
 
-### 3.8 日历与自动结算（WS05-011，GDD 11.5）
+### 3.8 日历与自动结算（WS05-011，GDD 11.5，`B-T3-07`、`C-T1-16`）
 
 #### 3.8.1 结构 E 的日程
 
 `flow.nights` 中 `Key` = 亲自指挥；`Auto` = 普通夜，默认自动结算；`Quiet` = 无空袭。日历按 3.2.2 逐日推进；没有夜晚条目的日子只有 `Day` 阶段。
 
-#### 3.8.2 `AutoResolveNight()`
+#### 3.8.2 `AutoResolveNight()`（`B-T3-07`、`C-T1-16`）
 
+0. 保存自动结算前快照：`PreAutoNightSnapshot = SaveCodec.SerializeState(state with { CurrentLevel = levelState with { PreAutoNightSnapshot = null } })`（供 `Review` 阶段玩家选择消耗重打次数手打覆盖，`B-T3-07`）。
 1. 部署方案 = 当前 `Deployed` 的单位（玩家上次的部署；`Pos` 不变）；若没有任何单位部署，照常运行（全部突防）。
-2. `setup = PrepareNight()`，其中 `CarryIn.AutoResolve = new AutoResolveCarryIn(autoResolve.interceptProbMult, autoResolve.exposureGainMult)`。
+2. `setup = PrepareNight()`，其中 `CarryIn.AutoResolve = new AutoResolveCarryIn(autoResolve.interceptProbMult, autoResolve.exposureGainMult)`（默认 `interceptProbMult = 1.0, exposureGainMult = 1.0`，`B-T3-07`）。
 3. `world = SimWorld.Create(setup.Level, setup.Config, setup.Seed)`；**不入队任何命令**；`while (!world.IsFinished) world.Step()`；二选一请求全部按超时默认处理（04）。
 4. `ApplyNightResult(world.Result)`，`NightRecord.AutoResolved = true`。
 5. 生成战报 `AutoNightReport { Index, Outcome, WeightedLossFrac, AmmoUsed: [(WeaponId, Shots)], UnitsLost: [RosterId], ExposureDelta: [(RosterId, Before, After)], FactoryPausedSec }`（GDD 11.5"产量损失、弹药消耗、暴露度变化"；`FactoryPausedSec = Σ Losses.Structures[Type == Factory].PausedSec`）。
 
-"略逊于亲自指挥"的来源（三项叠加，数值待 WS09 批量验证）：①不使用指挥点、二选一取默认；②`interceptProbMult`（03 作为额外乘子）；③`exposureGainMult`（02 作用于暴露度的**正**增量）。玩家选择观看则无 ②③，并得到 `watchTrustBonus`。
+- **"略逊于亲自指挥"的来源（`B-T3-07`）**：默认完全由"①不使用指挥点（无夜间调动、无手动支援、无临时辐射切换、二选一取超时默认）"自然拉开 3–10% 的加权损失差距（`autoResolve.interceptProbMult` 默认 `1.0`、字段与 `CarryIn.AutoResolve` 管线保留；若 D4/WS09 实测差距 `< 3%`，可在数据中将 `interceptProbMult` 下调至 `0.95`）。
+- **观看与事后手打覆盖**：玩家在 `Day` 阶段调 `WatchAutoNight(true)` 主动观看普通夜时，`CarryIn.AutoResolve = null`、获 `+1` 指挥点并在 `Survived` 时获 `watchTrustBonus = +1`；若先自动结算，在 `Review` 阶段看到战报后调 `WatchAutoNight(true)`，则消耗 1 次重打次数（`Attempt += 1`）回滚至自动结算前并进入 `Deployment` 手打覆盖该夜（无 `watchTrustBonus`）。
+- **单夜自动结算性能预算（`C-T1-16`）**：依托 00 §3.3.1 与 02/03 的空闲步早退（无威胁与航迹的空闲步 O(1) 返回，`≤ 20 µs`），在参考机（Apple Silicon Mac，Release 构建，`B-T2-137`）上单夜 `AutoResolveNight()`（28 800 步）耗时上限：`test_01` 规模 `≤ 1 s`、终章规模 `≤ 5 s`。
 
 #### 3.8.3 自动结算的确定性
 
-自动结算与"观看"使用同一种子（3.1.2），因此"观看"一个普通夜而不下任何命令时，结果与自动结算只差 ②③ 两项修正。
+自动结算与"观看 / 手打覆盖"使用同一种子（3.1.2）；当 `autoResolve` 倍率为默认的 `(1.0, 1.0)` 时，"亲自观看"一个普通夜而不下达任何命令、不改部署的结果与自动结算**逐位完全相同**。
 
 #### 3.8.4 大空袭预警
 
@@ -1077,7 +1096,7 @@ public enum LinkMetricType { Victory = 0, StructureAlive = 1, StructureHpFrac = 
 
 **夹紧规则**：比例型效果（`AmmoFrac`、`CityResourceFrac`、`LogisticsFrac`）在目标关卡开局时与信任度修正一起夹紧到 `crossLevelModClamp`（GDD 13.2"±10–20%，有保底"）；绝对型效果（`GrantUnit`、`UnitCountDelta`、`FighterSortiesDelta`）不受比例夹紧，但 `UnitCountDelta` 有"≥ 1"保底（3.3.2），`FighterSortiesDelta` 有"≥ 0"保底（CarryIn）。
 
-#### 3.10.2 GDD 13.5 全部节点（`links.json` 草案；效果数值全部待决）
+#### 3.10.2 GDD 13.5 全部节点（`links.json`，`B-T2-124`、`B-T2-125`）
 
 | 节点 ID | 来源 | 度量 | 结果 → 效果（目标关卡） |
 |---|---|---|---|
@@ -1097,16 +1116,16 @@ public enum LinkMetricType { Victory = 0, StructureAlive = 1, StructureHpFrac = 
 | `l17_repair_plant` | 17 | `StructureHpFrac(aviation_repair_plant)` | ≥ 1.0 → 无；≥ 0.5 → `FighterSortiesDelta(−1)`；其他 → `FighterSortiesDelta(−2)` @18 |
 | （全程）残骸回收 | 每夜 | `KillsByEnemy` | 敌情档案（3.10.3） |
 
-- 第 7、16、17 关所需的组合条件在 3.9.2 第 1 步由**关卡专用的度量写入规则**生成（`flow.levelMetrics` 增加 `source` 取值 `derived:<规则名>`，规则名与实现见 8.2 Q-L3）。上表给出了每个规则的精确定义。
-- `captured_spaag`、`high_speed_interceptor_team`、地图保护目标 ID（`hangar`、`runway`、`field_workshop`、`aviation_repair_plant`、`test_facility`）在数据中尚不存在（8.2 Q-L2）。
+- 第 7、16、17 关所需的 3 条组合条件在 3.9.2 第 1 步由命名派生规则（`flow.levelMetrics` 的 `source = "derived:<规则名>"`）写入，阈值放数据（`B-T2-125`）。
+- 节点涉及的单位与保护目标 ID（`captured_spaag`、`high_speed_interceptor_team`、`hangar`、`runway`、`field_workshop`、`aviation_repair_plant`、`test_facility`）在制作对应关卡数据时按本表 ID 建立（`B-T1-14`）。
 
-#### 3.10.3 敌情档案（残骸回收）
+#### 3.10.3 敌情档案（残骸回收，`B-T2-113`）
 
 每夜（3.7.4 第 13 步）：对 `r.CarryOut.KillsByEnemy` 每项 `(e, c)`：`f = dossier.families` 中第一个 `members` 含 `e` 的家族 ID，没有则 `f = e`；`Dossier[f] = Min(maxPoints, Dossier[f] + c × pointsPerKill)`；若跨过某个 `levels[k].minPoints` → `DossierLevelUp { Family, Level = k + 1 }`。
 
 `CarryIn.Dossier`：对 `Dossier` 每项 `(f, p)`，`k` = `minPoints ≤ p` 的最高档（没有则跳过）；成员集合 = 家族 `members`（`f` 不是家族时为 `{f}`）；每个成员一项 `DossierCarryIn(member, levels[k].discriminationAdd, levels[k].classifyTimeMult)`；按 `EnemyDefId` 序数升序。含义由 02 实现（诱饵甄别概率 `+add`、航迹分类 / 升级所需时间 `× mult`；8.3 R-02-1）。"回收 Geran‑3 → 更快识别 Geran‑5"由同家族共享点数实现。
 
-#### 3.10.4 城市记忆
+#### 3.10.4 城市记忆（`B-T2-114`）
 
 - 关卡完成时（3.9.2 第 3 步）：`city = flow.CityId`，非空则 `CityMemory[city].Visits += 1`；若本关所有 `Key` 夜都不是挫折（`NightRecord.Setback == false`）→ `Victories += 1`。
 - 开局（3.3.1 第 4 步）：`city` 非空 → 城市记忆加成 `Min(cityMemory.maxBonusFrac, Victories × cityMemory.bonusFracPerVictory)` 计入 `city` 比例修正（本关的完成在之后才计入，不影响本关）。
@@ -1116,15 +1135,15 @@ public enum LinkMetricType { Victory = 0, StructureAlive = 1, StructureHpFrac = 
 - `Favor` 效果：`Lines[holder].Favors.Add(new FavorToken(favorId, OwedBy = 另一条线, uses))`；发出 `FavorGained`。
 - `CallFavor(int tokenIndex)`（阶段 `Deployment` / `Day`，本关线集合含 `holder`）：下标有效且 `UsesLeft > 0`，否则 `NoFavor`；按 `campaign.json favors[favorId]` 加入 `count` 个 `grantUnit`（`Source = Favor`，`NightsLeft = nights`，`AvailableFromDay = Day`）；`UsesLeft −= 1`，为 0 则移除；发出 `FavorCalled`。不消耗信任度。
 
-#### 3.10.6 条令
+#### 3.10.6 条令（`B-T2-126`）
 
-`doctrines.json` 只登记 ID、名称与 `effectKey`；效果由所属规格读取 `CarryIn.Doctrines` 实现（`forward_ambush` → 04 / 02：伏击相关；`fire_team_network` → 02：火力组共享航迹）。本文件只管解锁（`UnlockDoctrine` 效果）与传递。效果定义待决 Q-L4。
+`doctrines.json` 登记 ID、名称与 `effectKey`；效果由所属规格读取 `CarryIn.Doctrines` 实现（`forward_ambush` → 02：本夜尚未开火且尚未主动开机的单位不累积侦察暴露；`fire_team_network` → 02：≥ 2 个 `mobile_fire_team` 同时探测到同一目标时航迹质量升为 `Approximate`）。本文件负责解锁（`UnlockDoctrine` 效果）与传递。
 
 #### 3.10.7 "战役影响"清单
 
 关卡完成时生成 `CampaignImpactReport`（只读视图，不进存档）：按以下顺序列出 `ImpactLine(TextKey, Args, TargetLevels, Sign)`：①本关记录的每个节点结果（`links` 数据顺序；`TextKey` = 结果项的 `textKey`；`TargetLevels` = 该项效果的 `at.level` 去重升序；`Sign` = 效果"正面 / 负面 / 中性"按 3.3.1 第 2 步的规则判定）；②全国库存变化（每个武器：开始 → 结束）；③两线信任度变化（开始 → 结束）；④敌情档案升档；⑤敌人适应的启用 / 停用；⑥待生效的奖励卡与插曲效果。叙事难度下负面项标注"已关闭"。
 
-### 3.11 奖励卡（WS05-005 前半）
+### 3.11 奖励卡（WS05-005 前半，`A-5-01`、`B-T2-115`）
 
 `cards.json`：`cards[]{ id, nameKey, line, weight, levelRange{min,max}?, from?, until?, unique?, effects[] }`（`from` / `until` 为年月，按关卡日期判定，00 1.4 形态 C 语义）。
 
@@ -1135,21 +1154,21 @@ pool = cards 中满足：line == 本关 line；levelRange 包含 Number（缺省
        !(unique == true && line.Cards.Contains(id))；effects 中 GrantUnit 的单位不受 unit_unavailable（按"目标关卡"日期无法预知 → 按本关日期判定）
        按 id 序数升序
 k = Min(rewardCards.offerCount, pool.Count)；pool.Count == 0 → 不发
-rng = Stream("cards:{LevelId}")
+rng = Stream($"campaign:cards:{LevelId}")                             # A-5-01：统一加 campaign: 前缀
 for i in 1..k:
     total = Σ pool[j].weight（按顺序累加）
     r = rng.NextDouble() × total
     acc = 0; chosen = pool.Count − 1
     for j in 0..pool.Count−1: acc += pool[j].weight; if r < acc: chosen = j; break
     offer.Add(pool[chosen].id); pool.RemoveAt(chosen)
-PendingCardOffer = new CardOffer(LevelId, line, offer)          # offer 保持抽取顺序
+PendingCardOffer = new CardOffer(LevelId, line, offer)                # offer 保持抽取顺序
 ```
 
 `ChooseCard(cardId)`：`cardId ∈ PendingCardOffer.CardIds`，否则 `InvalidArgument`；`line.Cards.Add`；效果按 `At`（缺省 `nextLevelOfLine = 卡的 line`）转为 `PendingEffect`；`PendingCardOffer = null`；发出 `CardChosen`。`weight ≤ 0` 的卡加载时报 `E_RANGE`。
 
 示例卡（GDD 13.3）：`extra_iris_t_batch`（`AmmoFrac(iris_t_slm_missile, +0.15)`）、`gepard_extension`（`ReturnDeadlineExtend(gepard, 1)`）、`alt_positions_x3`（`SurveyedPositions(3)`）。
 
-### 3.12 敌人适应（WS05-006，GDD 13.4）
+### 3.12 敌人适应（WS05-006，GDD 13.4，`A-3-04`、`B-T2-112`）
 
 #### 3.12.1 统计
 
@@ -1158,13 +1177,13 @@ PendingCardOffer = new CardOffer(LevelId, line, offer)          # offer 保持�
 ```
 for x in r.Ammo.Weapons: cls = Catalog.Weapon(x.WeaponId).InterceptClass
     HitsTotal += x.Hits
-    if cls ∈ {"gun", "gun_radar"}: HitsGun += x.Hits                       # 类别名取自 intercept.json
+    if cls ∈ {"gun", "gun_radar"}: HitsGun += x.Hits                       # 类别名取自 rules/campaign.json adaptation.statClasses
     if cls ∈ {"interceptor_drone", "jet_interceptor_drone"}: HitsDrone += x.Hits
 ArmDetections += r.CarryOut.PlayStats.ArmDetections；ArmShutdowns += …ArmShutdowns
 ThreatsSpawned += …ThreatsSpawned；ThreatsEverEwCovered += …ThreatsEverEwCovered
 ```
 
-类别名集合写在 `rules/campaign.json adaptation.statClasses`（缺省即上面两组；8.1 新参数），不在代码中写死。
+类别名集合写在 `rules/campaign.json adaptation.statClasses`（缺省即上面两组，`B-T2-112`），不在代码中写死。
 
 #### 3.12.2 关卡结束更新（仅 `Completed`、`Number != null`）
 
@@ -1179,21 +1198,21 @@ for rule in adaptation.rules（数据顺序，stat ≠ position_nights）:
     elif Active(rule) and S[rule.stat] < rule.threshold − hysteresis − 1e-12: 停用，发 AdaptationDeactivated
 ```
 
-`AdaptationState { SortedDictionary<string,double> Stats; SortedSet<string> ActiveRules; }`。敌人是同一个，统计**跨两线共享**。
+`AdaptationState { SortedDictionary<string,double> Stats; SortedSet<string> ActiveRules; }`。敌人是同一个，统计**跨两线共享**（`B-T2-112`）。
 
-#### 3.12.3 应用（`BuildCarryIn`）
+#### 3.12.3 应用（`BuildCarryIn`，`A-3-04`）
 
-叙事难度：`AdaptationCarryIn` 全部关闭（`0, false, [], []`）。否则对每个已启用规则（数据顺序），`notBefore` 非空且关卡年月 < `notBefore` → 跳过：
+叙事难度：`AdaptationCarryIn` 全部关闭（`0, false, [], []`）。否则对每个已启用规则（数据顺序），`notBefore` 非空且关卡年月 < `notBefore` → 跳过（`notBefore` 比史实全面铺开最多提前一年，`B-T2-112`）：
 
 | `effect.kind` | 写入 | 夜内实现 |
 |---|---|---|
-| `uav_altitude_add_m` | `UavAltitudeAddM = Max(当前, value)` | 01：`Tag == UAV` 的弹药巡航高度 + 该值（"飞得更高，躲开机枪射程"） |
+| `uav_altitude_add`（JSON 字段 `valueM` → C# `ValueM`，`A-3-04`） | `UavAltitudeAddM = Max(当前, ValueM)` | 01：`Tag == UAV` 的弹药巡航高度 + 该值（"飞得更高，躲开机枪射程"） |
 | `force_evasive_uav` | `ForceEvasiveUav = true` | 03：`evasiveTargetVsInterceptorDrone` 修正视为日期已生效（"提前出现会规避的 Shahed"） |
 | `enable_trigger` | `ActiveTriggers.Add(trigger)`（去重、序数升序） | 01：`waves.json` 中带 `adaptiveTrigger` 的波次 / 组只在其触发器启用时生成；`adaptiveSubstitutes` 在启用时替换敌方 ID（"先压制后突击"、"抗干扰型与弹道导弹比例"） |
 
 `position_priority`（关卡内、跨夜，不走 EMA）：`PriorityPositions` = 本夜部署的单位中 `NightsAtPosition ≥ threshold` 者的 `Pos`（`RosterId` 升序）；由 04 在 `Initialize` 时加入已知目标清单（"该位置被列入优先打击"）。
 
-### 3.13 生产（WS05-009，状态 + 公式层，M5）
+### 3.13 生产（WS05-009，状态 + 公式层，M5，`A-5-01`、`A-2-18`、`B-T2-116`）
 
 #### 3.13.1 数据与状态
 
@@ -1217,7 +1236,7 @@ for rule in adaptation.rules（数据顺序，stat ≠ position_nights）:
 public sealed class ProductionState { public double Parts; public int Pilots; public List<int> TraineeDaysLeft; public int OutputStock;
     public List<Facility> Facilities; public List<ActivePartsEvent> Events; }
 public sealed class Facility { public int FacilityId; public string TypeId; public string SiteId; public string StructureId;
-    public FacilityStatus Status; public int BuildDaysLeft; public double Exposure; public double Progress; }
+    public FacilityStatus Status; public int BuildDaysLeft; public double Exposure; public double Progress; public bool Targeted; }
 public enum FacilityStatus { Building = 0, Active = 1, Destroyed = 2 }
 public sealed record ActivePartsEvent(string EventId, int DaysLeft);
 ```
@@ -1227,7 +1246,7 @@ public sealed record ActivePartsEvent(string EventId, int DaysLeft);
 逐日执行 `g` 次（第 1 天 `a1 = a`，之后 `a1 = 0`），每日：
 
 ```
-1. 随机事件：rng = Stream("production:{LevelId}:{Day − g + d}")；对 partsEvents（数据顺序）：
+1. 随机事件：rng = Stream($"campaign:production:{LevelId}:{Day − g + d}")；对 partsEvents（数据顺序）：
        若该事件未激活且 rng.Chance(chancePerDay) → Events.Add(id, days)
    eventMult = Π 激活事件的 outputMult
 2. Parts += partsPerDay
@@ -1241,12 +1260,12 @@ public sealed record ActivePartsEvent(string EventId, int DaysLeft);
 5. 对每个 Active 设施（ID 升序）：p = cap_f × s；f.Progress += p；whole = FloorEps(f.Progress)；f.Progress −= whole；
        OutputStock += whole；Parts −= p × partsPerUnit
        f.Exposure = Clamp(f.Exposure − dayExposureDecay + exposurePerUnit(type) × p, 0, 100)
-       f.Exposure ≥ targetThreshold 且本关未登记 → KnownTargets.AddStructureTarget(f.StructureId)（04 接口），发 FacilityTargeted
+       f.Exposure ≥ targetThreshold 且 !f.Targeted → f.Targeted = true，发 FacilityTargeted（A-2-18：04 已知目标只跟踪我方单位，保护目标本身已在敌方打击池中，不调 AddStructureTarget）
 6. 飞手训练：TraineeDaysLeft 每项 −1；为 0 的移除并 Pilots += 1
 7. 事件 DaysLeft −= 1，为 0 移除
 ```
 
-`PoweredAtEnd(f)` = `!LastUnpoweredStructures.Contains(f.StructureId)`（3.7.4 第 13 步由 `Losses.Structures[].PoweredAtEnd` 更新）。`Parts` 不足时按比例缩减所有设施（"补给线守不住就停工"）；暴露度随产量上升（GDD 10.3），达到阈值后被列为打击目标（"生产设施本身就是诱饵和弱点"）。
+`PoweredAtEnd(f)` = `!LastUnpoweredStructures.Contains(f.StructureId)`（3.7.4 第 13 步由 `Losses.Structures[].PoweredAtEnd` 更新）。`Parts` 不足时按比例缩减所有设施（"补给线守不住就停工"）；暴露度随产量上升（GDD 10.3），达到阈值后发出 `FacilityTargeted` 提示（"生产设施本身就是诱饵和弱点"）。
 
 #### 3.13.3 动作
 
@@ -1260,7 +1279,7 @@ public sealed record ActivePartsEvent(string EventId, int DaysLeft);
 
 `n ≤ OutputStock`；`gain = Min(n × handover.trustPerUnit, handover.trustCapPerLevel − HandoverTrust)`（< 0 时为 0）；`OutputStock −= n`；`HandedOver += n`；`HandoverTrust += gain`；本关线 `Trust = Clamp(Trust + gain, min, max)`（`Cause = Handover`）；`Metrics["handed_over"] = HandedOver`（第 15 关 → 第 16 关节点）。
 
-### 3.14 研发与电力分配（WS05-010，状态 + 公式层，M5）
+### 3.14 研发与电力分配（WS05-010，状态 + 公式层，M5，`B-T2-116`）
 
 #### 3.14.1 研发
 
@@ -1280,7 +1299,7 @@ public sealed record ActivePartsEvent(string EventId, int DaysLeft);
 | `ew_effectiveness_add` | 02 | 电子战时期效能 `Min(1, eff + value)` |
 | `jet_research`（仅 `setFlag`） | — | 第 18 关节点（3.10.2） |
 
-#### 3.14.3 电力分配（第 17 关，公式层）
+#### 3.14.3 电力分配（第 17 关，公式层，`B-T2-116`）
 
 `PowerAllocation { double ProductionFrac, RadarFrac, HeatingFrac }`，三者 ≥ 0 且和为 1（容差 1e-9），`SetPowerAllocation` 校验。`avail` = 上一夜 `PoweredAtEnd` 的电源 / 变电站保护目标占比（按 `Weight` 加权）。
 
@@ -1290,9 +1309,9 @@ radarPowerMult      = Min(1, avail × RadarFrac / power.radarNeed)              
 heatingShortfall    = Max(0, power.heatingNeed − avail × HeatingFrac)          # 每日 Trust −= heatingShortfall × power.heatingTrustPenalty
 ```
 
-`power.*` 为 `flow.json` 新参数（待决 Q-P3）；`radarPowerMult` 需要 `CarryIn` 新字段（8.3 R-02-3，M5 时再登记）。
+`power.*` 为第 17 关 `flow.json` 参数（`productionNeed = 0.4, radarNeed = 0.3, heatingNeed = 0.3, heatingTrustPenalty = 5`，`B-T2-116`）；`radarPowerMult` 在 M5 实现时经 `CarryIn.ResearchEffects`（`effectId = "radar_power_mult"`）或专用字段传入 02。
 
-### 3.15 存档（WS05-007）
+### 3.15 存档（WS05-007，`B-T1-15`）
 
 #### 3.15.1 格式
 
@@ -1308,7 +1327,7 @@ heatingShortfall    = Max(0, power.heatingNeed − avail × HeatingFrac)        
 ```
 
 - 序列化：`System.Text.Json`，`JsonSerializerOptions { PropertyNamingPolicy = CamelCase, WriteIndented = false, NumberHandling = Strict }` + `JsonStringEnumConverter`；`ulong` 种子写 `"0x" + X16`；`Vec2` 写 `{"x":…,"y":…}`；`SortedDictionary` 按键序输出；`double` 必须有限。同一状态两次序列化**逐字节相同**；反序列化后再序列化与原文逐字节相同。
-- `dataHash` = 战役数据哈希：00 3.9.2 的算法作用于 `data/campaign/*.json` + `rules/economy.json` + `rules/campaign.json`。读档时不一致 → 警告但继续（数值调整不应让存档作废）。
+- `dataHash` = 战役数据哈希：00 3.9.2 的算法作用于 `data/campaign/*.json` + `rules/economy.json` + `rules/campaign.json`。读档时不一致 → 发出警告 `SaveDataHashMismatch` 但继续加载（数值调整不应让玩家存档作废，`B-T1-15`）。
 - `simVersion` 仅供参考。
 - 不保存：`NightResult`（只保存派生值 `LastAlertFrac`、`LastUnpoweredStructures`——3.2.4 与 3.13.2 需要的信息）、`CampaignImpactReport`、随机状态（3.1.2）。
 
@@ -1328,20 +1347,21 @@ heatingShortfall    = Max(0, power.heatingNeed − avail × HeatingFrac)        
 
 `version < 当前` → 依次调用 `SaveMigrations.Migrate_vN_to_vN+1(JsonNode)`；`version > 当前` → 抛 `SaveVersionException`（不尝试读取）。`format` 不符 → 抛 `SaveFormatException`。
 
-### 3.16 死亡螺旋 / 滚雪球防护的批量验证指标（WS05-013、WS09）
+### 3.16 死亡螺旋 / 滚雪球防护的批量验证指标（WS05-013、WS09，`B-T3-04`、`B-T3-07`、`B-T2-117`）
 
 防护机制（本文件已实现的部分）：信任度下限与每夜变化夹紧（3.4）、比例修正夹紧 ±20% 与"≥ 1"保底（3.3.1–3.3.2）、全国库存保底（3.3.4）、紧急支援（3.6）、城市资源上限与商店上限（3.5）、生产暴露度自然上限（3.13.2）。
 
-**验证方法**：`tools/balance --campaign` 以固定的**策略机器人**（`baseline`：推荐部署；`wasteful`：总用最贵武器；`hoarder`：弹药保留 50%；`strong`：人工调优部署）从第 1 关跑到第 18 关，每个策略 N 个 `runSeed`。`CampaignMetrics`（`sim/Campaign/Metrics.cs`，纯函数，可单测）计算：
+**验证方法**：`tools/balance --campaign` 以固定的**策略机器人**（`baseline`：推荐部署；`wasteful`：总用最贵武器；`hoarder`：弹药保留 50%；`strong`：人工调优部署；`always_request`：每关可用时优先申请增援；`never_request`：从不申请增援）从第 1 关跑到第 18 关，每个策略 N 个 `runSeed`。`CampaignMetrics`（`sim/Campaign/Metrics.cs`，纯函数，可单测）计算：
 
 | 指标 | 定义（精确） | 目标（`balanceTargets`） |
 |---|---|---|
-| `TrustFloorDwell` | 全部运行、全部关卡中，"开局时本关线 `Trust ≤ trust.min + trustFloorMargin`"的关卡数 ÷ 总关卡数（AB 关卡按两线平均） | `baseline ≤ trustFloorDwellMax` |
-| `RecoveryRate` | 所有"首次尝试失败"的关卡中，在第 2 或第 3 次尝试内完成的比例 | `baseline ≥ recoveryRateMin` |
-| `ResourceSpread` | 对每个关卡号 `k`：`strong` 与 `wasteful` 的"开局配额级弹药总价值 `Σ alloc(w) × shotCostMusd(w)`"均值之比；取所有 `k` 的最大值 | `≤ resourceSpreadMax`（理论上限 1.2 / 0.8 = 1.5，超出说明夹紧有漏洞） |
-| `WinGapSlope` | `gap_k` = 关卡 `k` 首次尝试完成率（`strong` − `baseline`）；对 `(k, gap_k)` 做最小二乘斜率 `Σ(k − k̄)(gap − ḡ) / Σ(k − k̄)²` | `≤ winGapSlopeMax`（差距不随战役推进而扩大 = 没有滚雪球） |
-| `AutoResolveGap` | 同一部署、同一种子：自动结算夜 `WeightedLossFrac` 均值 − 观看且由 `strong` 指挥的均值 | `∈ [autoResolveGapMin, autoResolveGapMax]`（"略逊于"） |
-| `FloorLevelWinRate` | `wasteful` 策略在全国库存已到保底的 A 线关卡上的首次尝试完成率 | `≥ floorLevelWinRateMin` |
+| `TrustFloorDwell` | 全部运行、全部关卡中，"开局时本关线 `Trust ≤ trust.min + trustFloorMargin`"的关卡数 ÷ 总关卡数（AB 关卡按两线平均） | `baseline ≤ trustFloorDwellMax`（`0.15`） |
+| `RecoveryRate` | 所有"首次尝试失败"的关卡中，在第 2 或第 3 次尝试内完成的比例 | `baseline ≥ recoveryRateMin`（`0.6`） |
+| `ResourceSpread` | 对每个关卡号 `k`：`strong` 与 `wasteful` 的"开局配额级弹药总价值 `Σ alloc(w) × shotCostMusd(w)`"均值之比；取所有 `k` 的最大值 | `≤ resourceSpreadMax`（`1.5`，理论上限 1.2 / 0.8 = 1.5，超出说明夹紧有漏洞） |
+| `RequestStrategySpread` | 全战役累计获得的配额弹药 + 申请增援弹药/单位折算总价值（M$）：`\|mean(always_request) − mean(never_request)\| / mean(never_request)` | `≤ requestStrategySpreadMax`（`0.15`，防止"一直申请"或"从不申请"成为统治策略，`B-T3-04`） |
+| `WinGapSlope` | `gap_k` = 关卡 `k` 首次尝试完成率（`strong` − `baseline`）；对 `(k, gap_k)` 做最小二乘斜率 `Σ(k − k̄)(gap − ḡ) / Σ(k − k̄)²` | `≤ winGapSlopeMax`（`0.02`，差距不随战役推进而扩大 = 没有滚雪球） |
+| `AutoResolveGap` | 同一部署、同一种子：自动结算夜 `WeightedLossFrac` 均值 − 观看且由 `strong` 指挥的均值 | `∈ [autoResolveGapMin, autoResolveGapMax]`（`[0.03, 0.10]`，不足 `0.03` 时启用 `interceptProbMult = 0.95`，`B-T3-07`） |
+| `FloorLevelWinRate` | `wasteful` 策略在全国库存已到保底的 A 线关卡上的首次尝试完成率 | `≥ floorLevelWinRateMin`（`0.4`） |
 
 计算细节：均值为算术平均（按运行顺序累加）；分母为 0 的指标输出 `null` 并在报告中标"无样本"。
 
