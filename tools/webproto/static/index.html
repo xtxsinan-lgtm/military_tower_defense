@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>《守夜》Nightwatch — 网页可交互纸上原型 (test_01)</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- 顶部全局指挥栏 -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-tag">NIGHTWATCH // 守夜</span>
+      <strong id="level-title">测试地图 01：北山脊与热电厂</strong>
+      <span id="night-badge" class="badge badge-accent">第 1 夜 / 共 2 夜</span>
+      <span id="phase-badge" class="badge badge-phase">战前部署</span>
+      <span id="date-weather-badge" class="badge">2022-10-10 · 晴</span>
+      <span id="trust-badge" class="badge badge-trust" title="公信力（影响支援与后续评级）">公信力 50.0</span>
+    </div>
+
+    <div class="topbar-clock">
+      <div class="clock-readout">
+        <span class="clock-label">世界时间</span>
+        <span id="world-clock" class="clock-digits">22:00:00</span>
+        <span id="tick-readout" class="clock-sub">T+0s / 06:00 拂晓</span>
+      </div>
+      <div class="clock-bar-wrap">
+        <div id="clock-progress" class="clock-bar-fill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <div class="topbar-controls">
+      <div class="btn-group" id="speed-btn-group">
+        <button id="btn-pause" class="btn btn-sm active" data-speed="0" title="快捷键 Space">暂停 [Space]</button>
+        <button class="btn btn-sm" data-speed="0.25">0.25×</button>
+        <button class="btn btn-sm" data-speed="1">1×</button>
+        <button class="btn btn-sm" data-speed="4">4×</button>
+        <button class="btn btn-sm" data-speed="8">8×</button>
+        <button id="btn-step-once" class="btn btn-sm" title="单步推进 10 世界秒">+10s</button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-view-mode" class="btn btn-sm btn-view" title="快捷键 Tab 切换平面指挥图与 2.5D 斜视角">
+          视图：指挥台平面图 [Tab]
+        </button>
+        <label class="toggle-pill" title="调试辅助：叠加显示未探测到的真实敌机位置">
+          <input type="checkbox" id="chk-god-view" />
+          <span>真值透视</span>
+        </label>
+        <select id="sel-los-alt" class="select-sm" title="雷达低空盲区预览高度（米 AGL）">
+          <option value="100" selected>盲区预览: 100m (巡航弹)</option>
+          <option value="50">盲区预览: 50m (超低空)</option>
+          <option value="180">盲区预览: 180m (沙赫德)</option>
+          <option value="0">隐藏盲区扇面</option>
+        </select>
+      </div>
+
+      <div class="btn-group">
+        <span id="cp-badge" class="badge badge-cp">指挥点 CP: 4 / 4</span>
+        <button id="btn-alert-toggle" class="btn btn-sm btn-alert-off" title="拉响或解除全城防空警报">
+          民防警报：关闭 (掩蔽 0%)
+        </button>
+        <button id="btn-national-spoof" class="btn btn-sm" title="消耗 1 CP 开启国家级 GNSS 导航诱偏">
+          国家级诱偏 (1 CP)
+        </button>
+        <button id="btn-trigger-choice-demo" class="btn btn-sm btn-warn-ghost" title="立即演练 C-T3-01 反辐射 vs 巡航导弹二选一硬暂停弹窗">
+          演练二选一
+        </button>
+        <button id="btn-reset-game" class="btn btn-sm btn-ghost">重置第1夜</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主体三栏工作区 -->
+  <main class="workspace">
+    <!-- 左栏：战前情报、预设阵型、单位检视器、部队编制表 -->
+    <aside class="panel left-panel">
+      <!-- 第 2 夜暴露阵地猎杀预警横幅 -->
+      <div id="exposed-warning-box" class="warning-card hidden">
+        <div class="warning-title">⚠️ 跨夜敌情通报：昨夜阵地已暴露！</div>
+        <p id="exposed-warning-desc" class="warning-desc">
+          敌方侦察已标定昨夜高暴露防空阵地，今夜第 5 波将发动针对性猎杀。强烈建议在开战前将其转移至预备阵地！
+        </p>
+        <button id="btn-auto-relocate-exposed" class="btn btn-warn btn-block">
+          一键将暴露单位移至安全预备阵地
+        </button>
+      </div>
+
+      <!-- 战前部署与 AI 模式控制卡 -->
+      <section id="deploy-controls-section" class="card">
+        <div class="card-header">
+          <span>战前防空网部署</span>
+          <span id="validation-badge" class="badge badge-ok">部署合法</span>
+        </div>
+
+        <div class="preset-row">
+          <button class="btn btn-xs btn-preset active" data-preset="layered" title="将火控雷达推过北山脊，消除低空盲区">
+            外推分层网 (推荐)
+          </button>
+          <button class="btn btn-xs btn-preset" data-preset="default" title="标准均衡部署">
+            标准部署
+          </button>
+          <button class="btn btn-xs btn-preset" data-preset="stacked" title="抱团部署在热电厂旁（山脊北侧将产生巨大盲区）">
+            抱团部署 (反例)
+          </button>
+        </div>
+
+        <div id="coverage-summary" class="coverage-bar">
+          <span>100m 通视覆盖: <strong id="cov-vis-pct">--%</strong></span>
+          <span>北山脊盲区: <strong id="cov-blind-pct">--%</strong></span>
+        </div>
+        <div id="validation-errors" class="error-list hidden"></div>
+
+        <div class="form-row">
+          <label for="sel-bot-mode">指挥模式:</label>
+          <select id="sel-bot-mode" class="select-sm flex-1">
+            <option value="manual" selected>亲自指挥（手动微操 + 二选一弹窗）</option>
+            <option value="smart_blink">AI 代打：智能闪烁规避 (smart_blink)</option>
+            <option value="relocator">AI 代打：机动转移教范 (relocator)</option>
+            <option value="default">AI 代打：标准作战教范 (default)</option>
+            <option value="wasteful">AI 代打：挥霍高价弹反例 (wasteful)</option>
+          </select>
+        </div>
+
+        <button id="btn-start-night" class="btn btn-primary btn-block">
+          开始守夜（进入 22:00 实战）
+        </button>
+      </section>
+
+      <!-- 选中单位战术检视器 -->
+      <section id="unit-inspector" class="card">
+        <div class="card-header">
+          <span id="insp-unit-title">选中单位检视</span>
+          <span id="insp-unit-state" class="badge">ACTIVE</span>
+        </div>
+        <div id="insp-body" class="inspector-body">
+          <div class="empty-hint">点击地图或下方编制表中的我方单位以调整阵地、雷达策略与射击学说。</div>
+        </div>
+      </section>
+
+      <!-- 战前情报卡 -->
+      <section class="card">
+        <div class="card-header">
+          <span>战前空情简报 (Intel)</span>
+          <span id="intel-count-badge" class="badge">4 条</span>
+        </div>
+        <div id="intel-list" class="intel-list"></div>
+      </section>
+
+      <!-- 我方防空编制列表 -->
+      <section class="card flex-grow-card">
+        <div class="card-header">
+          <span>防空部队序列（点击定位 / 拖拽移位）</span>
+          <span id="roster-count-badge" class="badge">16 单位</span>
+        </div>
+        <div id="unit-roster-list" class="roster-list"></div>
+      </section>
+    </aside>
+
+    <!-- 中栏：大尺寸战术画布 -->
+    <section class="center-stage">
+      <div id="radio-banner" class="radio-banner">
+        <span class="radio-tag">无线电 // RADIO</span>
+        <span id="radio-text">战前部署阶段：拖拽地图上的防空单位调整阵地，观察北山脊对 100m 低空雷达通视扇面的遮挡。</span>
+      </div>
+
+      <div class="canvas-wrapper">
+        <canvas id="tactical-canvas" width="920" height="920"></canvas>
+      </div>
+
+      <footer class="map-footer">
+        <div id="hover-telemetry" class="telemetry-readout">
+          坐标: X 10000m, Y 10000m | 海拔: 150m | 100m 低空通视: --
+        </div>
+        <div class="map-legend">
+          <span class="legend-item"><i class="dot dot-t0"></i>T0 预警</span>
+          <span class="legend-item"><i class="dot dot-t1"></i>T1 粗跟踪</span>
+          <span class="legend-item"><i class="dot dot-t2"></i>T2 火控解算</span>
+          <span class="legend-item"><i class="dot dot-t3"></i>T3 精确识别</span>
+          <span class="legend-item"><i class="dot dot-los"></i>100m 雷达通视</span>
+          <span class="legend-item"><i class="dot dot-blind"></i>山脊遮挡盲区</span>
+        </div>
+      </footer>
+    </section>
+
+    <!-- 右栏：保卫目标、电网、全局弹药库、实时战况日志 -->
+    <aside class="panel right-panel">
+      <section class="card">
+        <div class="card-header">
+          <span>核心保卫目标与城市电网</span>
+          <span id="grid-status-badge" class="badge badge-ok">电网正常 (断电 0%)</span>
+        </div>
+        <div id="structures-list" class="structures-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <span>全局防空弹药储备池</span>
+          <span class="badge">跨夜结转</span>
+        </div>
+        <div id="ammo-pool-list" class="ammo-grid"></div>
+      </section>
+
+      <section class="card flex-grow-card">
+        <div class="card-header">
+          <span>实时防空战情日志</span>
+          <button id="btn-clear-log" class="btn btn-xs btn-ghost">清空</button>
+        </div>
+        <div id="event-log-list" class="event-log-list"></div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- 弹窗 1：C-T3-01 二选一硬暂停战术抉择弹窗（含 8.0s 倒计时） -->
+  <div id="choice-modal" class="modal-backdrop hidden">
+    <div class="modal-box modal-choice">
+      <div class="modal-choice-header">
+        <span class="choice-code">紧急战术抉择 // C-T3-01 (硬暂停)</span>
+        <span id="choice-timer-text" class="choice-timer-digits">剩余 8.0 秒</span>
+      </div>
+      <div class="choice-progress-wrap">
+        <div id="choice-timer-bar" class="choice-progress-fill" style="width: 100%"></div>
+      </div>
+      <h2 id="choice-title" class="choice-title">
+        反辐射导弹与巡航导弹同时逼近，是否立即关机规避？
+      </h2>
+      <p id="choice-unit-subtitle" class="choice-subtitle">
+        受威胁雷达阵地：山毛榉 M1 火力单元 #1
+      </p>
+      <div class="choice-options">
+        <button id="btn-choice-a" class="choice-btn choice-btn-a">
+          <div class="choice-opt-tag">选项 A（超时默认） · 电子静默保命</div>
+          <div id="choice-opt-a-text" class="choice-opt-desc">
+            立即关机规避反辐射导弹（保住雷达，巡航导弹可能突防）
+          </div>
+        </button>
+        <button id="btn-choice-b" class="choice-btn choice-btn-b">
+          <div class="choice-opt-tag">选项 B · 坚持开机迎击</div>
+          <div id="choice-opt-b-text" class="choice-opt-desc">
+            坚持开机引导拦截（拦截巡航导弹，雷达承担被毁风险）
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 2：昼间战报结算与跨夜结转面板 -->
+  <div id="report-modal" class="modal-backdrop hidden">
+    <div class="modal-box modal-report">
+      <div class="report-header">
+        <div>
+          <span class="brand-tag">DAWN DEBRIEF // 拂晓战报结算</span>
+          <h2 id="report-title">第 1 夜 防空作战总结</h2>
+        </div>
+        <div class="report-rating-box">
+          <span class="rating-label">综合评级</span>
+          <span id="report-rating" class="rating-letter">A</span>
+          <span id="report-score" class="rating-score">86.4 分</span>
+        </div>
+      </div>
+
+      <div id="report-body" class="report-body"></div>
+
+      <div class="report-footer">
+        <button id="btn-replay-night" class="btn btn-ghost">重玩本夜</button>
+        <button id="btn-next-night" class="btn btn-primary btn-lg">
+          进入第 2 夜部署（跨夜结转弹药、战损与暴露阵地） →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/render.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
