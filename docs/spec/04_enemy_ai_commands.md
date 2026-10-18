@@ -1345,7 +1345,7 @@ for (i, ev) in StoryEvents.Events（数据顺序）:
 
 ## 7. 测试用例
 
-> 参考计算脚本：`/Users/xtxsinan/.gemini/antigravity/brain/ad28ce54-87e8-4f79-8c69-ec00c00d464b/scratch/spec_calc_04.py`（A\*、饱和、部署计时、加权选择；输出已抄入下文）。
+> 参考计算脚本：`tools/spec_calc/04/calc_04.py`（A\*、饱和、部署计时、加权选择、暴露度 100 改向；草稿副本位于 `/Users/xtxsinan/.gemini/antigravity/brain/baa1097e-de6e-415f-8c0c-c690ec45ddae/scratch/calc_04.py`，输出已抄入下文，C-T1-01）。
 > 浮点断言：未注明的用 `==`（逐位相等）；注明容差的用 `Math.Abs(a − b) ≤ tol`。
 
 ### 7.0 夹具 `Mini04`（`MiniLevelBuilder`，手写，不依赖正式数值）
@@ -1371,49 +1371,51 @@ for (i, ev) in StoryEvents.Events（数据顺序）:
 - `deploy.json`：`zone_a [(500,500),(5500,500),(5500,9500),(500,9500)]`（不限机动）；`zone_b [(6000,500),(9500,500),(9500,9500),(6000,9500)] allowedMobility [vehicle]`；禁区 `f_water [(2000,2000),(3000,2000),(3000,3000),(2000,3000)] reason water`；备用阵地 `alt_s (2000,1000) surveyed true`、`alt_n (1600,1800) surveyed false`、`alt_bad (2500,2500) surveyed true`。
 - `availableUnits`：`fu_inst 2`、`fu_min 1`、`fu_zero 1`、`fu_hours 1`、`rad 1`、`fake_l 1`、`decoy_e 1`（`ew1` 不在其中）。`commandPointsPerNight 4`；`economy.commandPointsPerNight {3, 6}`。
 - 测试中写"保护目标 `s3` / `s4`"时，它**替换** `s2`（实体 ID 仍为 2），因此我方单位的实体 ID 始终从 3 开始、按部署方案顺序分配。需要第二个 `fu_min` 的测试（T-04-64）把 `fu_min` 的可用数量改为 2。
-- `rules/enemy_ai.json`、`rules/commands.json`：1.1.1 / 1.2 的建议值，但 `bypass.marginKm = 0`（网格 = 地图本身）。`exposure.thresholds`：`40 AntiRadiationPriorityTonight`、`70 KnownTargetListNextNight`、`100 PrecisionStrikeTonight`。
-- 测试替身：`StubEmitters`（02 的 `EmitterQueries.ListActive` 是实体字段的纯函数：测试代码对列出的单位设 `Emitter.On = true` 与给定 `Exposure`，其余辐射源 `Emitter.On = false`；Order 6 换成不做任何事的替身，使这些字段不被 02 改写——除非该测试另有说明）；`SpyEmissionChoice`（记录 `ApplyArmChoice` 调用，并按 3.7.3 修改字段）；`SpyCivil`（记录 `SetAlert` 调用）；`RecordingSystem` 替身按 Order 发出指定事件（00 `CreateForTest`）。
+- `rules/enemy_ai.json`、`rules/commands.json`：1.1.1 / 1.2 的默认值，但手写夹具 `Mini04` 显式设置 `bypass.marginKm = 0`（网格 = 地图本身）、`knownTargets.reasonWeights.precision_exposure = 2.0`（正式默认值见 1.1.1 为 `3.0`，B-T2-90）、`exposure100 { retargetFrac: 0.25, preferAttracts: ["m_cm"] }`（B-T3-05）。`exposure.thresholds`：`40 AntiRadiationPriorityTonight`、`70 KnownTargetListNextNight`、`100 PrecisionStrikeTonight`。
+- 测试替身：`StubEmitters`（02 的 `EmitterQueries.ListActive` 是实体字段的纯函数，返回带 `EntityKind` 的 `ActiveEmitter`（A-3-05）：测试代码对列出的单位设 `Emitter.On = true` 与给定 `Exposure`，其余辐射源 `Emitter.On = false`；Order 6 换成不做任何事的替身，使这些字段不被 02 改写——除非该测试另有说明）；`SpyEmissionChoice`（记录 `ApplyArmChoice(ctx, unitId, silence)` 调用，并按 3.7.3 修改字段）；`SpyCivil`（记录 `SetAlert` 调用）；`RecordingSystem` 替身按 Order 发出指定事件（00 `CreateForTest`）。
 
 ### 7.1 已知目标清单（WS01-019：猎杀的数据基础）
 
 **T-04-01 跨夜带入与匹配**
-部署：`[fu_inst (1000,1200), fu_inst (4000,4000), rad (3000,6000)]` ⇒ 实体 ID 3、4、5。`CarryIn.KnownTargets = [ {fu_inst,(1000,1000),75}, {fu_inst,(8000,8000),72}, {rad,(3000,6000),80} ]`。
-- `Create` 后：`KnownTargets` = `[ {EntryId 1, UnitId 3, fu_inst, AirDefense, (1000,1000), CarriedIn, AddedTick 0}, {2, 0, fu_inst, AirDefense, (8000,8000), CarriedIn, 0}, {3, 5, rad, Radar, (3000,6000), CarriedIn, 0} ]`；`NextKnownEntryId == 4`；`ScoutedPositions == [(1000,1000),(8000,8000),(3000,6000)]`；`DrainEvents() == [NightStarted]`。
+部署：`[fu_inst (1000,1200), fu_inst (4000,4000), rad (3000,6000)]` ⇒ 实体 ID 3、4、5。`CarryIn.KnownTargets = [ {fu_inst, null, (1000,1000), 75, false}, {fu_inst, null, (8000,8000), 72, false}, {rad, null, (3000,6000), 80, false} ]`。
+- `Create` 后：`KnownTargets` = `[ {EntryId 1, UnitId 3, fu_inst, AirDefense, (1000,1000), CarriedIn, AddedTick 0, Priority false}, {2, 0, fu_inst, AirDefense, (8000,8000), CarriedIn, 0, false}, {3, 5, rad, Radar, (3000,6000), CarriedIn, 0, false} ]`；`NextKnownEntryId == 4`；`ScoutedPositions == [(1000,1000),(8000,8000),(3000,6000)]`；`DrainEvents() == [NightStarted]`。
 - 第 1 步的事件中依次有 `KnownTargetAdded` ×3（EntryId 1、2、3）；第 2 步没有。
 
-**T-04-02 带入未知单位**：`CarryIn.KnownTargets = [{nope,(0,0),80}]` ⇒ `SimSetupException`，消息 `[E_UNKNOWN_REF] carryIn.knownTargets[0].unitDefId: 引用的 单位 "nope" 不存在`。
+**T-04-02 带入未知单位**：`CarryIn.KnownTargets = [{nope, null, (0,0), 80, false}]` ⇒ `SimSetupException`，消息 `[E_UNKNOWN_REF] carryIn.knownTargets[0].unitDefId: 引用的 单位 "nope" 不存在`。
 
-**T-04-03 暴露度 100 当夜入单、去重、识破**
+**T-04-03 暴露度 100 当夜入单、去重、识破与当夜改向（B-T3-05）**
 部署 `[fu_inst (1000,1000), fake_l (7000,7000)]`（ID 3、4）。Order 11 替身：第 10 步发 `ExposureThresholdCrossed {UnitId 3, Threshold 100, PrecisionStrikeTonight, Rising true}`；第 11 步把单位 3 的 `Pos` 改为 `(1300,1000)` 后再发同一事件；第 12 步把单位 3 移到 `(2000,1000)` 再发；第 13 步对单位 4 发同一事件；第 14 步替身置 `fake_l.SeenThrough = true`。
-- 第 10 步：`KnownTargetAdded {EntryId 1, UnitId 3, fu_inst, AirDefense, PrecisionExposure, (1000,1000)}`。
+- 第 10 步：`KnownTargetAdded {EntryId 1, UnitId 3, fu_inst, AirDefense, PrecisionExposure, (1000,1000)}`；因无待发波次，`Exposure100RetargetedUnits == [3]`、`UnfulfilledExposure100Units == [3]`。
 - 第 11 步：无新事件（距离 300 ≤ 500，去重）。
-- 第 12 步：`KnownTargetAdded {EntryId 2, UnitId 3, …, (2000,1000)}`（距离 1000 > 500）。
-- 第 13 步：`KnownTargetAdded {EntryId 3, UnitId 4, fake_l, AirDefense, PrecisionExposure, (7000,7000)}`。
-- 第 14 步：`KnownTargetRemoved {EntryId 3, UnitId 4, SeenThrough}`；`Rising == false` 的事件不产生任何效果（另测：发 `Rising false` → 无事件）。
+- 第 12 步：`KnownTargetAdded {EntryId 2, UnitId 3, …, (2000,1000)}`（距离 1000 > 500）；因 `3 ∈ Exposure100RetargetedUnits`，不再触发第二次当夜改向分配。
+- 第 13 步：`KnownTargetAdded {EntryId 3, UnitId 4, fake_l, AirDefense, PrecisionExposure, (7000,7000)}`；`Exposure100RetargetedUnits == [3, 4]`、`UnfulfilledExposure100Units == [3, 4]`。
+- 第 14 步：`KnownTargetRemoved {EntryId 3, UnitId 4, SeenThrough}`，`UnfulfilledExposure100Units == [3]`；`Rising == false` 的事件不产生任何效果（另测：发 `Rising false` → 无事件）。
+- **子例（当夜改向命中待发波次）**：同上部署 + 波次 `w_wr { atGameSec 1, groups [{m_cm ×4, eE, spacing 0, direct, mode weighted_random}] }`（第 60 步生成）。第 10 步单位 3 达暴露度 100 时：`ceil(4 × 0.25) = 1`，`RetargetOverrides == [(WaveIndex 0, GroupIndex 0, Ordinal 0, UnitId 3, Pos (1000,1000))]`，`Exposure100RetargetedUnits == [3]`，`UnfulfilledExposure100Units == []`。第 60 步生成时：`Ordinal 0` 经 `SelectWeightedRandomOverride` 返回 `TargetChoice(PlayerUnit, (1000,1000), 0, 3)`（不消耗 `spawn` 随机数），`Ordinal 1..3` 返回 `null` 并走 `WeightedStructure()`。
 
-**T-04-04 被毁删除**：接 T-04-03 第 12 步后的状态，Order 10 替身第 20 步 `Remove(3)` 并发 `PlayerUnitDestroyed {UnitId 3, DefId fu_inst, Kind Fire}`。第 20 步事件：`KnownTargetRemoved {1, 3, Destroyed}`、`KnownTargetRemoved {2, 3, Destroyed}`（EntryId 升序）。`ScoutedPositions` 仍有 2 项。
+**T-04-04 被毁删除**：接 T-04-03 第 12 步后的状态，Order 10 替身第 20 步 `Remove(3)` 并发 `PlayerUnitDestroyed {UnitId 3, DefId "fu_inst", Category FireUnit, SourceThreatId 0, Pos (2000,1000)}`（A-2-05）。第 20 步事件：`KnownTargetRemoved {1, 3, Destroyed}`、`KnownTargetRemoved {2, 3, Destroyed}`（EntryId 升序）。`ScoutedPositions` 仍有 2 项，`UnfulfilledExposure100Units` 已移除 3。
 
 **T-04-05 淘汰**：`maxEntries = 2`，`kindWeights.radar = 1.0`、`air_defense = 1.0`、`reasonWeights.carried_in = 1.0`、`precision_exposure = 2.0`。带入 2 条（单位 3、5，都 `CarriedIn`）后，第 10 步单位 4 暴露度 100 ⇒ 事件依次 `KnownTargetRemoved {EntryId 1, UnitId 3, Evicted}`、`KnownTargetAdded {EntryId 3, UnitId 4, …}`（两条 `CarriedIn` 权重相同，淘汰 `EntryId` 较小者）。
 
 **T-04-06 试探：记录开火位置**
 波次 `w_probe { atGameSec 0.5, aiTags [probe], groups [{m_slow ×1, entry eE, direct, structure s2}] }`、`w_plain { atGameSec 0.5, groups [{m_slow ×1, entry eE, direct, structure s2}] }`。部署 `fu_inst (8000,5000)`（ID 3）。生成后 `w_probe` 的目标 ID = `tp`，`w_plain` 的 = `tn`。Order 7 替身在第 40 步发 `InterceptorLaunched {FireUnitId 3, ThreatId tn}`，第 41 步发 `{3, tp}`。
 - `probe.observeRadiusKm = 0`：第 40 步无清单事件；第 41 步 `KnownTargetAdded {EntryId 1, UnitId 3, fu_inst, AirDefense, ProbeFire, (8000,5000)}`。
-- `observeRadiusKm = 3`，且第 40 步时 `tp` 与单位 3 的距离 ≤ 3000（替身先把 `tp.Pos` 设为 `(9000,5000)`）：第 40 步即 `KnownTargetAdded {…, ProbeFire}`（条件 B）；第 41 步去重无事件。
+- `observeRadiusKm = 3`，且第 40 步时 `tp` 与单位 3 的距离 ≤ 3000（替身先把 `tp.Pos` 设为 `(9000,5000)` 并调用 `ThreatGrid.Rebuild(state)`，C-T1-08）：第 40 步即 `KnownTargetAdded {…, ProbeFire}`（条件 B）；第 41 步去重无事件。
 - `InterceptorLaunched {FireUnitId 0, …}`（战斗机）→ 无效果。
 
 ### 7.2 目标选择钩子
 
 > 钩子级测试：直接构造 `EnemyIntel.KnownTargets`（不检查不变量），直接调用 `EnemyAiHooks` 的方法。
 
-**T-04-07 已知目标加权选择（`SelectKnownTarget`）**
+**T-04-07 已知目标加权选择（`SelectKnownTarget`）与增量计数（C-T1-06）**
 清单：`E1 {UnitId 3, AirDefense, CarriedIn, (2000,2000)}`、`E2 {4, AirDefense, ProbeFire, (6000,2000)}`、`E3 {5, Radar, PrecisionExposure, (4000,8000)}`；请求 `TargetRequest(m_cm, Munition, "w", 0, 0, 0, (12000,5000))`。
 - 无在飞目标：权重 `[1.0, 1.5, 2.0]`，`W = 4.5`；`ScriptedRandom.NextDouble = [0.3]` ⇒ `r = 1.3499999999999999` ⇒ 返回 `TargetChoice(PlayerUnit, (6000,2000), 0, 4)`，恰好消耗 1 次。
-- 加入一个存活 `Threat { TargetKind PlayerUnit, TargetUnitId 4 }`：权重 `[1.0, 0.75, 2.0]`，`W = 3.75`；`[0.3]` ⇒ `r = 1.125` ⇒ `E2`；`[0.5]` ⇒ `r = 1.875` ⇒ `E3`（`(4000,8000)`, 5）。
+- 加入一个存活 `Threat { TargetKind PlayerUnit, TargetUnitId 4 }`（并登记至增量表 `AssignedByUnit`）：权重 `[1.0, 0.75, 2.0]`，`W = 3.75`；`[0.3]` ⇒ `r = 1.125` ⇒ `E2`；`[0.5]` ⇒ `r = 1.875` ⇒ `E3`（`(4000,8000)`, 5）。
 - 清单为空：返回 `null`，`ScriptedRandom` 序列为空也不抛异常（未消耗）。
-- 记录 `UnitId 0, Pos (8000,8000)` 且有一个存活 `Threat { TargetKind PlayerUnit, TargetUnitId 0, TargetPos (8000,8000) }`：该记录的分散计数为 1。
+- 记录 `UnitId 0, Pos (8000,8000)` 且有一个存活 `Threat { TargetKind PlayerUnit, TargetUnitId 0, TargetPos (8000,8000) }`：该记录经 `AssignedByPos` 的分散计数为 1。
+- 1000 个存活 `Threat` 批量生成、改向（`ClearThreatHoming`）、到达（`Phase = Arrived`）、拦截移除后，`AssignedByUnit` / `AssignedByPos` / `ArmAssignedByUnit` 增量表与全表扫描结果恒一致（不变量 12）。
 
 **T-04-08 防空模式（`SelectAirDefenseTarget`）**
-部署 `[fu_min (2100,1500), rad (4000,8000)]`（ID 3、4）；`StubEmitters`：单位 3 开机、`Exposure 30`，单位 4 开机、`Exposure 50`。清单：`E1 {3, AirDefense, CarriedIn, (2000,1500)}`、`E4 {0, Ew, CarriedIn, (5000,5000)}`。
+部署 `[fu_min (2100,1500), rad (4000,8000)]`（ID 3、4）；`StubEmitters`：单位 3 开机（`EntityKind.FireUnit`、`Exposure 30`），单位 4 开机（`EntityKind.Sensor`、`Exposure 50`）。清单：`E1 {3, AirDefense, CarriedIn, (2000,1500)}`、`E4 {0, Ew, CarriedIn, (5000,5000)}`。
 候选 = `[u3 (2100,1500) w 1.0, u4 (4000,8000) w 1.0]`（`E1` 因单位 3 正在开机被替换为实时位置；`E4` 类型为 Ew，排除）；`[0.6]` ⇒ `r = 1.2` ⇒ `TargetChoice(PlayerUnit, (4000,8000), 0, 4)`。`[0.4]` ⇒ `r = 0.8` ⇒ `TargetChoice(PlayerUnit, (2100,1500), 0, 3)`。
 
 **T-04-09 反辐射选择（`SelectArm`，不消耗随机数）**
@@ -1480,9 +1482,9 @@ for (i, ev) in StoryEvents.Events（数据顺序）:
 
 **T-04-21 网格放大**：`w = h = 100000, CellM 1000, MaxCells 400` ⇒ `CellM = 5960.4644775390625`（1000 × 1.25⁸），`Nx = Ny = 17`。`w = h = 30000`（20 km 地图 + 5 km 外扩）⇒ `CellM 1000, 30 × 30`。
 
-**T-04-22 `AdjustAvoidance` 端到端**
-部署 `fu_inst (5000,5000)`（ID 3）；`CarryIn.KnownTargets = [{fu_inst, (5000,5000), 80}]`（⇒ `Set1 = [(5000,5000), R 2500]`）。网格由 `EnemyIntelSystem.Initialize` 建立。
-- `AdjustAvoidance(req {m_cm, CM, A50Active false}, path [(−3000,4500), (9500,4500)])` ⇒ `[(−3000,4500), (1500,4500), (3500,2500), (6500,2500), (8500,4500), (9500,4500)]`（起点被钳到格 40）。
+**T-04-22 `AdjustAvoidance` 端到端与 `AStarCache`（C-T1-07）**
+部署 `fu_inst (5000,5000)`（ID 3）；`CarryIn.KnownTargets = [{fu_inst, null, (5000,5000), 80, false}]`（⇒ `Set1 = [(5000,5000), R 2500]`）。网格由 `EnemyIntelSystem.Initialize` 建立。
+- `AdjustAvoidance(req {m_cm, CM, A50Active false}, path [(−3000,4500), (9500,4500)])` ⇒ `[(−3000,4500), (1500,4500), (3500,2500), (6500,2500), (8500,4500), (9500,4500)]`（起点被钳到格 40）；`AStarCache` 已缓存 `(false, 40, 49)`，再次以相同起点格与终点格调用直接命中缓存返回相同航点，且 `RebuildAvoidance` 使 `AvoidanceGridVersion` 递增时 `AStarCache` 清空。
 - `path [(−3000,4500), (500,4500), (9500,4500)]`（有一个设计者航点）⇒ `[(−3000,4500), (500,4500), (1500,4500), (3500,2500), (6500,2500), (8500,4500), (9500,4500)]`。
 - `A50Active true` ⇒ `[(−3000,4500), (3500,1500), (6500,1500), (9500,4500)]`（`Set2` 半径 3000、代价 8）。
 - `maxWaypoints = 2` ⇒ 第一种情况变为 `[(−3000,4500), (1500,4500), (8500,4500), (9500,4500)]`。
@@ -1494,14 +1496,15 @@ for (i, ev) in StoryEvents.Events（数据顺序）:
 
 ### 7.6 猎杀与试探场景（WS01-019 场景 S-HUNT、S-PROBE）
 
-**T-04-25 S-HUNT：次夜定点打击打旧位置**
+**T-04-25 S-HUNT：次夜定点打击打旧位置与 `Priority` 优先（B-T3-05）**
 T-04-01 的部署与带入；波次 `w_hunt { atGameSec 1, aiTags [hunt], groups [{m_cm ×2, eE, spacing 0, direct, mode known_targets}] }`；`spawn` 子流替换为 `ScriptedRandom.NextDouble = [0.1, 0.9]`。
-候选权重：`E1 1.0、E2 1.0、E3 1.0`（`CarriedIn` × `air_defense / air_defense / radar`）。第 1 枚：`r = 0.30000000000000004` ⇒ `E1`：`TargetKind PlayerUnit, TargetPos (1000,1000)`（**不是**单位 3 的当前位置 `(1000,1200)`）、`TargetUnitId 3`。第 2 枚：`E1` 权重 0.5，`W = 2.5`，`r = 2.25` ⇒ `E3`：`TargetPos (3000,6000)`、`TargetUnitId 5`。
+- 默认 `Priority = false`：候选权重 `E1 1.0、E2 1.0、E3 1.0`（`CarriedIn` × `air_defense / air_defense / radar`）。第 1 枚：`r = 0.30000000000000004` ⇒ `E1`：`TargetKind PlayerUnit, TargetPos (1000,1000)`（**不是**单位 3 的当前位置 `(1000,1200)`）、`TargetUnitId 3`。第 2 枚：`E1` 权重 0.5，`W = 2.5`，`r = 2.25` ⇒ `E3`：`TargetPos (3000,6000)`、`TargetUnitId 5`。
+- **子例（`Priority = true`）**：若带入第 2 项设为 `Priority = true`（上一夜暴露度 100 未兑现），第 1 枚生成时因 `E2` 的 `Priority == true && assigned == 0`，候选池缩减为 `[E2]`，必选 `E2 (8000,8000)`；第 2 枚生成时 `E2` 已有 1 枚在途，候选池恢复为 `[E1, E2, E3]`。
 
 **T-04-26 S-PROBE：先试探、后打开火位置**
 T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, groups [{m_cm ×1, eE, direct, mode air_defense}] }`；没有开机的辐射源；`spawn` 为 `[0.5]`。第 41 步记录 `ProbeFire` ⇒ 第 120 步生成的目标 `TargetUnitId 3`、`TargetPos (8000,5000)`。不发第 41 步的 `InterceptorLaunched` ⇒ 清单为空 ⇒ 钩子返回 null ⇒ 01 回退 `weighted_random`（消耗 `0.5`：`r = 2.0 < 3` ⇒ `s1`）。
 
-**T-04-27 夜末带出**：单位暴露度 `fu_inst#3 = 70`、`rad#5 = 69.99`、`fake_l#6 = 90`（`SeenThrough true`）、`civ`（自动）= 100。`BuildCarryOut` ⇒ `[ {fu_inst, (1000,1200), 70} ]`。
+**T-04-27 夜末带出（含 `RosterId` 与 `Priority`，A-2-18 / B-T3-05）**：单位暴露度 `fu_inst#3`（`RosterId = "r3"`）= 70、`rad#5` = 69.99、`fake_l#6` = 90（`SeenThrough true`）、`civ`（自动）= 100。`BuildCarryOut` ⇒ `[ KnownTargetCarry("fu_inst", "r3", (1000,1200), 70.0, Priority: false) ]`。若 `fu_inst#3` 暴露度 = 100 且 `3 ∈ UnfulfilledExposure100Units`，则导出项 `Priority == true`。
 
 ### 7.7 部署状态机
 
@@ -1510,7 +1513,7 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 - 第 70 步：`Packing → Moving`；`Relocation.From == (1000,1000)`、`MoveStartTick 70`、`MoveEndTick 170`（`d/v = 100.0`）。
 - 第 100 步后 `Pos == (1000, 1600)`。
 - 第 170 步：`Pos == (1000,3000)`；`Moving → Deploying`；`DeployPhaseEndTick == 290`。
-- 第 290 步：`UnitDeployStateChanged {3, Deploying → Deployed, CompletedRelocation true, DestinationScouted false, null}`；`Relocation == null`、`DeployPhaseEndTick == −1`。
+- 第 290 步：`UnitDeployStateChanged {3, Deploying → Deployed, CompletedRelocation true, DestinationScouted false, null}`；`Relocation == null`、`DeployPhaseEndTick == −1`；`State.Commands.RelocationsCompleted == 1`，`CommandPointRules.BuildSummary(State).RelocationsCompleted == 1`（P42）。
 
 **T-04-31 `RelocateUnit` 到备用阵地**：部署 `fu_min (1000,1000)`（ID 3）。
 - `RelocateUnit {3, null, "alt_s"}`，第 5 步：撤收到 65；`d/v = 59.99999999999999` ⇒ 移动 60 步 ⇒ 到达 125；已勘察 ⇒ 展开 `120 × 0.5 = 60` ⇒ 第 185 步就绪，事件 `{…, CompletedRelocation true, DestinationScouted false, "alt_s"}`。第 95 步后 `Pos == (1500.0, 1000.0)`；第 124 步后 `Pos == (1983.3333333333335, 1000.0)`。
@@ -1539,7 +1542,7 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 
 **T-04-35 开火后转移请求**：`fu_min (1000,1000)`（ID 3），`Placement.AlternatePositionId = "alt_s"`。第 9 步结束后测试代码设 `PendingRelocationAltId = "alt_s"`：第 10 步 `Deployed → Packing`，**无** `CommandPointsChanged`，`Relocation.Kind == AutoAfterFiring`，字段已清空。另测：值为 `"alt_bad"` ⇒ 第 10 步字段清空、无事件；单位处于 `Packing` 时设置 ⇒ 清空、无事件。
 
-**T-04-36 侦察过的阵地**：T-04-31 第一条，但 `ScoutedPositions` 预先含 `(2050,1000)`（带入记录 `{fu_hours, (2050,1000), 80}`）⇒ 第 185 步事件 `DestinationScouted == true`。
+**T-04-36 侦察过的阵地**：T-04-31 第一条，但 `ScoutedPositions` 预先含 `(2050,1000)`（带入记录 `{fu_hours, null, (2050,1000), 80, false}`）⇒ 第 185 步事件 `DestinationScouted == true`。
 
 **T-04-37 其他拒绝**：`DeployUnit {0, "fu_inst", (1000,1000)}` ⇒ `NotAvailable`；`PackUnit {fake_l#n}` ⇒ `NotAvailable`；`PackUnit` 于 `Packing` 中 ⇒ `InvalidState`；`DeployUnit {3}` 于 `Deployed` ⇒ `InvalidState`。
 
@@ -1547,7 +1550,7 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 
 **T-04-40 合法方案**：`[fu_inst (1000,1000), fu_inst (4000,4000) alt "alt_s", fu_min (1000,5000), fake_l (7000,7000), fu_hours (7000,8000)]` ⇒ `Validate` 返回空列表（`fake_l` 没有机动类型，不受 `zone_b` 的 `allowedMobility` 限制；`fu_hours` 是 `vehicle`，允许）。
 
-**T-04-41 错误收集**：方案
+**T-04-41 错误收集与单点检查 `CheckPlacement`（A-2-15）**：方案
 `[0] fu_inst (1000,1000)`、`[1] nope (1000,1000)`、`[2] fu_inst (2500,2500)`、`[3] fu_inst (1000,3000)`、`[4] fu_min (7000,7000)`、`[5] rad (5750,5000)`、`[6] fake_l (1000,9000) alt "alt_bad"`、`[7] ew1 (1000,1000)`、`[8] rad (12000,5000)`。
 `Validate` 返回（顺序与字符串精确）：
 ```
@@ -1562,6 +1565,7 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 [D_OUT_OF_MAP] deployment.units[8] rad: 位置 (12000, 5000) 在地图外
 ```
 `SimWorld.Create` 以此方案 ⇒ `SimSetupException`，`Message` = 上述 9 行以 `\n` 连接。
+`DeploymentValidator.CheckPlacement(level, plan, replaceIndex: 0, plan.Units[0]) == null`；`CheckPlacement(level, plan, replaceIndex: 2, plan.Units[2])` 返回 `D_FORBIDDEN_ZONE` 错误。
 
 **T-04-42 自动单位与设置**：`[civ (1000,1000)]` ⇒ `[D_AUTOMATIC_UNIT] deployment.units[0] civ: 自动生效的单位不能部署`。`fu_min` 设置 `EmissionPolicyId "nope"` ⇒ `[D_POLICY] deployment.units[0] fu_min: 未知辐射策略 "nope"`；`CheckAvailable` 替身返回 `NotAvailable` ⇒ `[D_POLICY] deployment.units[0] fu_min: 辐射策略 "silent_standby" 不可用：NotAvailable`。`rad` 设置 `LurePoint (1,1)` ⇒ `[D_LURE_POINT] …`。
 
@@ -1571,7 +1575,7 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 
 **T-04-51 其他规格的处理者遵守约定**：`Points 0` 时 `SetEmissionPolicy {fu_min#3, "always_on"}` ⇒ `CommandRejected {NoCommandPoints}`；`SetEmissionPolicy {999, …}` ⇒ `UnknownEntity`。`Points 1`：`SetAirRaidAlert {On true}` 成功后点数 0。
 
-**T-04-52 初始点数**：`CarryIn.BonusCommandPoints = 1` ⇒ `Points == InitialPoints == 5`；快照 `GlobalView.CommandPoints == 5`。`level.commandPointsPerNight = 7`（economy `[3, 6]`）⇒ 加载 `[E_RANGE] levels/mini/level.json $.commandPointsPerNight: 取值 7 超出范围 economy.commandPointsPerNight [3, 6]`。
+**T-04-52 初始点数与加成钳制（A-2-18）**：`CarryIn.CommandPointsBonus = 1` ⇒ `Points == InitialPoints == 5`；快照 `GlobalView.CommandPoints == 5`。`CarryIn.CommandPointsBonus = 5`（`level.commandPointsPerNight = 4`，`economy [3, 6]`）⇒ 钳制后 `Points == InitialPoints == 6`。`level.commandPointsPerNight = 7`（economy `[3, 6]`）⇒ 加载 `[E_RANGE] levels/mini/level.json $.commandPointsPerNight: 取值 7 超出范围 economy.commandPointsPerNight [3, 6]`。
 
 ### 7.10 二选一（WS01-021）
 
@@ -1594,13 +1598,13 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 
 **T-04-71 按时间触发**：`{ev3, at_game_sec 0.5, [dialogue …]}` ⇒ 第 30 步触发。`gameSec 0` ⇒ 第 1 步。`gameSec 30`（1800 步 > 1200）⇒ 永不触发。
 
-**T-04-72 被毁 / 波次触发**：`{ev4, structure_destroyed ref s1, [dialogue …]}`；Order 10 替身第 40 步发 `StructureDestroyed {StructureId 1}` ⇒ 第 41 步触发；第 50 步再发 ⇒ 不再触发。`ref` 缺省、替身发 `StructureDestroyed {2}` ⇒ 触发。`{ev5, unit_destroyed ref fu_inst}` 收到 `PlayerUnitDestroyed {DefId "fu_min"}` ⇒ 不触发；`{DefId "fu_inst"}` ⇒ 下一步触发。`{ev6, wave_spawned ref w1}` ⇒ `WaveStarted {w1}` 的下一步触发。
+**T-04-72 被毁 / 波次触发**：`{ev4, structure_destroyed ref s1, [dialogue …]}`；Order 10 替身第 40 步发 `StructureDestroyed {StructureId 1}` ⇒ 第 41 步触发；第 50 步再发 ⇒ 不再触发。`ref` 缺省、替身发 `StructureDestroyed {2}` ⇒ 触发。`{ev5, unit_destroyed ref fu_inst}` 收到 `PlayerUnitDestroyed {UnitId 3, DefId "fu_min", Category FireUnit, SourceThreatId 0, Pos (1000,1000)}` ⇒ 不触发；`{UnitId 3, DefId "fu_inst", Category FireUnit, SourceThreatId 0, Pos (1000,1000)}` ⇒ 下一步触发。`{ev6, wave_spawned ref w1}` ⇒ `WaveStarted {w1}` 的下一步触发。
 
 **T-04-73 追加波次与 `AllClear`**：`waves [w_story {atGameSec 5, groups [{m_cm ×1, eE, direct, structure s1}]}]`；`events [{ev7, at_game_sec 2, [spawn_wave w_story]}]`；`EndWhenClear = true`。第 1–119 步夜晚不结束（`HasPendingScheduledSpawn`）；第 120 步阶段 0 后 `State.Waves.Injections == [WaveInjection("w_story", 120.0, null)]`，同一步第 1 步生成目标（`ThreatSpawned AtSec 120.0`，`WaveStarted { Injected true }`）。`w_story` 不在第 300 步自动生成（01 3.1.1）。
 
 **T-04-74 剧情二选一**：`{ev8, at_game_sec 1, [choice "choice.mini.c1"]}` ⇒ 第 60 步 `ChoiceRequested {Kind Story, OptionCount 2, DefaultOption 0, DeadlineTick 120, SubjectUnitId 0, SubjectTrackId 0, StoryEventId "ev8"}`；第 120 步 `ChoiceResolved {…, 0, TimedOut true}`，`StoryChoiceResults == [("ev8", "choice.mini.c1", 0, true)]`。`timeoutGameSec 0.25, defaultOption 1` ⇒ `DeadlineTick 75`、`DefaultOption 1`。存在未决自动二选一时剧情二选一照常生成。
 
-**T-04-75 警报动作**：`{ev9, at_game_sec 1, [set_alert]}` ⇒ 第 60 步 `SpyCivil` 记录 `SetAlert(on true, Story)` 一次；若第 59 步已由命令拉响 ⇒ 无调用；无 `CommandPointsChanged`。
+**T-04-75 警报动作（含 `on: false`，B-T2-101）**：`{ev9, at_game_sec 1, [set_alert]}` ⇒ 第 60 步 `SpyCivil` 记录 `SetAlert(on true, Story)` 一次；若第 59 步已由命令拉响 ⇒ 无调用；无 `CommandPointsChanged`。子例：`{ev10, at_game_sec 1, [set_alert {on: false}]}` 在 `Civil.AlertOn == true` 时调用 `SetAlert(on false, Story)` 一次，在 `Civil.AlertOn == false` 时无调用。
 
 **T-04-76 剧情校验**：`ev7` 引用的 `w_x` 只在第 2 夜存在，`NightIndex = 1` ⇒ `SimSetupException`：`[E_UNKNOWN_REF] levels/mini/events.json $.events[0].actions[0].wave: 引用的 波次 "w_x" 不存在`。`NightIndex = 2` ⇒ 正常。
 
@@ -1614,114 +1618,59 @@ T-04-06 的设置（`observeRadiusKm 0`）+ 波次 `w_strike { atGameSec 2, grou
 
 ---
 
-## 8. 待决问题
+## 8. 审阅决议归档与跨模块接口汇总
 
-### 8.1 需要人决定的规则问题
+### 8.1 原待决规则问题决议（D2b 已全部结案）
 
-| # | 问题 | 背景 | 建议默认值（理由） |
+| # | 问题 | 决议（2026-10-17） | 依据 |
 |---|---|---|---|
-| Q-A1 | 暴露度 100 "当夜即遭定点打击"：是否由 AI 在波次之外**动态追加**打击？ | 数值表 3.4 只写后果；本文件只把单位放进清单，打击要靠关卡里的 `known_targets` / `air_defense` 组。关卡若没有这类组，100 无后果 | 本版本不动态追加（保持"波次由设计者控制数量"，避免 AI 凭空增加敌人）。若需要：新增 `rules/enemy_ai.json` 的 `precisionStrike { munitionId, count, delayGameSec, entryPolicy: nearest }`，在清单加入 `PrecisionExposure` 记录后注入一个 1 组的动态波次 |
-| Q-A2 | `hunt` 标签是否应自动把本波 `weighted_random` 组改为打已知目标 | GDD 7.4 只说"进入清单、次夜遭定点打击" | 不自动改（K4）：目标方式由 `target.mode` 显式表达，标签只用于校验 / 显示；避免同一信息两处表达 |
-| Q-A3 | "试探"如何判定"看到开火" | GDD："记录哪里有防空开火" | 条件 A（开火针对的是试探波目标）+ 条件 B（试探波存活目标在 `observeRadiusKm = 3` 内）；被观察的火力单元以开火位置入单（原因权重 1.5） |
-| Q-A4 | "压制"的放行条件 | GDD："用反辐射导弹逼玩家关机，主力趁机突防；即使没打中也算成功" | 非反辐射组推迟；本波反辐射导弹瞄准的单位**关机或被毁** → 成功；最少推迟 15 s、最多 120 s；导弹全部消失也放行 |
-| Q-A5 | "饱和"是否允许 AI 改变进入点 | GDD："同一时刻从多方向集中到达" | 不改进入点（方向由设计者给）；只重排生成时刻，30 s 时间窗内到达。估计飞行时间不含绕行、俯冲加速 |
-| Q-A6 | "绕行"是否覆盖设计者给的航点 | `test_01` 的 `w3` 同时有河谷航点与 `bypass` 标签 | 保留设计者航点，只重算最后一段（最后航点 → 目标）；直飞则整段重算 |
-| Q-A7 | A‑50 存活时未标 `bypass` 的巡航导弹是否也绕行 | 数值表 2.3："存活期间敌方巡航导弹绕开防空圈" | 是（`appliesToUntagged = true`），并且半径 × 1.2、代价 × 2、额外绕开暴露度 ≥ 40 的防空单位（敌方预警机看得更清楚）。这些倍率是手感参数 |
-| Q-A8 | 敌方是否知道清单中单位的**类型**（用于防空圈半径） | 绕行需要半径 | 知道（记录 `UnitDefId`，简化）；假发射车按 `fakeLauncherAssumedRangeKm = 10`。替代：只按"防空"统一半径 |
-| Q-A9 | 假发射车"吸引伊斯坎德尔、Lancet"是否只对这些弹药生效 | `deception.json` 的 `attracts: [recon, iskander, lancet]` | 不区分弹药：假发射车与真火力单元一样进入清单、一样被 `known_targets` / `air_defense` 选中；`attracts` 仅供界面说明 |
-| Q-A10 | 反辐射导弹没有开机目标时打什么 | 数据没有规定 | 依次：最后已知的雷达 / 电子战 / 防空记录 → 回退 `weighted_random`（打保护目标） |
-| Q-A11 | 敌方选择是否可以读取暴露度 | 信息边界 | 可以（K3：暴露度就是敌方定位程度的抽象）；除 1.1.4 外不读其他真值 |
-| Q-A12 | 跨关"敌人适应"（GDD 13.4） | WS05-006 | 不在本文件；05 通过修改波次数据 / `CarryIn` 实现 |
-| Q-D1 | 夜间能否从预备队部署新单位（00 Q17） | GDD 5.2 未列"新部署" | 不允许（`DeployUnit {UnitId 0}` → `NotAvailable`）；`DeployUnit` 只用于已撤收单位原地展开 |
-| Q-D2 | 移动沿道路还是直线；途经禁区（河流）如何处理 | `layers.json` 有道路，但数据没有路网速度 | 直线、匀速、只检查目的地。替代：沿 `roads` 的最短路（需要路网拓扑与桥梁数据，WS02） |
-| Q-D3 | 探测 / 电子战单位能否夜间转移 | 两者没有 `moveSpeedKmh` | 只能原地撤收 / 展开；如需转移，给 `sensors.json`、`ew.json` 加 `moveSpeedKmh` 与 `deployTier` |
-| Q-D4 | 欺骗单位能否撤收 / 移动 | `deception.json` 没有部署字段 | 不能 |
-| Q-D5 | 没有 `mobility` 字段的单位如何对待部署区的 `allowedMobility` | 只有 `air_defense.json` 有 `mobility` | 不受限制（任何部署区都可放）。替代：视为 `portable` |
-| Q-D6 | `MoveUnit` 与 `RelocateUnit` 的区别 | GDD 5.2："调动机动单位（火力组、拦截无人机班组）"、"紧急转移（仅展开时间按分钟计的系统）" | `MoveUnit`：`instant` 档，任意合法点；`RelocateUnit`：`instant` / `minutes` 档，可去备用阵地（已勘察：展开 × 0.5、无新阵地惩罚）。小时档（NASAMS、Patriot、Hawk……）夜间不能转移 |
-| Q-D7 | "开火后转移到备用阵地"（02 的触发规则）是否受部署档限制、是否耗指挥点 | 战前预设 | 不受部署档限制（玩家战前自选）、不耗指挥点 |
-| Q-D8 | 原地撤收（`PackUnit`）有什么用、是否耗点 | GDD 未列 | 用于让单位停止辐射 / 隐蔽（之后可原地展开或转移）；耗 1 点，原地展开 0 点 |
-| Q-C1 | 各指挥点操作的消耗 | GDD 5.2 列了 6 类操作、未给点数；数据只有支援的点数 | 1.2 表：每次 1 点；支援按 `support.json`；`SetFighterZone` 0（03 Q-S7）；回答二选一 0；警报拉响 / 解除各 1 |
-| Q-C2 | 支援被拒绝时是否退还指挥点 | 03 Q-S8 | 退还（03 已按此实现，调用 `Refund`） |
-| Q-C3 | 自动二选一的超时如何处理 | GDD："超时按默认" | 默认 = 单位预设的触发规则；超时**不改变**任何状态（02 已按预设执行）。替代：超时强制执行默认选项的效果（对"完成当前拦截后关机"会变成立即关机） |
-| Q-C4 | 二选一的选项效果是否耗指挥点 | GDD 未说明 | 不耗 |
-| Q-C5 | 自动二选一的触发条件参数 | GDD 示例："反辐射导弹接近 Buk‑2 阵地，同时 3 枚巡航导弹正进入其扇区" | 至少 1 个"大致"以上的 CM / SCM 航迹在该单位射程内；超时 30 s；同时最多 1 个；硬核模式（`AutoChoicePrompts = false`）不弹出 |
-| Q-C6 | 难度如何影响二选一 | GDD 14：普通"关键时刻弹出二选一"、硬核"提示更少" | `SimConfig.AutoChoicePrompts`：叙事 / 普通 true，硬核 false；剧情二选一不受影响 |
-| Q-S1 | `set_alert` 动作没有"开 / 关"字段 | Schema 只有类型 | 视为"拉响"；若需要解除，Schema 增加 `on` 布尔（缺省 true） |
-| Q-S2 | 剧情二选一的选项没有效果定义 | Schema 只有 `choiceKey / timeoutGameSec / defaultOption` | 本版本只记录结果（`StoryChoiceResults` → `CarryOut`），由 05 / 叙事使用；若需要夜内效果，Schema 增加 `options[].actions` |
-| Q-S3 | 剧情二选一的选项数 | GDD 只有"二选一" | 2（`storyChoice.optionCount`） |
-| Q-S4 | 事件驱动的触发器晚一步 | 阶段 0 只能读上一步事件 | 接受（1 世界秒的延迟不可感知） |
+| Q-A1 | 暴露度 100 "当夜即遭定点打击" | **已决（2026-10-17）**：不凭空生成新敌人；加入当夜 `KnownTargets`（`precision_exposure = 3.0`），并从当夜剩余待发波次中把原本打 `weighted_random` 的组按 `retargetFrac = 0.25`（优先 `preferAttracts` 弹药）改向至该单位位置（每单位每夜最多触发一次当夜改向）；若当夜已无匹配待发波次，则在 `CarryOut.KnownTargets` 标记 `Priority = true` 由次夜优先打击 | B-T3-05 / B-T2-90 |
+| Q-A2 | `hunt` 标签是否自动把 `weighted_random` 改为已知目标 | **已决（2026-10-17）**：不自动改（K4），目标方式由 `target.mode` 显式表达，`hunt` 标签用于校验与复盘显示 | B-T2-88 |
+| Q-A3 | "试探"如何判定"看到开火" | **已决（2026-10-17）**：条件 A（开火针对试探波目标）+ 条件 B（试探波存活目标在 `observeRadiusKm = 3` 内，经 `ThreatGrid.QueryCircle` 查询）；被观察火力单元以开火位置入单（权重 1.5） | B-T2-89 / C-T1-08 |
+| Q-A4 | "压制"的放行条件 | **已决（2026-10-17）**：非反辐射组推迟；本波反辐射导弹瞄准的单位关机或被毁 → 成功；最少推迟 15 s、最多 120 s；反辐射导弹全部消失也放行 | B-T2-91 |
+| Q-A5 | "饱和"是否允许 AI 改变进入点 | **已决（2026-10-17）**：不改进入点；只重排生成时刻，在 30 s 时间窗内到达 | B-T2-92 |
+| Q-A6 | "绕行"是否覆盖设计者航点 | **已决（2026-10-17）**：保留设计者航点，只重算最后一段（最后航点 → 目标）；直飞则整段重算 | B-T2-93 |
+| Q-A7 | A‑50 存活时未标 `bypass` 的巡航导弹是否也绕行 | **已决（2026-10-17）**：是（`appliesToUntagged = true`），且防空圈半径 × 1.2、代价 × 2、额外绕开暴露度 ≥ 40 的防空单位 | B-T2-94 |
+| Q-A8 | 敌方是否知道清单中单位的类型（用于防空圈半径） | **已决（2026-10-17）**：知道（记录 `UnitDefId`）；假发射车按 `fakeLauncherAssumedRangeKm = 10` | B-T2-95 |
+| Q-A9 | 假发射车 `attracts` 字段用途 | **已决（2026-10-17）**：假发射车与真火力单元同样进入清单并被选中；`attracts` 供界面说明与暴露度 100 改向的弹药偏好参考 | B-T2-96 |
+| Q-A10 | 反辐射导弹没有开机目标时打什么 | **已决（2026-10-17）**：依次回退最后已知的雷达 / 电子战 / 防空记录 → 回退 `weighted_random`（打保护目标） | B-T2-97 |
+| Q-A11 | 敌方选择是否可以读取暴露度 | **已决（2026-10-17）**：可以（K3：暴露度是敌方定位程度的抽象）；除 1.1.4 外不读其他真值 | B-T2-98 |
+| Q-A12 | 跨关"敌人适应"（GDD 13.4） | **已决（2026-10-17）**：归 05，通过修改波次数据 / `CarryIn` 实现 | B-T2-99 |
+| Q-D1 | 夜间能否从预备队部署新单位 | **已决（2026-10-17）**：不允许（`DeployUnit {UnitId 0}` → `NotAvailable`）；`DeployUnit` 仅用于已撤收单位原地展开 | B-T2-11 |
+| Q-D2 | 移动沿道路还是直线；途经禁区如何处理 | **已决（2026-10-17）**：M1/M2 采用直线、匀速、只检查目的地合法性 | B-T3-06 |
+| Q-D3 | 探测 / 电子战单位能否夜间转移 | **已决（2026-10-17）**：只能原地撤收 / 展开 | B-T2-100 |
+| Q-D4 | 欺骗单位能否撤收 / 移动 | **已决（2026-10-17）**：不能 | B-T2-100 |
+| Q-D5 | 没有 `mobility` 字段的单位如何对待 `allowedMobility` | **已决（2026-10-17）**：不受限制（任何部署区都可放） | B-T2-100 |
+| Q-D6 | `MoveUnit` 与 `RelocateUnit` 的区别 | **已决（2026-10-17）**：`MoveUnit` 限 `instant` 档去任意合法点；`RelocateUnit` 限 `instant` / `minutes` 档，可去备用阵地（已勘察展开 × 0.5、无新阵地惩罚）；`hours` 档夜间不可转移 | B-T2-100 |
+| Q-D7 | "开火后转移到备用阵地"是否受部署档限制、是否耗点 | **已决（2026-10-17）**：不受部署档限制、不耗指挥点 | B-T2-100 |
+| Q-D8 | 原地撤收（`PackUnit`）的作用与消耗 | **已决（2026-10-17）**：用于让单位停止辐射 / 隐蔽；撤收耗 1 点，原地展开 0 点 | B-T2-100 |
+| Q-C1 | 各指挥点操作的消耗 | **已决（2026-10-17）**：按 1.2 表（每次 1 点；支援按 `support.json`；`SetFighterZone` 0 点；回答二选一 0 点；警报拉响 / 解除各 1 点） | B-T2-78 / B-T2-100 |
+| Q-C2 | 支援被拒绝时是否退还指挥点 | **已决（2026-10-17）**：命令拒绝阶段不扣点；若阶段 0 后需退还则调用 `CommandPointRules.Refund` | B-T2-79 |
+| Q-C3 | 自动二选一的超时如何处理 | **已决（2026-10-17）**：默认选项 = 单位预设的触发规则；超时不改变状态（02 已按预设执行） | B-T2-100 |
+| Q-C4 | 二选一的选项效果是否耗指挥点 | **已决（2026-10-17）**：不耗点 | B-T2-100 |
+| Q-C5 | 自动二选一的触发条件参数 | **已决（2026-10-17）**：至少 1 个"大致"以上的 CM / SCM 航迹在该单位射程内；超时 30 世界秒；同时最多 1 个；硬核模式不弹出 | B-T2-100 / C-T3-01 |
+| Q-C6 | 难度如何影响二选一 | **已决（2026-10-17）**：`SimConfig.AutoChoicePrompts`（叙事 / 普通 `true`，硬核 `false`）；客户端表现层在叙事 / 普通自动暂停、硬核降为 1/60× 慢放；剧情二选一不受影响 | B-T2-100 / C-T3-01 |
+| Q-S1 | `set_alert` 动作的开 / 关字段 | **已决（2026-10-17）**：`StoryActionDef` 增加可选 `bool? On`（`[JsonPropertyName("on")]`，缺省 `null` 视为 `true`） | B-T2-101 |
+| Q-S2 | 剧情二选一的选项效果 | **已决（2026-10-17）**：记录结果（`StoryChoiceResults` → `CarryOut`），由 05 / 叙事使用 | B-T2-102 |
+| Q-S3 | 剧情二选一的选项数 | **已决（2026-10-17）**：2（`storyChoice.optionCount`） | B-T2-103 |
+| Q-S4 | 事件驱动的触发器晚一步 | **已决（2026-10-17）**：接受（阶段 0 读取上一步事件，1 世界秒延迟不可感知） | B-T2-104 |
 
-### 8.2 需登记到 00_core
+### 8.2 与 `00_core` 的定稿对齐摘要
 
-**A. 实体 / 公共字段（00 2.3、2.4）**
+- **实体与公共字段（00 §2.3、§2.4）**：`PlayerUnitCommon` 含 `DeployPhaseEndTick`、`Relocation`（`RelocationOrder?`）、`PendingRelocationAltId`；`ChoiceRequest`（`EntityKind 11`）以 `EntityHeader.CreatedTick` 为唯一创建时刻字段（A-3-01）。
+- **单例组件与阶段 0（00 §2.5、§3.4）**：`CommandState`（含 `RelocationsCompleted`，P42）、`EnemyIntelState`（含 `RetargetOverrides`、`Exposure100RetargetedUnits`、`UnfulfilledExposure100Units`、增量计数表与 `AvoidanceGridVersion` / `AStarCache`）；阶段 0 固定顺序 `DeploymentStage.Run` → `ChoiceStage.Run` → `StoryStage.Run`。
+- **`AllClear`（00 §3.5）**：包含 `State.EnemyIntel.HeldWaves.Count == 0 && !StoryRules.HasPendingScheduledSpawn(ctx)`。
+- **事件与命令（00 §4.2、§4.3）**：事件 400–408 及命令 400–404 签名均与 00 定稿一致。
+- **数据与加载器（00 §1.1、§1.2、§1.6）**：`rules/enemy_ai.json`（序号 23）、`rules/commands.json`（序号 24）及 `RulesSet.EnemyAi` / `RulesSet.Commands` 已登记。
+- **跨夜与结算接口（00 §2.6、03 §2.6、05 §1.2）**：`CarryIn.KnownTargets`、`CarryIn.CommandPointsBonus`（A-2-18）；`KnownTargetCarry(string UnitDefId, string? RosterId, Vec2 Pos, double Exposure, bool Priority = false)`；`NightResult.CarryOut.KnownTargets`、`NightResult.CarryOut.StoryChoiceResults`、`NightResult.CommandSummary`（含 `RelocationsCompleted`）。
 
-| 表 / 实体 | 新增 | 说明 |
-|---|---|---|
-| `PlayerUnitCommon` | `DeployPhaseEndTick`（`int`）、`Relocation`（`RelocationOrder?`）——位于 `DeployState` 之后 | 04 2.1；`RelocationKind` enum |
-| `ChoiceRequest`（`EntityKind 11`） | `Kind, ChoiceKey, OptionCount, DefaultOption, CreatedTick, DeadlineTick, SubjectUnitId, SubjectTrackId, StoryEventId`；enum `ChoiceKind { ArmVsCruise = 0, Story = 1 }` | 04 2.2 |
+### 8.3 与 01–07 的跨模块接口契约（已定稿）
 
-**B. 单例组件与阶段 0**
-- `CommandState`、`EnemyIntelState` 字段（2.3、2.4）；类型 `KnownTarget`、`HeldWave`、`AvoidanceSite`、`AvoidanceGrid`（不哈希）、`StoryChoiceResult`；enum `KnownTargetKind`、`KnownTargetReason`、`KnownTargetRemovedReason`、`ReleaseCause`。
-- 00 3.4 的 `CommandStageHooks()` 定稿为：`DeploymentStage.Run` → `ChoiceStage.Run` → `StoryStage.Run`（04 3.1）。
-- 00 3.2 第 10 步：命令处理者的收集范围包含阶段 0 组件 `CommandStage`（处理 400–404）。`CommandStage.Initialize(ctx)` 在第 9 步系统 `Initialize` 之后调用（剧情校验 3.8.4、指挥点初值）。
-
-**C. `AllClear`（00 3.5）**：追加 `State.EnemyIntel.HeldWaves.Count == 0 && !StoryRules.HasPendingScheduledSpawn(ctx)`（04 3.9；回应 01 B12）。
-
-**D. 子流表（00 3.1.4）**：`enemy_ai` 用途改为"预留（本版本不消耗；已知目标选择经 01 钩子使用 `spawn`）"；`command` 用途改为"预留（本版本不消耗）"。
-
-**E. 事件（00 4.2）**
-
-| 值 | 事件 | 定稿字段 |
-|---|---|---|
-| 400 | `KnownTargetAdded` | `int EntryId, int UnitId, string UnitDefId, KnownTargetKind Kind, KnownTargetReason Reason, Vec2 Pos` |
-| 401 | `KnownTargetRemoved` | `int EntryId, int UnitId, KnownTargetRemovedReason Reason` |
-| 402 | `ChoiceRequested` | 追加 `ChoiceKind Kind, int OptionCount, int SubjectUnitId, int SubjectTrackId, string? StoryEventId`（顺序见 4.1） |
-| 403 | `ChoiceResolved` | 追加 `bool Cancelled`；取消时 `Option = −1` |
-| 404 | `CommandPointsChanged` | 追加 `SimCommandType Cause` |
-| 405 | `UnitDeployStateChanged` | 追加 `bool CompletedRelocation, bool DestinationScouted, string? DestinationAlternatePositionId`（与 02 8.2 D 一致） |
-| 407 | `DialogueShown` | 追加 `string StoryEventId` |
-| 408 | **新增** `EnemyGroupsReleased` | `string WaveId, int HeldGroupCount, ReleaseCause Cause` |
-
-**F. 命令（00 4.3）**：`DeployUnit { int UnitId, string? UnitDefId, Vec2? Pos }`、`PackUnit { int UnitId }`、`MoveUnit { int UnitId, Vec2 Dest }`、`RelocateUnit { int UnitId, Vec2? Dest, string? AlternatePositionId }`、`AnswerChoice { int ChoiceId, int Option }`。拒绝原因：无新增。
-
-**G. 数据（00 1.1 文件表、1.6 `RulesSet`；需人批准，WS06 更新 data 与 Schema）**
-
-| 顺序建议 | 文件 | C# | 说明 |
+| # | 对方 | 接口 / 契约 | 状态 |
 |---|---|---|---|
-| 23 | ★ `rules/enemy_ai.json`（`kind: enemy_ai`） | `EnemyAiRulesDef`（1.1.1） | 新文件；`rules.schema.json` 的 `kind` 枚举追加 |
-| 24 | ★ `rules/commands.json`（`kind: commands`） | `CommandRulesDef`（1.2） | 新文件 |
+| B-01 | 01 | `IEnemyAiHooks`（`DeferGroup`、`SaturationSpawnTimes`、`SelectKnownTarget`、`SelectAirDefenseTarget`、`SelectWeightedRandomOverride`、`AdjustAvoidance`）与 `EnemyAiQueries.AvoidanceActive(ctx)` | 已对齐（A-2-10 / B-T3-05） |
+| B-02 | 02 | `EmissionChoiceEffects.ApplyArmChoice(SimContext ctx, int unitId, bool silence)`、`EmissionPolicyRules.CheckAvailable`、`EmitterQueries.ListActive`（含 `EntityKind`） | 已对齐（A-2-11 / A-2-25 / A-3-05） |
+| B-03 | 03 | `CommandPointRules`（`CostOf`、`CanSpend`、`Spend`、`Refund`、`BuildSummary`）、`CivilRules.SetAlert`、`WeaponParams.RangeFor` / `MaxRangeAgainst` | 已对齐（A-2-17 / A-2-30 / A-3-09 / P42） |
+| B-05 | 05 | `DeploymentValidator.Validate(level, plan)` 与 `DeploymentValidator.CheckPlacement(level, plan, replaceIndex, candidate)`、`CarryIn` / `CarryOut` | 已对齐（A-2-15 / A-2-18） |
+| B-06 | 06 | 客户端在存在 `ChoiceRequest` 时按难度暂停（叙事 / 普通）或 1/60× 慢放（硬核）；`EnemyKnownTargets` 视图仅调试 / 复盘显示 | 已对齐（C-T3-01） |
 
-（01 已登记 21、22。T-00-35 的 `LoadedFiles.Count` 再加 2。）`RulesSet` 追加 `EnemyAi`、`Commands`。数据模型：`AirDefenseUnitDef.DeployTier` 的 enum `DeployTier`；`DeployDef` 等已在 00。
-
-**H. 加载器追加校验（00 1.2）**：1.1.1 的范围检查；1.2 的 `commandPointCosts` 键规则与 `commandPointsPerNight ∈ economy 范围`；1.4 的 `events.json` 动作 / 触发器必填字段与引用检查（`E_UNKNOWN_REF` 类别新增使用 `单位`、`保护目标`、`波次`，均已存在）。
-
-**I. `SimConfig` / `CarryIn` / `NightResult`**
-- `SimConfig.AutoChoicePrompts`（`bool`，缺省 true；参与回放配置）。
-- `CarryIn.KnownTargets`（`IReadOnlyList<KnownTargetCarry>?`）、`CarryIn.BonusCommandPoints`（`int?`）——字段归 05，类型 `KnownTargetCarry(string UnitDefId, Vec2 Pos, double Exposure)` 由 04 定义。
-- `NightResult.CarryOut` 追加 `KnownTargets`（`EnemyIntelRules.BuildCarryOut`）、`StoryChoiceResults`；`NightResult` 追加 `CommandSummary { InitialPoints, SpentTotal, RefundedTotal, ChoicesRequested, ChoicesAnswered, ChoicesTimedOut, ChoicesCancelled }`（由 03 的 `BuildResult` 调用 04 的只读函数填写）。
-
-**J. 快照（00 2.7）**：2.5 的视图字段。
-
-**K. 公共工具 / 项目结构（00 0.5）**：`sim/Commands/`（`CommandStage`、`DeploymentStage`、`ChoiceStage`、`StoryStage`、`CommandPointRules`、`DeploymentValidator`、`DeploymentRules`、`StoryRules`）；`sim/EnemyAi/`（`EnemyAiHooks`（01 接口的正式实现）、`EnemyBelief`、`EnemyIntelRules`、`BypassPlanner`）；`sim/Systems/EnemyIntelSystem.cs`。
-
-### 8.3 与其他规格的边界
-
-| # | 对方 | 事项 | 本文件的假设 / 要求 |
-|---|---|---|---|
-| B-01 | 01 | 钩子签名扩展与生成层配合（3.3.0 的 5 条） | `TargetRequest` / `AvoidanceRequest` 参数；绕行条件改为"`bypass` 标签或 A‑50"；`ExpandWave` 支持 `DeferGroup` 与 `GroupIndices`；`StartsWave` 取第一个实际展开项；饱和时刻钩子；`WaveInjection.GroupIndices`。01 Q11 原定"本文件不解释 aiTags，04 自动化时经注入 / 钩子实现"——本文件即按此提出 |
-| B-01b | 01 | `TargetChoice(PlayerUnit, Pos, 0, UnitId = 0)` | 带入记录未匹配到单位时 `UnitId = 0`：弹药飞向记录位置、按位置结算伤害（03） |
-| B-01c | 01 | 钩子在 01 `Initialize` 中被调用（`DeferGroup`、`SaturationSpawnTimes`）时，04 的 `Initialize` 尚未执行 | `DeferGroup` 是纯数据函数；`SaturationSpawnTimes` 此时清单为空，估计退化为保护目标质心（3.3.4） |
-| B-02 | 02 | `EmissionChoiceEffects.ApplyArmChoice(SimState, int unitId, bool silence)` | 二选一的落地方式（3.7.3）；与 02 8.3 的"走命令"建议不同，理由见 3.7.3，需 02 确认 |
-| B-02b | 02 | `EmissionPolicyRules.CheckAvailable` 需接受单位定义 ID（部署前没有实体） | 3.5.3 第 9 行 |
-| B-02c | 02 | `DeployState != Deployed` 时探测单位不探测、电子战单位无效果 | 02 的辐射源已按 `Desired` 第 1 条关机；非辐射源（被动传感器、无火控的火力单元）同样需要 02 / 03 检查 `DeployState` |
-| B-02d | 02 | `PendingRelocationAltId`：04 在下一步阶段 0 执行并清空；转移完成发带三个新字段的 `UnitDeployStateChanged` | 已按 02 8.3 对齐（3.4.7） |
-| B-02e | 02 | `NewPositionPenalty` 由 02 在第 11 步依据事件重算；03 的 `NewPositionFirstNight`（03 2027 行）与之重复 | 建议统一为 02 的 `PlayerUnitCommon.NewPositionPenalty`，03 读取该字段 |
-| B-02f | 02 | 暴露度阈值后果 | 04 消费 `ExposureThresholdCrossed`（`PrecisionStrikeTonight`）、`Initialize` 读带入的 `Exposure`、夜末读 `Exposure ≥ T70`；`AntiRadiationPriorityTonight` 在 `SelectArm` 中按当前暴露度判断（不依赖事件） |
-| B-03 | 03 | 指挥点接口 | `CommandPointRules.CanSpend / Spend / Refund` 与 03 D15 的签名一致；03 的 `SetEngagementRule`、`SetAirRaidAlert`、`SetFighterZone` 处理者按 3.6 的约定用 `CostOf` 检查与扣除 |
-| B-03b | 03 | `CivilRules.SetAlert(ctx, true, AlertCause.Story)`、`Civil.AlertOn` | 剧情 `set_alert`（03 B10 已约定） |
-| B-03c | 03 | `PlayerUnitDestroyed` 需要 `DefId`（已有）；`InterceptorLaunched` / `GunFired` 需要 `ThreatId`（03 已追加） | 试探与剧情触发 |
-| B-03d | 03 | `BuildResult` 填写 04 的 `CarryOut.KnownTargets`、`StoryChoiceResults`、`CommandSummary` | 调用 04 的只读函数 |
-| B-03e | 03 | 带入记录 `UnitId = 0` 的打击（`TargetKind PlayerUnit`、`TargetUnitId 0`）的伤害结算 | 03 按落点位置结算对附近单位 / 建筑的伤害，不依赖 `TargetUnitId` |
-| B-05 | 05 | `CarryIn.KnownTargets`、`BonusCommandPoints`；`CarryOut` 的使用 | 05 负责把上一夜 `CarryOut.KnownTargets` 原样带入下一夜；白天转移由 05 处理（转移后的位置不会自动更新到敌方清单——正是 K2 的效果） |
-| B-06 | 02 / 03 | 运行时新建我方单位的初始化 | 本版本不需要（Q-D1）；若将来允许夜间部署，02 / 03 需提供"为运行时创建的单位初始化本规格字段"的入口 |
-| B-06b | 06 | 慢放与二选一界面 | 客户端在存在 `ChoiceRequest` 时慢放；`EnemyKnownTargets` 视图只在调试 / 复盘开关下显示 |
