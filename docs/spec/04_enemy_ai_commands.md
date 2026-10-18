@@ -1,8 +1,8 @@
 # 04 敌方 AI、部署状态机、指挥点与二选一、剧情事件
 
 > 依赖：00（全部）、01（波次生成 / 钩子 / 地形）、02（辐射源 / 暴露度 / 欺骗）、03（指挥点调用方、警报、开火资格）。
-> 本文件中的名字就是最终代码中的名字。凡标 **【依赖接口】** 的，是本文件对 01 / 02 / 03 提出的接口要求（已在第 8.3 节列出，需对方确认）。
-> 标 ★ 的数据字段 / 文件目前**不存在**，需人批准后由 WS06 加入 `data/` 与 Schema（8.2 G）。
+> 本文件中的名字就是最终代码中的名字。与 00 / 01 / 02 / 03 的跨模块接口已在第 8.3 节统一收口；本规格已与 GDD / 数值表 / WBS 同步收口，进入实现前无需再次停下询问（C-T1-12）。
+> 标 ★ 的数据字段 / 文件（`rules/enemy_ai.json`、`rules/commands.json` 等）已由 D2 人工决定批准（`DECISIONS.md`），由后续数据任务加入 `data/` 与 Schema（8.2 G）。
 
 ---
 
@@ -30,24 +30,24 @@
 
 | 规格 | 本文件使用的东西 |
 |---|---|
-| 00 | 术语、`SimRandom`、实体存储、阶段 0、`SimContext`、事件 / 命令框架、`EndRequest`、`AllClear`、`SimTime` |
-| 01 | `IEnemyAiHooks`、`TargetChoice`、`ThreatTargetKind`、`WaveState.Injections`、`WaveInjection`、`Threat` 字段（`WaveId`、`TargetKind`、`TargetPos`、`TargetUnitId`、`Phase`、`Kind`）、`TerrainModel`（`ElevationAt`、`HasLineOfSightAgl`）、`PlatformDef.Behavior` / `WhileAlive`、`AvoidanceActive` |
-| 02 | `Emitter`（`EmitterControl`：`On`、`OnArmIncoming`、`ArmSilenced`、`ArmPending`）、`EmitterQueries.ListActive`、`DeceptionUnit.SeenThrough`、`PendingRelocationAltId`、`ExposureThresholdCrossed`、`EmitterSwitched`、`ArmThreatDetected`、`Track.Tag / Quality / Pos`、`EmissionPolicyRules.CheckAvailable`、`Geo.PointInPolygon` |
-| 03 | `CivilRules.SetAlert`、`Civil.AlertOn`、`PlayerUnitDestroyed`、`InterceptorLaunched` / `GunFired`（含 `FireUnitId`、`ThreatId`）、`CanAct`（行进间射击，03 3.2.2）、`StructureDestroyed`；03 的命令处理者调用本文件的 `CommandPointRules` |
+| 00 | 术语、`SimRandom`、实体存储、阶段 0、`SimContext`（含 `ThreatGrid` / `TrackGrid` 空间索引，C-T1-08）、事件 / 命令框架、`EndRequest`、`AllClear`、`SimTime`、`Geo.PointInPolygon`（`00_core.md §0.4.6`，A-2-23、P48）、`WeaponParams.RangeFor`（`00_core.md §1.8`，A-2-30、A-3-09）、`CarryIn` / `KnownTargetCarry`（`00_core.md §2.6`，A-2-18、P34）、`CommandSummary`（`00_core.md §3.5`，P42） |
+| 01 | `IEnemyAiHooks`（含 `SelectWeightedRandomOverride`，A-2-10、B-T3-05）、`TargetChoice`、`ThreatTargetKind`、`WaveState.Pending`、`WaveState.Injections`、`WaveInjection`、`Threat` 字段（`WaveId`、`TargetKind`、`TargetPos`、`TargetUnitId`、`Phase`、`Kind`）、`TerrainModel`（`ElevationAt`、`HasLineOfSightAgl`、`BuildHorizonProfile`、`HorizonProfile`，C-T2-01）、`PlatformDef.Behavior` / `WhileAlive`、`EnemyAiQueries.AvoidanceActive`（A-2-10、P49） |
+| 02 | `Emitter`（`EmitterControl`：`On`、`OnArmIncoming`、`ArmSilenced`、`ArmPending`）、`EmitterQueries.ListActive`（`ActiveEmitter.EntityKind`，A-3-05）、`EmissionChoiceEffects.ApplyArmChoice`（A-2-11）、`DeceptionUnit.SeenThrough`、`PendingRelocationAltId`、`ExposureThresholdCrossed`、`EmitterSwitched`、`ArmThreatDetected`、`Track.Tag / Quality / Pos`、`EmissionPolicyRules.CheckAvailable`（A-2-25） |
+| 03 | `CivilRules.SetAlert`、`Civil.AlertOn`、`PlayerUnitDestroyed`（含 `Category`、`Pos`，A-2-05、A-3-05）、`InterceptorLaunched` / `GunFired`（含 `FireUnitId`、`ThreatId`）、`CanAct`（行进间射击，03 3.2.2）、`StructureDestroyed`；03 的命令处理者调用本文件的 `CommandPointRules`（A-2-17） |
 
 ### 0.4 已作的关键选择（理由见各节）
 
 | # | 选择 |
 |---|---|
-| K1 | **目标选择在生成时同步完成**：沿用 01 的设计——01 的 `WaveSpawnSystem` 在生成每个目标时调用本文件实现的 `IEnemyAiHooks`（用 `spawn` 子流）。`EnemyIntelSystem`（Step 12）只维护"敌方知道什么"（已知目标清单、绕行代价网格、压制波的放行），不直接生成目标。 |
+| K1 | **目标选择在生成时同步完成**：沿用 01 的设计——01 的 `WaveSpawnSystem` 在生成每个目标时调用本文件实现的 `IEnemyAiHooks`（用 `spawn` 子流）。`EnemyIntelSystem`（Step 12）只维护"敌方知道什么"（已知目标清单、暴露度 100 改派名额、绕行代价网格、压制波的放行），不直接生成目标。 |
 | K2 | 已知目标清单中每一条记录的是**敌方掌握的位置**（快照），不跟随单位移动。单位转移后，打击仍落在旧位置（GDD 7.4"猎杀"与 11.3"转移"的意义）。 |
-| K3 | 暴露度是"被敌方定位的程度"的抽象（GDD 8.2），因此敌方 AI **可以读取**我方单位的 `Exposure` 数值；除此之外只能使用 1.1.4 所列的信息。 |
+| K3 | 暴露度是"被敌方定位的程度"的抽象（GDD 8.2），因此敌方 AI **可以读取**我方单位的 `Exposure` 数值与单位类型（B-T3-05）；除此之外只能使用 1.1.4 所列的信息。 |
 | K4 | `aiTags` 只在三处改变执行：`suppress`（非反辐射组推迟放行）、`saturate`（重排生成时刻）、`bypass`（绕行航线）。`probe` 只标记"本波的目标会观察开火"。`hunt` **不自动改目标**——猎杀由 `target.mode = known_targets` 表达；`hunt` 标签只用于校验与显示（3.3.6）。 |
-| K5 | 绕行用**固定网格 A\***，代价网格由 Step 12 预先计算（带视线遮挡与河谷偏好），生成时只跑 A\*；网格格数、站点数都有上限。 |
+| K5 | 绕行用**固定网格 A\***，代价网格由 Step 12 预先计算（带站点 `HorizonProfile` 视线包络与河谷偏好，C-T2-01），生成时跑带缓存的 A\*（C-T1-07）；网格格数、站点数都有上限。 |
 | K6 | 部署状态机的推进在**阶段 0**（命令应用之后）。我方单位的"受损"不是部署状态（03 的 `DamageEfficiencyMult` 等字段），"被毁" = 从存储删除（00 2.4）。 |
-| K7 | 移动按**直线**（不沿道路），只检查终点合法性（Q-D2）。 |
-| K8 | 指挥点由各命令的**处理者**在 `Validate` 中检查、在 `Apply` 中扣除，统一通过本文件的 `CommandPointRules`；消耗表在新数据文件 `rules/commands.json`★。 |
-| K9 | 自动二选一的超时 = **按单位预设的触发规则处理**（即不改变 02 已执行的预设），默认选项只用于显示与记录。 |
+| K7 | 移动按**直线**（不沿道路），只要求终点合法性（B-T2-98）。 |
+| K8 | 指挥点由各命令的**处理者**在 `Validate` 中检查、在 `Apply` 中扣除，统一通过本文件的 `CommandPointRules`（A-2-17）；消耗表在新数据文件 `rules/commands.json`★。 |
+| K9 | 自动二选一的超时 = **按单位预设的触发规则处理**（即不改变 02 已执行的预设），默认选项只用于显示与记录。客户端在二选一出现时硬暂停并按现实秒倒计时（硬核模式不暂停、改为极慢速 `1/60×`，C-T3-01）。 |
 | K10 | 本文件**不消耗** `enemy_ai` 子流（目标选择用 01 传入的 `spawn` 子流；其余算法全部确定性）。`command` 子流也不消耗。 |
 
 ---
@@ -58,7 +58,7 @@
 
 #### 1.1.1 ★ 新增规则文件 `rules/enemy_ai.json`（`kind: "enemy_ai"`）→ `EnemyAiRulesDef`
 
-全部字段必填（加载器严格，00 1.2）。建议默认值即下表"建议值"列；带 🟡 的是"手感"参数，需人试玩调整（WS01-019 🟡）。
+加载顺序为 `00_core.md §1.2` 第 25 项（第 26 项为 `rules/commands.json`，总计 `LoadedFiles.Count == 35`，P01、P49）。全部字段必填（加载器严格，00 1.2）。建议默认值即下表"建议值"列（均为 provisional 暂定值，由 D3/D4 纸面模拟器与试玩调整，WS01-019 🟡）。
 
 | JSON 路径 | 单位 / 类型 | 加载后 C# | 建议值 | 用途 |
 |---|---|---|---|---|
@@ -66,9 +66,11 @@
 | `knownTargets.maxEntries` | int ≥ 1 | `KnownTargets.MaxEntries` | 32 | 清单上限（3.2.3 淘汰） |
 | `knownTargets.carryMatchRadiusKm` | km | `KnownTargets.CarryMatchRadiusM` | 0.5 | 跨夜带入的记录与今晚单位的匹配半径（3.2.1） |
 | `knownTargets.scoutedRadiusKm` | km | `KnownTargets.ScoutedRadiusM` | 1.0 | "已被敌方侦察过的阵地"判定半径（3.4.6） |
-| `knownTargets.reasonWeights` | 对象 `{carried_in, precision_exposure, probe_fire, emitting}` | `ReasonWeights`（按 `KnownTargetReasonWeightKey` 查） | 1.0 / 2.0 / 1.5 / 1.0 🟡 | 选择权重：原因 |
+| `knownTargets.reasonWeights` | 对象 `{carried_in, precision_exposure, probe_fire, emitting}` | `ReasonWeights`（按 `KnownTargetReasonWeightKey` 查） | 1.0 / 3.0 / 1.5 / 1.0 🟡 | 选择权重：原因（`precision_exposure = 3.0`，B-T2-90；Mini04 测试夹具显式设为 `2.0`，见 7.0） |
 | `knownTargets.kindWeights` | 对象 `{air_defense, radar, ew, sensor}` | `KindWeights` | 1.0 / 1.0 / 0.6 / 0.3 🟡 | 选择权重：敌方认为的类型。`radar = air_defense` 依据 `tracks.json` `warningRadarEnemyAiWeightAs = medium_sam` |
 | `knownTargets.spreadFactor` | (0, 1] | `SpreadFactor` | 0.5 🟡 | 每多一个在飞弹药瞄准同一记录，权重 × 此值（分散打击） |
+| `exposure100.retargetFrac` | [0, 1] | `Exposure100.RetargetFrac` | 0.25 🟡 | 暴露度首次达到 100 时，从本夜尚未出发的 `weighted_random` 弹药组中改派打该单位的比例（向上取整，至少 1 枚，B-T3-05） |
+| `exposure100.preferAttracts` | `string[]` | `Exposure100.PreferAttracts` | `["iskander_m", "lancet", "geran_2"]` 🟡 | 暴露度 100 改派时优先选择的精确打击弹药定义 ID 顺序（与 `deception.attracts` 对应，B-T3-05） |
 | `probe.observeRadiusKm` | km，≥ 0 | `Probe.ObserveRadiusM` | 3.0 🟡 | 试探波的存活目标在此半径内看到开火也记录（3.2.4 条件 B）；0 = 只用条件 A |
 | `suppress.minHoldGameSec` | 游戏秒 | `Suppress.MinHoldSec` | 0.25（15 s）🟡 | 压制波主力最少推迟 |
 | `suppress.maxHoldGameSec` | 游戏秒 | `Suppress.MaxHoldSec` | 2（120 s）🟡 | 压制波主力最多推迟 |
@@ -80,7 +82,7 @@
 | `bypass.threatWeight` | ≥ 0 | `Bypass.ThreatWeight` | 4.0 🟡 | 格子每落入一个已知防空圈（且可见）加的代价 |
 | `bypass.valleyWeight` | ≥ 0 | `Bypass.ValleyWeight` | 0.5 🟡 | 归一化高程（0 = 最低）乘此权重，使航线偏向河谷 |
 | `bypass.assumedAltitudeM` | m（AGL），≥ 0 | `Bypass.AssumedAltitudeM` | 50 | 计算视线遮挡时假定的巡航高度（Kh‑101 30–70 m 的中值） |
-| `bypass.siteAntennaHeightM` | m，≥ 0 | `Bypass.SiteAntennaHeightM` | 10 | 视线计算中防空阵地的天线高度（与 01 Q3 缺省一致） |
+| `bypass.siteAntennaHeightM` | m，≥ 0 | `Bypass.SiteAntennaHeightM` | 10 | 敌方 AI 估算绕行防空圈视线时统一假设的阵地天线高度（与 `terrain.defaultAntennaHeightM` 独立配置，A-2-26） |
 | `bypass.useLineOfSight` | bool | `Bypass.UseLineOfSight` | true | false = 只按圆形，不计地形遮挡 |
 | `bypass.maxSites` | int ≥ 0 | `Bypass.MaxSites` | 8 | 每张网格计入的站点上限 |
 | `bypass.radiusMult` | > 0 | `Bypass.RadiusMult` | 1.0 🟡 | 已知防空圈半径倍率 |
@@ -91,7 +93,7 @@
 | `bypass.a50.siteMinExposure` | 0–100 | `Bypass.A50.SiteMinExposure` | 40 🟡 | A‑50 存活时，暴露度 ≥ 此值的防空单位即使不在清单中也被绕开 |
 | `bypass.a50.appliesToUntagged` | bool | `Bypass.A50.AppliesToUntagged` | true | A‑50 存活时，未标 `bypass` 的波次中的 CM 也绕行（01 的 `AvoidanceActive` 规则） |
 
-加载校验（`E_RANGE`）：`spreadFactor ∈ (0, 1]`；所有权重 ≥ 0；`minHoldGameSec ≤ maxHoldGameSec`；`cellKm > 0`；`maxCells ≥ 4`；`siteMinExposure ∈ [0, 100]`。`reasonWeights` / `kindWeights` 恰好这 4 个键（缺 → `E_MISSING_FIELD`，多 → `E_UNKNOWN_FIELD`）。
+加载校验（`E_RANGE`）：`spreadFactor ∈ (0, 1]`；`retargetFrac ∈ [0, 1]`；所有权重 ≥ 0；`minHoldGameSec ≤ maxHoldGameSec`；`cellKm > 0`；`maxCells ≥ 4`；`siteMinExposure ∈ [0, 100]`。`reasonWeights` / `kindWeights` 恰好这 4 个键（缺 → `E_MISSING_FIELD`，多 → `E_UNKNOWN_FIELD`）。
 
 #### 1.1.2 其他数据（已存在）
 
@@ -128,8 +130,8 @@
 | # | 信息 | 途径（游戏化） | 读取方式 |
 |---|---|---|---|
 | I1 | 保护目标的位置与权重 | 战前侦察、公开信息 | `Level.Structures`（01 的 `weighted_random` 已用） |
-| I2 | 我方单位的暴露度数值 | 暴露度本身就是"被敌方定位的程度"（K3） | `PlayerUnitCommon.Exposure` |
-| I3 | 当前开机的辐射源位置 | 电子侦察（实时） | 02 的 `EmitterQueries.ListActive(state)`：只用 `UnitId`、`Pos`、`Exposure`、`Kind`；**不得读 `IsDecoy`** |
+| I2 | 我方单位的暴露度数值与单位类型 | 暴露度本身就是"被敌方定位的程度"（K3、B-T3-05） | `PlayerUnitCommon.Exposure`、`EnemyBelief.KindOf` |
+| I3 | 当前开机的辐射源位置 | 电子侦察（实时） | 02 的 `EmitterQueries.ListActive(state)`：只用 `UnitId`、`Pos`、`Exposure`、`EntityKind`（A-3-05）；**不得读 `IsDecoy`** |
 | I4 | 已知目标清单（记录时的位置 + 敌方认为的类型 + 单位定义 ID） | 暴露度达到 `T100`（当夜）、上一夜暴露度 ≥ `T70`（次夜）、试探波观察到开火 | `EnemyIntel.KnownTargets`（3.2） |
 | I5 | 清单中单位是否被摧毁 | 战果评估 | `PlayerUnitDestroyed` 事件 → 删除记录 |
 | I6 | 假发射车被识破 | 侦察（02 掷骰） | `DeceptionUnit.SeenThrough` |
@@ -145,11 +147,11 @@
 | JSON 路径 | 类型 | C# | 建议值 | 说明 |
 |---|---|---|---|---|
 | `commandPointCosts` | 对象：键 = 命令名的 snake_case（按 00 1.2 第 8 条转成 `SimCommandType`），值 = int ≥ 0 | `CommandPointCosts`（`IReadOnlyDictionary<SimCommandType,int>`，只查找） | `set_emission_policy 1`、`sector_emission_override 1`、`set_engagement_rule 1`、`set_air_raid_alert 1`、`set_fighter_zone 0`、`pack_unit 1`、`deploy_unit 0`、`move_unit 1`、`relocate_unit 1`、`answer_choice 0` | 缺键 = 0。**不得**出现 `call_support`（其消耗在 `support.json` 的 `cost.commandPoints`）与 `noop`（→ `E_RANGE`：`取值 call_support 超出范围 消耗由 support.json 给出`）。未知命令名 → `E_ENUM` |
-| `moveUnitTiers` | `DeployTier[]` | `MoveUnitTiers` | `["instant"]` | `MoveUnit` 允许的部署档（"调动机动单位"） |
-| `relocateUnitTiers` | `DeployTier[]` | `RelocateUnitTiers` | `["instant", "minutes"]` | `RelocateUnit` 允许的部署档（"仅限展开时间按分钟计的系统"） |
+| `moveUnitTiers` | `DeployTier[]` | `MoveUnitTiers` | `["instant"]` | `MoveUnit` 允许的部署档（"调动机动单位"，B-T3-06） |
+| `relocateUnitTiers` | `DeployTier[]` | `RelocateUnitTiers` | `["instant", "minutes"]` | `RelocateUnit` 允许的部署档（"仅限展开时间按分钟计的系统"，B-T3-06） |
 | `armChoice.enabled` | bool | `ArmChoice.Enabled` | true | 自动二选一总开关 |
 | `armChoice.choiceKey` | locKey | `ArmChoice.ChoiceKey` | `"choice.arm_vs_cruise"` | 界面文本键（选项 0 = 静默、1 = 坚持） |
-| `armChoice.timeoutGameSec` | 游戏秒，> 0 | `ArmChoice.TimeoutSec` | 0.5（30 s） | 超时 |
+| `armChoice.timeoutGameSec` | 游戏秒，> 0 | `ArmChoice.TimeoutSec` | 0.5（30 s） | 模拟层超时世界秒数（客户端硬暂停时按现实秒倒计时，C-T3-01） |
 | `armChoice.minCruiseTracks` | int ≥ 1 | `ArmChoice.MinCruiseTracks` | 1 | 扇区内至少几个巡航导弹航迹才弹出 |
 | `armChoice.cruiseTags` | `TargetTag[]` | `ArmChoice.CruiseTags` | `["CM", "SCM"]` | 什么算"巡航导弹" |
 | `armChoice.minTrackQuality` | `vague / approximate / precise` | `ArmChoice.MinTrackQuality` | `approximate` | 航迹最低质量 |
@@ -171,7 +173,7 @@
 | `fireOnMove` | `FireOnMove { Yes = 0, Partial = 1, No = 2 }` | 03 的 `CanAct` 读取（03 3.2.2，本文件不重复定义） |
 | `units/sensors.json` → `deployGameSec` / `packGameSec` | `SensorDef.DeploySec` / `PackSec`（`double?`） | 撤收 / 原地展开 |
 | `units/ew.json` → `deployGameSec` / `packGameSec` | `EwUnitDef.DeploySec` / `PackSec`（`double`） | 同上 |
-| `units/deception.json` | 无部署字段 | 欺骗单位不能撤收、不能移动（Q-D4） |
+| `units/deception.json` | 无部署字段 | 欺骗单位不能撤收、不能移动（B-T3-06） |
 | `map/deploy.json` | `DeployDef`：`Zones`（`Polygon`、`AllowedMobility?`）、`Forbidden`（`Polygon`、`Reason`）、`AlternatePositions`（`Id`、`Pos`、`Surveyed`） | 3.5 |
 | `level.json` → `availableUnits[]` | `AvailableUnitDef(UnitId, Count, Source)` | 数量上限（同一 `UnitId` 多行 → 数量相加） |
 | `level.json` → `map.widthM / heightM` | `Meta.Map` | 地图范围 |
@@ -182,7 +184,7 @@
 
 ### 1.4 剧情事件 `events.json` → `StoryEventsDef`（00 1.6）
 
-`StoryTriggerDef(Type, Night?, Sec?, RefId?)`、`StoryActionDef(Type, DialogueKey?, WaveId?, ChoiceKey?, TimeoutSec?, DefaultOption?)`。加载时（00 1.2 之外**追加**的校验，`E_MISSING_FIELD`，路径指向缺失字段的位置）：
+`StoryTriggerDef(Type, Night?, Sec?, RefId?)`、`StoryActionDef(Type, DialogueKey?, WaveId?, ChoiceKey?, TimeoutSec?, DefaultOption?, On?)`（其中 `set_alert` 的可选布尔字段 `On` 对应 JSON `on`，缺省视为 `true`，用于拉响或解除警报，B-T2-101）。加载时（00 1.2 之外**追加**的校验，`E_MISSING_FIELD`，路径指向缺失字段的位置）：
 
 | 条件 | 错误 |
 |---|---|
@@ -202,13 +204,16 @@
 
 > "写 / 读"列：数字 = Step 序号；"0" = 阶段 0；"I" = `Initialize`；"H" = 01 调用的钩子（只读）。全部字段**按表中行顺序**哈希，标"不哈希"的除外。
 
-### 2.1 我方单位公共字段（`PlayerUnitCommon` 追加，本文件拥有）
+### 2.1 我方单位公共字段（`PlayerUnitCommon`，本文件拥有字段见 `00_core.md §2.4` 完整 14 项哈希表）
 
-| 字段 | C# 类型 | 单位 | 初值 | 写 | 读 |
-|---|---|---|---|---|---|
-| `DeployState` | `UnitDeployState`（00 已定义） | — | `Deployed` | 0 | 全部 |
-| `DeployPhaseEndTick` | `int` | 步 | `-1`（当前状态没有计时） | 0 | 0、快照 |
-| `Relocation` | `RelocationOrder?` | — | `null` | 0 | 0、快照 |
+`PlayerUnitCommon` 的全部 14 个哈希字段与不参与哈希的只读关联字段（`Placement`、`RosterId`）在 `00_core.md §2.4` 统一声明（P24）。其中本文件负责维护的字段为（序号对应 `00_core.md §2.4`）：
+
+| 00 序号 | 字段 | C# 类型 | 单位 | 初值 | 写 | 读 |
+|---|---|---|---|---|---|---|
+| 1 | `DeployState` | `UnitDeployState`（00 已定义） | — | `Deployed` | 0 | 全部 |
+| 2 | `DeployPhaseEndTick` | `int` | 步 | `-1`（当前状态没有计时） | 0 | 0、快照 |
+| 3 | `Relocation` | `RelocationOrder?` | — | `null` | 0 | 0、快照 |
+| 10 | `PendingRelocationAltId` | `string?` | — | `null` | 6（02 置位）、0（04 清空并执行） | 0 |
 
 ```csharp
 public enum RelocationKind { Move = 0, Relocate = 1, AutoAfterFiring = 2 }
@@ -228,7 +233,7 @@ public sealed class RelocationOrder          // 哈希顺序 = 字段声明顺�
 
 | 中文 | 表示方式 |
 |---|---|
-| 未部署（预备队） | 不是实体（本版本夜间不能从预备队部署，3.4.5） |
+| 未部署（预备队） | 不是实体（本版本夜间不能从预备队部署，3.4.5、B-T3-06） |
 | 展开中 | `Deploying` |
 | 就绪 | `Deployed` |
 | 撤收中 | `Packing` |
@@ -237,9 +242,9 @@ public sealed class RelocationOrder          // 哈希顺序 = 字段声明顺�
 | 受损 | 不是部署状态：03 的 `DamageEfficiencyMult` / `LightDamaged` / 重伤暂停等字段，与部署状态正交 |
 | 被毁 | 从存储删除 + `PlayerUnitDestroyed`（00 2.4） |
 
-### 2.2 `ChoiceRequest`（实体，`EntityKind.ChoiceRequest = 11`；本文件拥有全部字段）
+### 2.2 `ChoiceRequest`（实体，`EntityKind.ChoiceRequest = 11`；本文件拥有全部专有字段）
 
-没有 `DefId`、`Pos`、`AltM`（00 2.4）。解决（回答 / 超时 / 取消）时立即 `Remove`。
+没有 `DefId`、`Pos`、`AltM`（00 2.4）；`Id` 与 `CreatedTick` 继承自基类 `Entity` 并由 `EntityStore` 头统一写入哈希，不在子类 `WriteHash` 中重复写（A-3-01、P25、P26）。解决（回答 / 超时 / 取消）时立即 `Remove`。
 
 | 字段 | C# 类型 | 初值 | 写 | 读 |
 |---|---|---|---|---|
@@ -247,7 +252,6 @@ public sealed class RelocationOrder          // 哈希顺序 = 字段声明顺�
 | `ChoiceKey` | `string` | 创建时 | 0 | 快照 |
 | `OptionCount` | `int` | 2（剧情 = `StoryChoice.OptionCount`） | 0 | 0、快照 |
 | `DefaultOption` | `int` | 3.7.2 / 3.8.3 | 0 | 0、快照 |
-| `CreatedTick` | `int` | 创建步 | 0 | 快照 |
 | `DeadlineTick` | `int` | 3.7.2 / 3.8.3 | 0 | 0、快照 |
 | `SubjectUnitId` | `int` | 自动：被瞄准的火力单元；剧情：0 | 0 | 0、快照 |
 | `SubjectTrackId` | `int` | 自动：反辐射导弹的航迹；剧情：0 | 0 | 0、快照 |
@@ -263,7 +267,13 @@ public sealed class RelocationOrder          // 哈希顺序 = 字段声明顺�
 | `CarryInAnnounced` | `bool` | false | 12 | 12 | ✔ |
 | `HeldWaves` | `List<HeldWave>`（按创建顺序） | 空 | 12 | 12、00（`AllClear`） | ✔ |
 | `AvoidanceSiteKey` | `List<AvoidanceSite>`（两组，见 3.2.6） | I | I、12 | 12 | ✔ |
+| `RetargetOverrides` | `List<RetargetOverride>`（按 `(WaveIndex, GroupIndex, Ordinal)` 升序，无重复） | I（3.2.1） | I、12 | H（`SelectWeightedRandomOverride`） | ✔（B-T3-05） |
+| `Exposure100RetargetedUnits` | `List<int>`（升序，无重复） | 空 | I、12 | 12 | ✔（B-T3-05） |
+| `UnfulfilledExposure100Units` | `List<int>`（升序，无重复） | 空 | I、12 | 12、结算（`BuildCarryOut`） | ✔（B-T3-05） |
 | `AvoidanceGrids` | `List<AvoidanceGrid>`（每个 `Bypass.Tags` 一张） | I | I、12 | H | **不哈希**（由 `AvoidanceSiteKey` 与静态数据唯一推出的缓存） |
+| `AvoidanceGridVersion` | `int` | 0（每次重建 `+1`） | I、12 | H | **不哈希**（C-T1-07） |
+| `AStarCache` | `Dictionary<(int TagIndex, bool A50Active, int StartCell, int GoalCell, int GridVersion), IReadOnlyList<Vec2>>` | 空 | I、12、H | H | **不哈希**（只查找不遍历，命中与否不改变结果，C-T1-07） |
+| `AssignedByUnit` / `AssignedByPos` / `ArmAssignedByUnit` | `Dictionary<int, int>` / `Dictionary<Vec2, int>` / `Dictionary<int, int>` | 空 | 01 生成 / 推进到达 / 删除时或惰性重建 | H | **不哈希**（只查找不遍历，与全表扫描逐位等价，C-T1-06） |
 
 ```csharp
 public enum KnownTargetKind { AirDefense = 0, Radar = 1, Ew = 2, Sensor = 3 }
@@ -278,6 +288,9 @@ public sealed class KnownTarget                      // 哈希顺序 = 声明顺
     public KnownTargetReason Reason;
     public int AddedTick;                            // 带入 = 0
 }
+public readonly record struct RetargetOverride(
+    int WaveIndex, int GroupIndex, int Ordinal, int UnitId, Vec2 Pos);
+    // 哈希顺序 = 参数顺序（B-T3-05）
 public enum ReleaseCause { SuppressionAchieved = 0, ArmsGone = 1, MaxHold = 2 }
 public sealed class HeldWave                         // 哈希顺序 = 声明顺序
 {
@@ -304,10 +317,11 @@ public sealed class AvoidanceGrid                    // 不哈希
 
 | 字段 | C# 类型 | 初值 | 写 | 读 |
 |---|---|---|---|---|
-| `Points` | `int` | `Meta.CommandPointsPerNight + (CarryIn.BonusCommandPoints ?? 0)` | 0（经 `CommandPointRules`） | 全部命令处理者、快照 |
+| `Points` | `int` | `Math.Clamp(Meta.CommandPointsPerNight + (CarryIn?.CommandPointsBonus ?? 0), 0, Rules.Economy.CommandPointsPerNight.Max)`（A-2-18、P38） | 0（经 `CommandPointRules`） | 全部命令处理者、快照 |
 | `InitialPoints` | `int` | 同上 | I | 快照、结算 |
 | `SpentTotal` | `int` | 0 | 0 | 结算 |
 | `RefundedTotal` | `int` | 0 | 0、9（03 的退还） | 结算 |
+| `RelocationsCompleted` | `int` | 0 | 0b（`CompletedRelocation == true` 时 `+1`） | 结算（`CommandSummary.RelocationsCompleted`，P42） |
 | `FiredStoryEventIds` | `List<string>`（序数升序，无重复） | 空 | 0 | 0 |
 | `StoryChoiceResults` | `List<StoryChoiceResult>`（按解决顺序） | 空 | 0 | 结算（CarryOut） |
 | `ChoicesRequested` / `ChoicesAnswered` / `ChoicesTimedOut` / `ChoicesCancelled` | `int` ×4 | 0 | 0 | 结算 |
@@ -321,7 +335,7 @@ public sealed record StoryChoiceResult(string StoryEventId, string ChoiceKey, in
 ### 2.5 快照（00 2.7）
 
 - `FireUnitView` / `SensorUnitView` / `EwUnitView` / `DeceptionUnitView` 追加：`DeployState`、`DeployPhaseEndTick`、`RelocationDest`（`Vec2?`，= `Relocation?.Dest`）。
-- `ChoiceRequestView(int Id, ChoiceKind Kind, string ChoiceKey, int OptionCount, int DefaultOption, int CreatedTick, int DeadlineTick, int SubjectUnitId, int SubjectTrackId, string? StoryEventId)`。
+- `ChoiceRequestView(int Id, ChoiceKind Kind, string ChoiceKey, int OptionCount, int DefaultOption, int CreatedTick, int DeadlineTick, int SubjectUnitId, int SubjectTrackId, string? StoryEventId)`（其中 `CreatedTick` 取自基类 `Entity.CreatedTick`，A-3-01）。
 - `GlobalView` 追加：`int CommandPoints`、`int CommandPointsInitial`、`IReadOnlyList<KnownTargetView> EnemyKnownTargets`（**调试 / 复盘用**：正常界面不得显示敌方掌握的情报——06 决定开关，同 00 Q12）、`int HeldWaveCount`。
 - `KnownTargetView(int EntryId, int UnitId, string UnitDefId, KnownTargetKind Kind, Vec2 Pos, KnownTargetReason Reason, int AddedTick)`。
 
