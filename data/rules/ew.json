@@ -9,10 +9,15 @@
     { "from": "2026-01", "nav": 0.35, "counterUas": 0.7 }
   ],
   "sideEffects": {
-    "friendlyInterceptorDroneMult": 0.6,
     "ownDroneLinkCut": true,
     "urbanNavJamCityResiliencePerNight": -1
   },
+  "linkCutOutcomeWeights": { "crash": 0.5, "hover": 0.25, "return": 0.25 },
+  "hoverBeforeCrashGameSec": 2,
+  "belowFullStrengthMult": 0.5,
+  "unpoweredEffectMult": 0.5,
+  "winterEffectMult": 0.9,
+  "urbanNavJamMinGameSec": 60,
   "_source": {
     "effectivenessByPeriod": "数值表 1.4 电子战效能随时间衰减（敌方适应；可通过研发 / 升级部分恢复）",
     "effectivenessByPeriod[0]": "2022.02–2022.10 早期 Shahed 普通导航",
@@ -20,7 +25,6 @@
     "effectivenessByPeriod[2]": "2024.03 起 光纤 FPV：光纤 FPV 0%（见 fpv_fiber.ewImmune），其余 90%",
     "effectivenessByPeriod[3]": "2025 春起 AI 视觉末制导：50%（末段无效）",
     "effectivenessByPeriod[4]": "2026 起 Geran‑5 自带抗干扰 + mesh 电台",
-    "sideEffects.friendlyInterceptorDroneMult": "己方拦截无人机效能 −40%（与 intercept.json 修正项一致）",
     "sideEffects.ownDroneLinkCut": "己方无人机链路有概率中断（概率未给出）",
     "sideEffects.urbanNavJamCityResiliencePerNight": "城区内长时间开启导航干扰，每夜城市韧性 −1"
   }

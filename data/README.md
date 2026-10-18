@@ -15,11 +15,11 @@
 | `support/fighters.json` | 战斗机性能（外部支援所用的机型） | `schema/fighter.schema.json` |
 | `enemies/munitions.json` | 敌方导弹、无人机、滑翔炸弹 | `schema/enemy_munition.schema.json` |
 | `enemies/platforms.json` | 敌方飞机、直升机、侦察 / 打击无人机平台 | `schema/enemy_platform.schema.json` |
-| `rules/*.json` | 规则参数：拦截概率、精度、伤害、暴露度、辐射策略、碎片、航迹质量、电子战、阵地、经济 | `schema/rules.schema.json` |
+| `rules/*.json` | 19 个规则参数文件：拦截概率、精度、伤害、暴露度、辐射策略、碎片、航迹质量、电子战、阵地与欺骗、支援、经济、敌方运动、地形与地平线、交战与火控、民防与电网、敌方 AI、战中指令、战役跨夜与适应（含单位/支援/敌方/本地化共 28 个全局数据文件） | `schema/rules.schema.json` |
 | `loc/zh.json` | 本地化文本（中文为源语言） | — |
 | `levels/<id>/level.json` | 关卡元数据：主角线、日期、时间结构、战斗机模式、地图尺寸与高程图、可用单位、配额、胜负条件 | `schema/level.schema.json` |
 | `levels/<id>/waves.json` | 进入点与每夜的波次 | `schema/waves.schema.json` |
-| `levels/<id>/intel.json`、`events.json` | 每夜情报（可能不准确）、剧情事件 | `schema/level_content.schema.json` |
+| `levels/<id>/intel.json`、`events.json`、`flow.json`（可选） | 每夜情报（可能不准确）、剧情事件、多夜/时间流转片段 | `schema/level_content.schema.json` |
 | `levels/<id>/map/layers.json`、`structures.json`、`grid.json`、`deploy.json` | 矢量图层、保护目标、电网拓扑、部署区域 | `schema/map.schema.json` |
 | `levels/<id>/map/heightmap.png` | 16 位灰度高程图；像素 (0,0) 为西北角，比例和海拔范围写在 `level.json` | — |
 
@@ -40,8 +40,12 @@
 | `Musd` | 百万美元 | — |
 | `Cells` | 格（1 格 ≈ 1 km） | × 1000 → 米 |
 | `PerGameSec` | 每游戏秒 | ÷ 60 → 每世界秒 |
+| `Pct` | 百分比（0–100） | ÷ 100 → `…Frac`（0–1 比例） |
+| `Deg` | 度（角度） | × π / 180 → `…Rad`（弧度） |
+| `PerDay` / `Days` / `Nights` / `Day` | 战役时间单位（天 / 夜） | —（战役层直接使用，不换算为世界秒） |
 
 - **Mach 换算**：1 Mach = 1200 km/h（游戏约定，不区分高度）。原始写法保留在 `_source` 中。
+- **保留但未消费字段**：`enemies/munitions.json` 与 `enemies/platforms.json` 中的 `hp` 为数值表原始归档字段，模拟层按单发命中概率（`rules/intercept.json`）一次判定击毁，不读取敌方 `hp`（见 `B-T3-03`）。
 - 日期：`"YYYY-MM"`，表示该月起生效。
 - 显示文本一律通过 `nameKey` 等本地化键引用 `loc/zh.json`，数据里不直接写中文名。
 
@@ -135,9 +139,9 @@
 
 `attack_helicopter`、`su25`、`su24m`、`su34`、`su35s`、`tu22m3`、`mig31k`、`strategic_bomber`、`orion`、`orlan_10`、`a50u`
 
-### 第 3 节规则 → `rules/`
+### 第 3 节与全局规则 → `rules/`（共 15 个规则文件；连同 4 个 `units/`、2 个 `support/`、2 个 `enemies/`、`campaign/campaign.json`、`campaign/cards.json`、`loc/zh.json` 共 26 个全局数据文件）
 
-| 数值表 | 文件 |
+| 数值表 / 规格 | 文件 |
 |---|---|
 | 0 通用约定（时间、格、价格） | `conventions.json` |
 | 3.1 精度档 | `accuracy.json` |
@@ -146,4 +150,15 @@
 | 3.4 暴露度 | `exposure.json` |
 | 3.5 辐射策略 | `emission.json` |
 | 3.6 碎片 | `debris.json` |
-| 4 数值平衡建议（交换比、弹药分级） | `economy.json` |
+| 1.3 航迹质量与探测修正 | `tracks.json` |
+| 1.4 电子战抗干扰演进与副作用 | `ew.json` |
+| 1.5 备用阵地、新阵地与欺骗识破 | `positions.json` |
+| 1.6 战斗机可用性与空域协调 | `support.json` |
+| 4 经济、信任度、城市资源与补给维修 | `economy.json` |
+| 01 高度带与俯冲运动学 | `movement.json` |
+| 01 地形视线与地球曲率参数 | `terrain.json` |
+| 03 交战时序与发射分配规则 | `engagement.json` |
+| 03 电网、空袭警报与结算评分 | `civil.json` |
+| 04 敌方战术 AI 与绕行参数 | `enemy_ai.json` |
+| 04 指挥点消耗与二选一参数 | `commands.json` |
+| 05 战役推进、适应规则与平衡目标 | `campaign.json` |

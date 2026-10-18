@@ -3,6 +3,10 @@
   "kind": "positions",
   "preparedAlternate": { "deployTimeMult": 0.5, "firstNightPenalty": false, "cost": "time_slot", "persistsForLevel": true, "availableFromLevel": 3 },
   "newUnsurveyed": { "firstNightEfficiencyMult": 0.7 },
+  "deception": {
+    "fakeLauncherSeeThroughChance": { "low": 0.1, "medium": 0.3, "high": 0.6 },
+    "decoyEmitterExposureLevel": "high"
+  },
   "_source": {
     "preparedAlternate": "数值表 1.5 预先勘察的备用阵地：展开时间 −50%，到位第一夜无效能惩罚；永久（每关）；代价：时间槽；第 3 关",
     "newUnsurveyed": "新阵地（未勘察）：到位首夜效能 −30%（与 3.3 修正项\"新阵地首夜 ×0.7\"一致）"

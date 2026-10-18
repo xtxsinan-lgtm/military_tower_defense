@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "engagement",
+  "_source": { "spec": "docs/spec/03_engagement_impact_scoring.md §1.12" },
+  "byWeaponKind": {
+    "gun": { "reactionGameSec": 0.05, "shotIntervalGameSec": 0.5, "roundsPerBurst": 34 },
+    "missile": { "reactionGameSec": 0.2, "shotIntervalGameSec": 0.25, "interceptorSpeedKmh": 3600 },
+    "rocket": { "reactionGameSec": 0.1, "shotIntervalGameSec": 0.25, "interceptorSpeedKmh": 2400 },
+    "interceptor_drone": { "reactionGameSec": 0.5, "shotIntervalGameSec": 0.5, "interceptorSpeedKmh": 300 }
+  },
+  "reactionGameSecByClass": {
+    "gun": 0.05,
+    "gun_radar": 0.05,
+    "manpads": 0.05,
+    "shorad": 0.1,
+    "medium": 0.15,
+    "s300": 0.2,
+    "samp_t": 0.2,
+    "pac2": 0.2,
+    "pac3": 0.2,
+    "s200": 0.2,
+    "jet_interceptor_drone": 0.3,
+    "interceptor_drone": 0.5
+  },
+  "barrelCooldown": { "burstsBeforeCooldown": 5, "cooldownGameSec": 1 },
+  "defaultLaunchers": 1,
+  "maxSalvoSize": 4,
+  "allocation": "cheapest_expected",
+  "defaultRule": {
+    "salvoSize": 1,
+    "shootLookShoot": true,
+    "ammoReserve": 0,
+    "priorityMode": "soonest_intercept",
+    "engageIdentifiedDecoys": false
+  },
+  "defaultRuleByTag": {
+    "pac2": { "BM": { "salvoSize": 2, "shootLookShoot": false }, "HBM": { "salvoSize": 2, "shootLookShoot": false } },
+    "pac3": { "BM": { "salvoSize": 2, "shootLookShoot": false }, "HBM": { "salvoSize": 2, "shootLookShoot": false } },
+    "samp_t": { "BM": { "salvoSize": 2, "shootLookShoot": false }, "HBM": { "salvoSize": 2, "shootLookShoot": false } },
+    "s300": { "BM": { "salvoSize": 2, "shootLookShoot": false }, "HBM": { "salvoSize": 2, "shootLookShoot": false } }
+  },
+  "fighterRule": { "salvoSize": 1, "shootLookShoot": true }
+}

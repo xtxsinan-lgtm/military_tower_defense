@@ -24,6 +24,8 @@
       "gridDamagePct": 50 }
   ],
   "splashFalloff": { "center": 1.0, "edge": 0.3, "curve": "linear" },
+  "unitFootprintCells": 0.05,
+  "componentRadarChance": 0.5,
   "_source": {
     "bands": "数值表 3.2",
     "bands[0].airDefense": "轻伤（−20% 效能，可维修）",

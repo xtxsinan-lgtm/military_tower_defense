@@ -75,8 +75,23 @@
       },
       "description": "开局弹药配额（不写 = 每个发射架按弹仓满载）"
     },
+    "launcherOverrides": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["unit", "weapon", "launchers"],
+        "properties": {
+          "unit": { "$ref": "common.schema.json#/$defs/id" },
+          "weapon": { "$ref": "common.schema.json#/$defs/id" },
+          "launchers": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "description": "历史例外覆盖发射架数（如第 9 关敖德萨爱国者 2 具发射架，见 03_engagement_weapons.md §1.5.1）"
+    },
     "commandPointsPerNight": { "type": "integer", "minimum": 0 },
     "cityResourcePerDay": { "type": "number", "minimum": 0 },
+    "allowManualPause": { "type": "boolean" },
+    "endWhenClear": { "type": "boolean" },
     "victory": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } },
     "defeat": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } },
     "_source": { "$ref": "common.schema.json#/$defs/source" },
@@ -90,7 +105,7 @@
       "properties": {
         "type": {
           "enum": ["survive_nights", "survive_game_sec", "structure_destroyed", "weighted_damage_at_least", "grid_collapse"],
-          "description": "撑过 N 夜 / 撑过 N 游戏秒 / 指定保护目标被毁 / 加权损失达到比例 / 电网崩溃"
+          "description": "撑过 N 夜 / 撑过 N 游戏秒 / 指定保护目标被毁 / 加权损失达到比例 / 电网崩溃（断电消费者比例 >= fraction，缺省见 rules/civil.json）"
         },
         "nights": { "type": "integer", "minimum": 1 },
         "gameSec": { "type": "number", "exclusiveMinimum": 0 },

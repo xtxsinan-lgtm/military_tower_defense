@@ -1,0 +1,20 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "movement",
+  "_source": { "spec": "docs/spec/02_detection_ew_Threat.md §3.3、docs/游戏设计文档_GDD_v1.md §5.2" },
+  "altitudeBandsM": {
+    "very_low": { "min": 30, "max": 100 },
+    "low": { "min": 100, "max": 1000 },
+    "low_mid": { "min": 500, "max": 3000 },
+    "mid": { "min": 3000, "max": 6000 },
+    "mid_high": { "min": 5000, "max": 9000 },
+    "high": { "min": 9000, "max": 12000 },
+    "high_dive": { "min": 12000, "max": 20000 },
+    "glide": { "min": 8000, "max": 12000 }
+  },
+  "cruiseDescentAngleDeg": 30,
+  "highDiveAngleDeg": 45,
+  "ballisticTerminalAngleDeg": 70,
+  "quasiBallisticTerminalAngleDeg": 40,
+  "diveSpeedMult": 2
+}

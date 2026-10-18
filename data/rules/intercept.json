@@ -6,7 +6,7 @@
     "gun":                   { "UAV": 0.25, "JET_UAV": 0.10, "CM": 0.10, "GB": 0.05, "HELI": 0.20 },
     "gun_radar":             { "UAV": 0.45, "JET_UAV": 0.25, "CM": 0.15, "GB": 0.05, "HELI": 0.40, "AC_LOW": 0.25 },
     "manpads":               { "UAV": 0.50, "JET_UAV": 0.25, "CM": 0.20, "HELI": 0.45, "AC_LOW": 0.35 },
-    "interceptor_drone":     { "UAV": 0.60, "JET_UAV": 0.35 },
+    "interceptor_drone":     { "UAV": 0.60, "JET_UAV": [{ "from": "2025-11", "value": 0.10 }, { "from": "2026-09", "value": 0.35 }] },
     "jet_interceptor_drone": { "UAV": 0.70, "JET_UAV": 0.50, "CM": 0.30 },
     "shorad":                { "UAV": 0.80, "JET_UAV": 0.70, "CM": 0.70, "SCM": 0.20, "GB": 0.20, "HELI": 0.75, "AC_LOW": 0.65 },
     "medium":                { "UAV": 0.85, "JET_UAV": 0.80, "CM": 0.85, "SCM": 0.40, "GB": 0.30, "HELI": 0.80, "AC_LOW": 0.75, "AC_HIGH": 0.70 },

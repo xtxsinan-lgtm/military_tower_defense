@@ -28,6 +28,7 @@
         },
         "killsPerSortie": { "type": "integer", "minimum": 1 },
         "accuracyTierDrop": { "type": "integer", "minimum": 1 },
+        "radiusKm": { "$ref": "common.schema.json#/$defs/positive" },
         "affectsSameAsEwUnit": { "$ref": "common.schema.json#/$defs/id", "description": "影响对象与该电子战单位相同（引用 units/ew.json）" },
         "reinforcementUnit": { "$ref": "common.schema.json#/$defs/id", "description": "引用 units/air_defense.json" },
         "reinforcementCount": { "type": "integer", "minimum": 1 },

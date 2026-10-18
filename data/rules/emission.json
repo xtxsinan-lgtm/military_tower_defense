@@ -4,7 +4,7 @@
   "strategies": [
     { "id": "always_on",         "nameKey": "emission.always_on.name",         "activation": "always",              "exposureMult": 1.0, "reactionTimeMult": 1.0 },
     { "id": "on_warning",        "nameKey": "emission.on_warning.name",        "activation": "approximate_warning", "exposureMult": 0.6, "reactionTimeMult": 1.1 },
-    { "id": "intermittent",      "nameKey": "emission.intermittent.name",      "activation": "duty_cycle",          "exposureMult": 0.4, "reactionTimeMult": 1.25, "trackInterrupted": true, "configurableOnOffGameSec": true, "canRelocate": true },
+    { "id": "intermittent",      "nameKey": "emission.intermittent.name",      "activation": "duty_cycle",          "exposureMult": 0.4, "reactionTimeMult": 1.25, "trackInterrupted": true, "configurableOnOff": true, "canRelocate": true },
     { "id": "silent_standby",    "nameKey": "emission.silent_standby.name",    "activation": "last_moment",         "exposureMult": 0.2, "reactionTimeMult": 1.0, "requires": ["approximate_track", "network"], "availableFromLevel": 6, "westernSystemsOnly": true },
     { "id": "decoy_coordinated", "nameKey": "emission.decoy_coordinated.name", "activation": "after_decoy",         "exposureMult": 0.5, "reactionTimeMult": 1.0, "requires": ["decoy"] }
   ],
@@ -18,8 +18,13 @@
     { "armDistanceFractionAbove": 0.25, "armHitProbMult": 0.5 },
     { "armDistanceFractionAbove": 0,    "armHitProbMult": 0.8 }
   ],
+  "defaultStrategy": "always_on",
+  "dutyCycleDefaultOnGameSec": 1,
+  "dutyCycleDefaultOffGameSec": 1,
+  "decoyLeadGameSec": 0.25,
+  "defaultReferenceRangeKm": 30,
   "_source": {
-    "strategies": "数值表 3.5",
+    "strategies": "数值表 3.5（exposureMult 为预期平均暴露倍率参考值，不参与逐秒乘法，见 B-T3-10）",
     "strategies[3]": "静默待机：只用网络数据，最后时刻开火控；需\"大致\"航迹 + 网络（第 6 关后西方系统）",
     "triggers": "反辐射导弹来袭时 立即关机 / 完成当前拦截后关机 / 继续交战；开火后 原地 / 转移到备用阵地；主雷达被毁时 邻近雷达接替",
     "shutdownTiming": "反辐射导弹距离 > 50% 射程时关机，命中率 −80%；25–50% 时 −50%；< 25% 时 −20%。按顺序取第一个满足条件的档位"

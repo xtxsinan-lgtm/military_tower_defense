@@ -6,21 +6,28 @@
   "type": "object",
   "required": ["kind"],
   "properties": {
-    "kind": { "enum": ["conventions", "accuracy", "damage", "intercept", "exposure", "emission", "debris", "tracks", "ew", "positions", "support", "economy"] }
+    "kind": { "enum": ["conventions", "accuracy", "damage", "intercept", "exposure", "emission", "debris", "tracks", "ew", "positions", "support", "economy", "movement", "terrain", "engagement", "civil", "enemy_ai", "commands", "campaign_rules"] }
   },
   "allOf": [
-    { "if": { "properties": { "kind": { "const": "conventions" } } }, "then": { "$ref": "#/$defs/conventions" } },
-    { "if": { "properties": { "kind": { "const": "accuracy" } } },    "then": { "$ref": "#/$defs/accuracy" } },
-    { "if": { "properties": { "kind": { "const": "damage" } } },      "then": { "$ref": "#/$defs/damage" } },
-    { "if": { "properties": { "kind": { "const": "intercept" } } },   "then": { "$ref": "#/$defs/intercept" } },
-    { "if": { "properties": { "kind": { "const": "exposure" } } },    "then": { "$ref": "#/$defs/exposure" } },
-    { "if": { "properties": { "kind": { "const": "emission" } } },    "then": { "$ref": "#/$defs/emission" } },
-    { "if": { "properties": { "kind": { "const": "debris" } } },      "then": { "$ref": "#/$defs/debris" } },
-    { "if": { "properties": { "kind": { "const": "tracks" } } },      "then": { "$ref": "#/$defs/tracks" } },
-    { "if": { "properties": { "kind": { "const": "ew" } } },          "then": { "$ref": "#/$defs/ew" } },
-    { "if": { "properties": { "kind": { "const": "positions" } } },   "then": { "$ref": "#/$defs/positions" } },
-    { "if": { "properties": { "kind": { "const": "support" } } },     "then": { "$ref": "#/$defs/support" } },
-    { "if": { "properties": { "kind": { "const": "economy" } } },     "then": { "$ref": "#/$defs/economy" } }
+    { "if": { "properties": { "kind": { "const": "conventions" } } },    "then": { "$ref": "#/$defs/conventions" } },
+    { "if": { "properties": { "kind": { "const": "accuracy" } } },       "then": { "$ref": "#/$defs/accuracy" } },
+    { "if": { "properties": { "kind": { "const": "damage" } } },         "then": { "$ref": "#/$defs/damage" } },
+    { "if": { "properties": { "kind": { "const": "intercept" } } },      "then": { "$ref": "#/$defs/intercept" } },
+    { "if": { "properties": { "kind": { "const": "exposure" } } },       "then": { "$ref": "#/$defs/exposure" } },
+    { "if": { "properties": { "kind": { "const": "emission" } } },       "then": { "$ref": "#/$defs/emission" } },
+    { "if": { "properties": { "kind": { "const": "debris" } } },         "then": { "$ref": "#/$defs/debris" } },
+    { "if": { "properties": { "kind": { "const": "tracks" } } },         "then": { "$ref": "#/$defs/tracks" } },
+    { "if": { "properties": { "kind": { "const": "ew" } } },             "then": { "$ref": "#/$defs/ew" } },
+    { "if": { "properties": { "kind": { "const": "positions" } } },      "then": { "$ref": "#/$defs/positions" } },
+    { "if": { "properties": { "kind": { "const": "support" } } },        "then": { "$ref": "#/$defs/support" } },
+    { "if": { "properties": { "kind": { "const": "economy" } } },        "then": { "$ref": "#/$defs/economy" } },
+    { "if": { "properties": { "kind": { "const": "movement" } } },       "then": { "$ref": "#/$defs/movement" } },
+    { "if": { "properties": { "kind": { "const": "terrain" } } },        "then": { "$ref": "#/$defs/terrain" } },
+    { "if": { "properties": { "kind": { "const": "engagement" } } },     "then": { "$ref": "#/$defs/engagement" } },
+    { "if": { "properties": { "kind": { "const": "civil" } } },          "then": { "$ref": "#/$defs/civil" } },
+    { "if": { "properties": { "kind": { "const": "enemy_ai" } } },       "then": { "$ref": "#/$defs/enemy_ai" } },
+    { "if": { "properties": { "kind": { "const": "commands" } } },       "then": { "$ref": "#/$defs/commands" } },
+    { "if": { "properties": { "kind": { "const": "campaign_rules" } } }, "then": { "$ref": "#/$defs/campaign_rules" } }
   ],
   "$defs": {
     "prob": { "$ref": "common.schema.json#/$defs/probability" },
@@ -66,7 +73,7 @@
 
     "damage": {
       "type": "object",
-      "required": ["bands", "splashFalloff"],
+      "required": ["bands", "splashFalloff", "unitFootprintCells", "componentRadarChance"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "bands": {
@@ -111,7 +118,9 @@
             "curve": { "const": "linear" }
           },
           "additionalProperties": false
-        }
+        },
+        "unitFootprintCells": { "type": "number", "exclusiveMinimum": 0 },
+        "componentRadarChance": { "$ref": "#/$defs/prob" }
       },
       "additionalProperties": false
     },
@@ -168,14 +177,14 @@
 
     "exposure": {
       "type": "object",
-      "required": ["min", "max", "ratesPerGameSec", "perMissileLaunched", "enemyReconRadiusKm", "onRelocate", "sensorExposureLevelRates", "ewExposureLevelRates", "thresholds"],
+      "required": ["min", "max", "ratesPerGameSec", "perMissileLaunched", "enemyReconRadiusKm", "onRelocate", "sensorExposureLevelRatesPerGameSec", "ewExposureLevelRatesPerGameSec", "thresholds"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "min": { "type": "number" },
         "max": { "type": "number" },
         "ratesPerGameSec": {
           "type": "object",
-          "required": ["warningRadarSoviet", "warningRadarWestern", "fireControlSelfSearch", "fireControlCued", "highPowerEw", "silent", "enemyReconNearby"],
+          "required": ["fireControlSelfSearch", "fireControlCued", "silent", "enemyReconNearby"],
           "additionalProperties": { "type": "number" }
         },
         "perMissileLaunched": { "type": "number", "minimum": 0 },
@@ -186,11 +195,11 @@
           "properties": { "resetTo": { "type": "number" }, "toScoutedPositionMult": { "$ref": "#/$defs/mult" } },
           "additionalProperties": false
         },
-        "sensorExposureLevelRates": {
+        "sensorExposureLevelRatesPerGameSec": {
           "type": "object", "required": ["high", "medium", "zero", "none"],
           "additionalProperties": { "type": "number", "minimum": 0 }
         },
-        "ewExposureLevelRates": {
+        "ewExposureLevelRatesPerGameSec": {
           "type": "object", "required": ["high", "medium", "low"],
           "additionalProperties": { "type": "number", "minimum": 0 }
         },
@@ -211,9 +220,14 @@
 
     "emission": {
       "type": "object",
-      "required": ["strategies", "triggers", "shutdownTiming"],
+      "required": ["defaultStrategy", "dutyCycleDefaultOnGameSec", "dutyCycleDefaultOffGameSec", "decoyLeadGameSec", "defaultReferenceRangeKm", "strategies", "triggers", "shutdownTiming"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "defaultStrategy": { "$ref": "common.schema.json#/$defs/id" },
+        "dutyCycleDefaultOnGameSec": { "type": "number", "exclusiveMinimum": 0 },
+        "dutyCycleDefaultOffGameSec": { "type": "number", "exclusiveMinimum": 0 },
+        "decoyLeadGameSec": { "type": "number", "exclusiveMinimum": 0 },
+        "defaultReferenceRangeKm": { "type": "number", "exclusiveMinimum": 0 },
         "strategies": {
           "type": "array",
           "items": {
@@ -226,7 +240,7 @@
               "exposureMult": { "$ref": "#/$defs/mult" },
               "reactionTimeMult": { "$ref": "#/$defs/mult" },
               "trackInterrupted": { "type": "boolean" },
-              "configurableOnOffGameSec": { "type": "boolean" },
+              "configurableOnOff": { "type": "boolean" },
               "canRelocate": { "type": "boolean" },
               "requires": { "type": "array", "items": { "enum": ["approximate_track", "network", "decoy"] } },
               "availableFromLevel": { "$ref": "common.schema.json#/$defs/levelNumber" },
@@ -272,7 +286,7 @@
     "trackQualityId": { "enum": ["vague", "approximate", "precise"] },
     "tracks": {
       "type": "object",
-      "required": ["qualities", "approximateFromLocalSensorCount", "cueing", "warningRadarEnemyAiWeightAs", "bLine"],
+      "required": ["qualities", "approximateFromLocalSensorCount", "cueing", "warningRadarEnemyAiWeightAs", "bLine", "detectionRules"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "qualities": {
@@ -324,6 +338,27 @@
             "maxTrackQuality": { "$ref": "#/$defs/trackQualityId" }
           },
           "additionalProperties": false
+        },
+        "detectionRules": {
+          "type": "object",
+          "required": ["lowAltitudeBelowM", "lowAltitudeRangeMult", "largeBlindZoneLowAltitudeRangeMult", "coverageLowAltitudeMinCapability", "closeRangeFraction", "errorRadiusM", "fastUpdateErrorRadiusMult", "trackLostGameSec", "falseAlarmsPerGameSec", "reportDelayGameSec", "opticalWeatherRangeMult", "opticalNightRangeMult", "unpoweredActiveRangeMult", "winterActiveRangeMult"],
+          "properties": {
+            "lowAltitudeBelowM": { "type": "number", "minimum": 0 },
+            "lowAltitudeRangeMult": { "type": "object", "additionalProperties": { "$ref": "#/$defs/mult" } },
+            "largeBlindZoneLowAltitudeRangeMult": { "$ref": "#/$defs/mult" },
+            "coverageLowAltitudeMinCapability": { "type": "string" },
+            "closeRangeFraction": { "$ref": "#/$defs/prob" },
+            "errorRadiusM": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+            "fastUpdateErrorRadiusMult": { "$ref": "#/$defs/mult" },
+            "trackLostGameSec": { "type": "number", "minimum": 0 },
+            "falseAlarmsPerGameSec": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+            "reportDelayGameSec": { "type": "number", "minimum": 0 },
+            "opticalWeatherRangeMult": { "type": "object", "additionalProperties": { "$ref": "#/$defs/mult" } },
+            "opticalNightRangeMult": { "$ref": "#/$defs/mult" },
+            "unpoweredActiveRangeMult": { "$ref": "#/$defs/mult" },
+            "winterActiveRangeMult": { "$ref": "#/$defs/mult" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -331,7 +366,7 @@
 
     "ew": {
       "type": "object",
-      "required": ["effectivenessByPeriod", "sideEffects"],
+      "required": ["effectivenessByPeriod", "sideEffects", "linkCutOutcomeWeights", "hoverBeforeCrashGameSec", "belowFullStrengthMult", "unpoweredEffectMult", "winterEffectMult", "urbanNavJamMinGameSec"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "effectivenessByPeriod": {
@@ -348,21 +383,34 @@
           }
         },
         "sideEffects": {
-          "type": "object", "required": ["friendlyInterceptorDroneMult", "ownDroneLinkCut", "urbanNavJamCityResiliencePerNight"],
+          "type": "object", "required": ["ownDroneLinkCut", "urbanNavJamCityResiliencePerNight"],
           "properties": {
-            "friendlyInterceptorDroneMult": { "$ref": "#/$defs/mult" },
             "ownDroneLinkCut": { "type": "boolean" },
             "urbanNavJamCityResiliencePerNight": { "type": "number" }
           },
           "additionalProperties": false
-        }
+        },
+        "linkCutOutcomeWeights": {
+          "type": "object", "required": ["crash", "hover", "return"],
+          "properties": {
+            "crash": { "$ref": "#/$defs/prob" },
+            "hover": { "$ref": "#/$defs/prob" },
+            "return": { "$ref": "#/$defs/prob" }
+          },
+          "additionalProperties": false
+        },
+        "hoverBeforeCrashGameSec": { "type": "number", "minimum": 0 },
+        "belowFullStrengthMult": { "$ref": "#/$defs/mult" },
+        "unpoweredEffectMult": { "$ref": "#/$defs/mult" },
+        "winterEffectMult": { "$ref": "#/$defs/mult" },
+        "urbanNavJamMinGameSec": { "type": "number", "minimum": 0 }
       },
       "additionalProperties": false
     },
 
     "positions": {
       "type": "object",
-      "required": ["preparedAlternate", "newUnsurveyed"],
+      "required": ["preparedAlternate", "newUnsurveyed", "deception"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "preparedAlternate": {
@@ -379,6 +427,18 @@
         "newUnsurveyed": {
           "type": "object", "required": ["firstNightEfficiencyMult"],
           "properties": { "firstNightEfficiencyMult": { "$ref": "#/$defs/mult" } },
+          "additionalProperties": false
+        },
+        "deception": {
+          "type": "object",
+          "required": ["fakeLauncherSeeThroughChance", "decoyEmitterExposureLevel"],
+          "properties": {
+            "fakeLauncherSeeThroughChance": {
+              "type": "object", "required": ["low", "medium", "high"],
+              "additionalProperties": { "$ref": "#/$defs/prob" }
+            },
+            "decoyEmitterExposureLevel": { "enum": ["high", "medium", "zero", "none"] }
+          },
           "additionalProperties": false
         }
       },
@@ -415,7 +475,7 @@
 
     "economy": {
       "type": "object",
-      "required": ["exchangeRatio", "ammoTiers", "historicalEvents", "commandPointsPerNight"],
+      "required": ["exchangeRatio", "ammoTiers", "historicalEvents", "commandPointsPerNight", "trust", "crossLevelModClamp", "cityResource", "supply", "repair", "relocation", "emergencySupport", "requests"],
       "properties": {
         "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "exchangeRatio": {
@@ -453,7 +513,121 @@
             "additionalProperties": false
           }
         },
-        "commandPointsPerNight": { "$ref": "common.schema.json#/$defs/minMax" }
+        "commandPointsPerNight": { "$ref": "common.schema.json#/$defs/minMax" },
+        "trust": { "type": "object" },
+        "crossLevelModClamp": { "type": "object" },
+        "cityResource": { "type": "object" },
+        "supply": { "type": "object" },
+        "repair": { "type": "object" },
+        "relocation": { "type": "object" },
+        "emergencySupport": { "type": "object" },
+        "requests": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    },
+
+    "movement": {
+      "type": "object",
+      "required": ["altitudeBandsM", "cruiseDescentAngleDeg", "highDiveAngleDeg", "ballisticTerminalAngleDeg", "quasiBallisticTerminalAngleDeg", "diveSpeedMult"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "altitudeBandsM": { "type": "object", "additionalProperties": { "$ref": "common.schema.json#/$defs/minMax" } },
+        "cruiseDescentAngleDeg": { "type": "number", "exclusiveMinimum": 0 },
+        "highDiveAngleDeg": { "type": "number", "exclusiveMinimum": 0 },
+        "ballisticTerminalAngleDeg": { "type": "number", "exclusiveMinimum": 0 },
+        "quasiBallisticTerminalAngleDeg": { "type": "number", "exclusiveMinimum": 0 },
+        "diveSpeedMult": { "$ref": "#/$defs/mult" }
+      },
+      "additionalProperties": false
+    },
+
+    "terrain": {
+      "type": "object",
+      "required": ["losSampleStepPx", "earthRadiusM", "refractionK", "defaultAntennaHeightM", "horizonAzimuthBins"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "losSampleStepPx": { "type": "number", "exclusiveMinimum": 0 },
+        "earthRadiusM": { "type": "number", "exclusiveMinimum": 0 },
+        "refractionK": { "type": "number", "exclusiveMinimum": 0 },
+        "defaultAntennaHeightM": { "type": "number", "minimum": 0 },
+        "horizonAzimuthBins": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "engagement": {
+      "type": "object",
+      "required": ["byWeaponKind", "reactionGameSecByClass", "barrelCooldown", "defaultLaunchers", "maxSalvoSize", "allocation", "defaultRule", "defaultRuleByTag", "fighterRule"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "byWeaponKind": { "type": "object" },
+        "reactionGameSecByClass": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "barrelCooldown": { "type": "object" },
+        "defaultLaunchers": { "type": "integer", "minimum": 1 },
+        "maxSalvoSize": { "type": "integer", "minimum": 1 },
+        "allocation": { "type": "string" },
+        "defaultRule": { "type": "object" },
+        "defaultRuleByTag": { "type": "object" },
+        "fighterRule": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+
+    "civil": {
+      "type": "object",
+      "required": ["grid", "alert", "scoring"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "grid": { "type": "object" },
+        "alert": { "type": "object" },
+        "scoring": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+
+    "enemy_ai": {
+      "type": "object",
+      "required": ["knownTargets", "exposure100", "probe", "suppress", "saturate", "bypass"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "knownTargets": { "type": "object" },
+        "exposure100": { "type": "object" },
+        "probe": { "type": "object" },
+        "suppress": { "type": "object" },
+        "saturate": { "type": "object" },
+        "bypass": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+
+    "commands": {
+      "type": "object",
+      "required": ["commandPointCosts", "moveUnitTiers", "relocateUnitTiers", "armChoice", "maxOpenAutoChoices", "storyChoice"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "commandPointCosts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "moveUnitTiers": { "type": "array", "items": { "type": "string" } },
+        "relocateUnitTiers": { "type": "array", "items": { "type": "string" } },
+        "armChoice": { "type": "object" },
+        "maxOpenAutoChoices": { "type": "integer", "minimum": 1 },
+        "storyChoice": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+
+    "campaign_rules": {
+      "type": "object",
+      "required": ["crew", "alert", "autoResolve", "adaptation", "dossier", "cityMemory", "rewardCards", "balanceTargets"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "crew": { "type": "object" },
+        "alert": { "type": "object" },
+        "autoResolve": { "type": "object" },
+        "adaptation": { "type": "object" },
+        "dossier": { "type": "object" },
+        "cityMemory": { "type": "object" },
+        "rewardCards": { "type": "object" },
+        "balanceTargets": { "type": "object" }
       },
       "additionalProperties": false
     }

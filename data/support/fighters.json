@@ -7,10 +7,10 @@
       "ceilingKm": 15, "takeoffGameSec": 8, "rearmGameSec": 30, "patrolSpeedKmh": 900, "fireOnMove": "yes",
       "priceMusd": 45,
       "weapons": [
-        { "id": "fighter_aam", "nameKey": "weapon.fighter_aam.name", "interceptClass": "fighter_aam",
+        { "id": "fighter_aam", "nameKey": "weapon.fighter_aam.name", "kind": "missile", "interceptClass": "fighter_aam",
           "rangeKm": 80, "shotCostMusd": 0.75, "loadout": 4,
           "targets": ["UAV", "CM", "SCM", "HELI", "AC_LOW", "AC_HIGH"] },
-        { "id": "fighter_apkws", "nameKey": "weapon.fighter_apkws.name", "interceptClass": "fighter_apkws",
+        { "id": "fighter_apkws", "nameKey": "weapon.fighter_apkws.name", "kind": "rocket", "interceptClass": "fighter_apkws",
           "rangeKm": 5, "shotCostMusd": 0.025, "loadout": 14,
           "targets": ["UAV"] }
       ],

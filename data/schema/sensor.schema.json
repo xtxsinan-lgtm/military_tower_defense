@@ -27,14 +27,14 @@
           "description": "低空能力：差 / 中 / 好 / 很好。数值化由 WS01-007 决定"
         },
         "largeLowAltitudeBlindZone": { "type": "boolean", "description": "数值表注明\"低空盲区大\"" },
-        "trackQuality": { "enum": ["vague", "approximate", "precise"], "description": "输出航迹质量：模糊 / 大致 / 精确" },
+        "trackQuality": { "enum": ["vague", "approximate"], "description": "探测单位输出航迹质量封顶为大致（B-T2-33）" },
         "trackQualityUpgrades": {
           "type": "array",
           "items": {
             "type": "object",
             "required": ["to", "condition"],
             "properties": {
-              "to": { "enum": ["approximate", "precise"] },
+              "to": { "enum": ["approximate"] },
               "condition": { "enum": ["close_range", "linked_drone_types"] },
               "enemies": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/id" } }
             },
@@ -56,6 +56,8 @@
           "enum": ["high", "medium", "zero", "none"],
           "description": "暴露速度：高 / 中 / 0 / 不适用。每秒数值见 rules/exposure.json"
         },
+        "lineOfSight": { "type": ["boolean", "null"], "description": "是否受地形视线遮挡（缺省 true，声学哨为 false）" },
+        "antennaHeightM": { "type": ["number", "null"], "minimum": 0, "description": "天线高度（米 AGL，缺省取 terrain.defaultAntennaHeightM）" },
         "deployGameSec": { "type": ["number", "null"], "minimum": 0 },
         "packGameSec": { "type": ["number", "null"], "minimum": 0 },
         "priceMusd": { "type": ["number", "null"], "minimum": 0, "description": "null = 库存或不可购买" },

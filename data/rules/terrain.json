@@ -1,0 +1,10 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "terrain",
+  "_source": { "spec": "docs/spec/01_spatial_and_terrain.md §1.5" },
+  "losSampleStepPx": 0.5,
+  "earthRadiusM": 6371000,
+  "refractionK": 1.3333333333333333,
+  "defaultAntennaHeightM": 10,
+  "horizonAzimuthBins": 720
+}

@@ -24,7 +24,12 @@
       "items": {
         "type": "object", "required": ["night", "durationGameSec", "waves"],
         "properties": {
-          "night": { "type": "integer", "minimum": 1 },
+          "night": { "type": "integer", "minimum": 0, "description": "夜晚序号（>=1）；0 = auto_night 自动结算夜晚模板（05_campaign_economy.md §1.4）" },
+          "date": { "$ref": "common.schema.json#/$defs/date" },
+          "timeOfDay": { "enum": ["night", "day"] },
+          "isBigRaid": { "type": "boolean" },
+          "allowSupport": { "type": "boolean" },
+          "commandPoints": { "type": "integer", "minimum": 0 },
           "durationGameSec": { "type": "number", "exclusiveMinimum": 0, "description": "一夜的长度（游戏秒）；GDD 11.2：一夜约 6–10 分钟" },
           "weather": { "enum": ["clear", "moonlit", "low_cloud", "fog"], "description": "GDD 8.8" },
           "season": { "enum": ["spring", "summer", "autumn", "winter"] },

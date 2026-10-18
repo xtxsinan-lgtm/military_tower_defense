@@ -54,7 +54,7 @@
     {
       "id": "acoustic_post",
       "nameKey": "sensor.acoustic_post.name",
-      "layer": "local", "detectionRangeKm": 5,
+      "layer": "local", "detectionRangeKm": 5, "lineOfSight": false,
       "lowAltitude": "very_good", "trackQuality": "vague", "falseAlarms": "some",
       "emission": "passive", "exposureLevel": "zero",
       "deployGameSec": 0.5, "packGameSec": 0.5, "priceMusd": 0.001,
@@ -97,7 +97,7 @@
     {
       "id": "tethered_balloon",
       "nameKey": "sensor.tethered_balloon.name",
-      "layer": "regional", "detectionRangeKm": 80,
+      "layer": "regional", "detectionRangeKm": 80, "antennaHeightM": 300,
       "lowAltitude": "good", "trackQuality": "approximate",
       "emission": "active", "exposureLevel": "medium",
       "deployGameSec": 20, "packGameSec": 20, "priceMusd": 2,

@@ -16,6 +16,39 @@
   },
   "warningRadarEnemyAiWeightAs": "medium_sam",
   "bLine": { "regionalRadarDirectControl": false, "relayDelayGameSec": 1.5, "maxTrackQuality": "approximate" },
+  "detectionRules": {
+    "lowAltitudeBelowM": 1000,
+    "lowAltitudeRangeMult": {
+      "poor": 0.3,
+      "medium": 0.6,
+      "good": 0.9,
+      "very_good": 1.0
+    },
+    "largeBlindZoneLowAltitudeRangeMult": 0.5,
+    "coverageLowAltitudeMinCapability": "good",
+    "closeRangeFraction": 0.5,
+    "errorRadiusM": {
+      "vague": 5000,
+      "approximate": 1000,
+      "precise": 0
+    },
+    "fastUpdateErrorRadiusMult": 0.5,
+    "trackLostGameSec": 1,
+    "falseAlarmsPerGameSec": {
+      "some": 0.02,
+      "high": 0.1
+    },
+    "reportDelayGameSec": 0.5,
+    "opticalWeatherRangeMult": {
+      "clear": 1.0,
+      "moonlit": 1.3,
+      "low_cloud": 0.6,
+      "fog": 0.3
+    },
+    "opticalNightRangeMult": 0.3,
+    "unpoweredActiveRangeMult": 0.5,
+    "winterActiveRangeMult": 0.9
+  },
   "_source": {
     "qualities": "数值表 1.3 航迹质量规则",
     "approximateFromLocalSensorCount": "警戒 / 补盲雷达，或 ≥2 个本地传感器交叉 → 大致",

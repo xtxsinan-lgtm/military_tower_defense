@@ -11,6 +11,65 @@
     { "id": "iran_war_pac3_halved", "from": "2026-01", "effect": "resupply_mult", "weapon": "pac3_mse", "mult": 0.5 }
   ],
   "commandPointsPerNight": { "min": 3, "max": 6 },
+  "trust": {
+    "availableFromLevel": 6,
+    "initial": 50,
+    "min": 10,
+    "max": 100,
+    "neutral": 50,
+    "exchangeBands": [
+      { "minRatio": 0,   "delta": -3 },
+      { "minRatio": 0.4, "delta": -1 },
+      { "minRatio": 1.5, "delta": 0 },
+      { "minRatio": 4.0, "delta": 1 },
+      { "minRatio": 10,  "delta": 3 }
+    ],
+    "minShotCostForExchangeMusd": 0.5,
+    "wastefulWeapon": { "minAvgShotCostMusd": 2.0, "maxRatio": 0.2, "minKills": 1, "penaltyPerShot": 3, "maxPenaltyPerNight": 9 },
+    "inquiry": { "minWastefulShots": 2, "penalty": 3 },
+    "hoardedLeak": { "penaltyPerLeak": 2, "maxPenaltyPerNight": 6 },
+    "borderViolation": { "penaltyPerViolation": 2, "maxPenaltyPerNight": 6 },
+    "nightDeltaClamp": { "min": -12, "max": 8 },
+    "levelVictoryBonus": 5,
+    "levelDefeatPenalty": 8,
+    "quotaModMaxFrac": 0.10,
+    "requestCost": { "small": 8, "large": 20 }
+  },
+  "crossLevelModClamp": { "min": -0.2, "max": 0.2 },
+  "cityResource": {
+    "startDays": 1,
+    "cap": 30,
+    "alertPauseWeight": 0.5,
+    "urbanNavJamPenalty": 1.0,
+    "shop": [
+      { "id": "buy_fire_team",   "kind": "unit", "unit": "mobile_fire_team", "cost": 2 },
+      { "id": "buy_acoustic",    "kind": "unit", "unit": "acoustic_post", "cost": 0.5 },
+      { "id": "buy_observer",    "kind": "unit", "unit": "visual_observer", "cost": 0.5 },
+      { "id": "buy_drone_team",  "kind": "unit", "unit": "interceptor_drone_team", "cost": 3, "availableFromLevel": 14, "until": "2025-10" },
+      { "id": "buy_searchlight", "kind": "night_aid", "aid": "searchlight", "cost": 0.5 },
+      { "id": "buy_repair_team", "kind": "repair_team", "cost": 2, "logisticsAdd": 2, "perLevelCap": 2 }
+    ]
+  },
+  "supply": {
+    "logisticsPerWindow": 10,
+    "roundCostByAmmoSupply": { "ample": 0, "medium": 0.05, "limited": 0.5, "scarce": 1, "none": 1 },
+    "roundCostByWeapon": { "pac2": 2, "pac3_mse": 2, "aster_30": 1.5 }
+  },
+  "repair": { "lightLogistics": 2, "lightDays": 1, "crippledLogistics": 5, "crippledDays": 3, "structureHpFracPerDay": 0.1 },
+  "relocation": { "timeSlotsPerDay": 3, "slotGameSec": 30, "surveyTimeSlots": 1, "dayExposureDecayPerDay": 20 },
+  "emergencySupport": {
+    "triggerSetbacks": 2,
+    "setbackWeightedLossFrac": 0.3,
+    "grants": [
+      { "kind": "command_points_delta", "delta": 1 },
+      { "kind": "ammo_frac_immediate", "frac": 0.2 },
+      { "kind": "trust_raise_to", "value": 30 }
+    ]
+  },
+  "requests": [
+    { "id": "req_nasams_loan", "kind": "unit", "unit": "nasams", "count": 1, "trustCost": "large", "arrivalDays": 3, "durationNights": 2, "line": "A", "firstAvailableLevel": 6 },
+    { "id": "req_pac3_rush",   "kind": "ammo", "weapon": "pac3_mse", "count": 8, "trustCost": "small", "arrivalDays": 1, "line": "A", "firstAvailableLevel": 7 }
+  ],
   "_source": {
     "exchangeRatio": "数值表第 4 节 / GDD 9.3：交换比 = 被拦截目标的潜在损失 ÷ 拦截弹价格",
     "ammoTiers": "数值表第 4 节：苏制 S‑300 / Buk 导弹为 A 线全国共享库存，耗尽不补（设保底）；西方弹药按关卡限量配额 + 补给窗口",

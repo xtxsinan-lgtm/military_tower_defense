@@ -21,7 +21,7 @@
           "enum": ["nav_jam", "nav_spoof", "link_cut", "link_cut_directional", "self_protection"],
           "description": "导航干扰 / 导航欺骗 / 链路中断 / 定向链路中断 / 本车防护"
         },
-        "offsetCellsAdd": { "type": "number", "minimum": 0, "description": "落点额外偏移（格）" },
+        "offsetAddCells": { "type": "number", "minimum": 0, "description": "落点额外偏移（格，仅供界面提示参考）" },
         "accuracyTierDrop": { "type": "integer", "minimum": 0, "description": "精度下降档数" },
         "pullChance": { "$ref": "common.schema.json#/$defs/probability", "description": "把目标拉向诱导点的概率" },
         "aiVisionEffectMult": { "type": "number", "minimum": 0, "description": "对 AI 视觉制导型（2025+）的效果倍率" },

@@ -1,0 +1,30 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "commands",
+  "_source": { "spec": "docs/spec/04_enemy_ai_commands.md §1.2" },
+  "commandPointCosts": {
+    "set_emission_policy": 1,
+    "sector_emission_override": 1,
+    "set_engagement_rule": 1,
+    "set_air_raid_alert": 1,
+    "set_fighter_zone": 0,
+    "pack_unit": 1,
+    "deploy_unit": 0,
+    "move_unit": 1,
+    "relocate_unit": 1,
+    "answer_choice": 0
+  },
+  "moveUnitTiers": ["instant"],
+  "relocateUnitTiers": ["instant", "minutes"],
+  "armChoice": {
+    "enabled": true,
+    "choiceKey": "choice.arm_vs_cruise",
+    "timeoutGameSec": 0.5,
+    "minCruiseTracks": 1,
+    "cruiseTags": ["CM", "SCM"],
+    "minTrackQuality": "approximate",
+    "rangeMult": 1.0
+  },
+  "maxOpenAutoChoices": 1,
+  "storyChoice": { "defaultTimeoutGameSec": 1, "optionCount": 2 }
+}

@@ -4,19 +4,16 @@
   "min": 0,
   "max": 100,
   "ratesPerGameSec": {
-    "warningRadarSoviet": 1.0,
-    "warningRadarWestern": 0.6,
     "fireControlSelfSearch": 2.0,
     "fireControlCued": 0.6,
-    "highPowerEw": 1.0,
     "silent": -0.5,
     "enemyReconNearby": 0.5
   },
   "perMissileLaunched": 5,
   "enemyReconRadiusKm": 5,
   "onRelocate": { "resetTo": 0, "toScoutedPositionMult": 0.5 },
-  "sensorExposureLevelRates": { "high": 1.0, "medium": 0.6, "zero": 0, "none": 0 },
-  "ewExposureLevelRates": { "high": 1.0, "medium": 0.6, "low": 0.3 },
+  "sensorExposureLevelRatesPerGameSec": { "high": 1.0, "medium": 0.6, "zero": 0, "none": 0 },
+  "ewExposureLevelRatesPerGameSec": { "high": 1.0, "medium": 0.6, "low": 0.3 },
   "thresholds": [
     { "atLeast": 40, "consequence": "anti_radiation_priority_tonight" },
     { "atLeast": 70, "consequence": "known_target_list_next_night" },

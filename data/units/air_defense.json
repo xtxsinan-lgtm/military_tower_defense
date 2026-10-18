@@ -6,6 +6,7 @@
       "nameKey": "unit.manpads.name",
       "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
       "mobility": "portable", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "selfAcquisitionRangeKm": 6.5, "selfAcquisition": "optical",
       "systemPriceMusd": 0.1,
       "weapons": [
         { "id": "manpads_missile", "nameKey": "weapon.manpads_missile.name", "kind": "missile", "interceptClass": "manpads",
@@ -19,6 +20,7 @@
       "nameKey": "unit.starstreak_martlet.name",
       "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
       "mobility": "portable", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "selfAcquisitionRangeKm": 7, "selfAcquisition": "optical",
       "systemPriceMusd": 0.1,
       "weapons": [
         { "id": "starstreak_martlet_missile", "nameKey": "weapon.starstreak_martlet_missile.name", "kind": "missile", "interceptClass": "manpads",
@@ -31,6 +33,7 @@
       "nameKey": "unit.mobile_fire_team.name",
       "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "partial",
+      "selfAcquisitionRangeKm": 2.5, "selfAcquisition": "optical",
       "systemPriceMusd": 0.05,
       "weapons": [
         { "id": "mobile_fire_team_gun", "nameKey": "weapon.mobile_fire_team_gun.name", "kind": "gun", "interceptClass": "gun",
@@ -44,6 +47,7 @@
       "nameKey": "unit.zu23_2.name",
       "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
       "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 2.5, "selfAcquisition": "optical",
       "systemPriceMusd": 0.05,
       "weapons": [
         { "id": "zu23_2_gun", "nameKey": "weapon.zu23_2_gun.name", "kind": "gun", "interceptClass": "gun",
@@ -57,6 +61,7 @@
       "nameKey": "unit.s60.name",
       "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
       "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 6, "selfAcquisition": "optical",
       "systemPriceMusd": 0.05,
       "weapons": [
         { "id": "s60_gun", "nameKey": "weapon.s60_gun.name", "kind": "gun", "interceptClass": "gun",
@@ -70,6 +75,7 @@
       "nameKey": "unit.sky_sentinel.name",
       "deployTier": "minutes", "deployGameSec": 4, "packGameSec": 4,
       "mobility": "fixed", "moveSpeedKmh": null, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 1.5,
       "systemPriceMusd": 0.15,
       "weapons": [
         { "id": "sky_sentinel_gun", "nameKey": "weapon.sky_sentinel_gun.name", "kind": "gun", "interceptClass": "gun",
@@ -83,6 +89,8 @@
       "nameKey": "unit.gepard.name",
       "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
       "mobility": "vehicle", "moveSpeedKmh": 65, "fireOnMove": "yes",
+      "fireControlRadar": { "rangeKm": 6.875, "lowAltitude": "good", "origin": "western" },
+      "selfAcquisitionRangeKm": 5.5,
       "systemPriceMusd": 5,
       "weapons": [
         { "id": "gepard_35mm", "nameKey": "weapon.gepard_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
@@ -96,6 +104,8 @@
       "nameKey": "unit.skynex.name",
       "deployTier": "minutes", "deployGameSec": 8, "packGameSec": 8,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 5, "lowAltitude": "good", "origin": "western" },
+      "selfAcquisitionRangeKm": 4,
       "systemPriceMusd": 22.5,
       "weapons": [
         { "id": "skynex_35mm", "nameKey": "weapon.skynex_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
@@ -109,6 +119,8 @@
       "nameKey": "unit.skyranger_35.name",
       "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "fireControlRadar": { "rangeKm": 5, "lowAltitude": "good", "origin": "western" },
+      "selfAcquisitionRangeKm": 4,
       "systemPriceMusd": 22.5,
       "weapons": [
         { "id": "skyranger_35mm", "nameKey": "weapon.skyranger_35mm.name", "kind": "gun", "interceptClass": "gun_radar",
@@ -122,6 +134,7 @@
       "nameKey": "unit.strela_10.name",
       "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "partial",
+      "selfAcquisitionRangeKm": 5,
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "strela_10_missile", "nameKey": "weapon.strela_10_missile.name", "kind": "missile", "interceptClass": "manpads",
@@ -135,6 +148,8 @@
       "nameKey": "unit.osa_akm.name",
       "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "partial",
+      "fireControlRadar": { "rangeKm": 12.5, "lowAltitude": "good", "origin": "soviet" },
+      "selfAcquisitionRangeKm": 10,
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "osa_akm_missile", "nameKey": "weapon.osa_akm_missile.name", "kind": "missile", "interceptClass": "shorad",
@@ -148,6 +163,7 @@
       "nameKey": "unit.avenger.name",
       "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "yes",
+      "selfAcquisitionRangeKm": 5.5,
       "systemPriceMusd": 3,
       "weapons": [
         { "id": "avenger_stinger", "nameKey": "weapon.avenger_stinger.name", "kind": "missile", "interceptClass": "manpads",
@@ -161,6 +177,7 @@
       "nameKey": "unit.stormer_hvm.name",
       "deployTier": "instant", "deployGameSec": 1, "packGameSec": 1,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "yes",
+      "selfAcquisitionRangeKm": 7,
       "systemPriceMusd": 2,
       "weapons": [
         { "id": "stormer_starstreak", "nameKey": "weapon.stormer_starstreak.name", "kind": "missile", "interceptClass": "manpads",
@@ -174,6 +191,7 @@
       "nameKey": "unit.vampire.name",
       "deployTier": "minutes", "deployGameSec": 4, "packGameSec": 4,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 5,
       "systemPriceMusd": 2,
       "weapons": [
         { "id": "vampire_apkws", "nameKey": "weapon.vampire_apkws.name", "kind": "rocket", "interceptClass": "shorad",
@@ -186,6 +204,7 @@
       "nameKey": "unit.raven.name",
       "deployTier": "minutes", "deployGameSec": 6, "packGameSec": 6,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 15,
       "systemPriceMusd": 5,
       "weapons": [
         { "id": "raven_aim9", "nameKey": "weapon.raven_aim9.name", "kind": "missile", "interceptClass": "shorad",
@@ -199,6 +218,7 @@
       "nameKey": "unit.gravehawk.name",
       "deployTier": "minutes", "deployGameSec": 6, "packGameSec": 6,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 15,
       "systemPriceMusd": 8,
       "weapons": [
         { "id": "gravehawk_missile", "nameKey": "weapon.gravehawk_missile.name", "kind": "missile", "interceptClass": "shorad",
@@ -212,6 +232,8 @@
       "nameKey": "unit.crotale_ng.name",
       "deployTier": "minutes", "deployGameSec": 6, "packGameSec": 6,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 13.75, "lowAltitude": "good", "origin": "western" },
+      "selfAcquisitionRangeKm": 11,
       "systemPriceMusd": 15,
       "weapons": [
         { "id": "crotale_vt1", "nameKey": "weapon.crotale_vt1.name", "kind": "missile", "interceptClass": "shorad",
@@ -225,6 +247,7 @@
       "nameKey": "unit.rbs_70.name",
       "deployTier": "minutes", "deployGameSec": 3, "packGameSec": 3,
       "mobility": "portable", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 8, "selfAcquisition": "optical",
       "systemPriceMusd": 1,
       "weapons": [
         { "id": "rbs_70_missile", "nameKey": "weapon.rbs_70_missile.name", "kind": "missile", "interceptClass": "manpads",
@@ -238,6 +261,7 @@
       "nameKey": "unit.iris_t_sls.name",
       "deployTier": "minutes", "deployGameSec": 10, "packGameSec": 10,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 12,
       "systemPriceMusd": 40,
       "weapons": [
         { "id": "iris_t_sls_missile", "nameKey": "weapon.iris_t_sls_missile.name", "kind": "missile", "interceptClass": "shorad",
@@ -250,6 +274,7 @@
       "nameKey": "unit.frankensam.name",
       "deployTier": "minutes", "deployGameSec": 15, "packGameSec": 15,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 25, "lowAltitude": "good", "origin": "soviet" },
       "systemPriceMusd": 5,
       "weapons": [
         { "id": "frankensam_missile", "nameKey": "weapon.frankensam_missile.name", "kind": "missile", "interceptClass": "shorad",
@@ -263,6 +288,7 @@
       "nameKey": "unit.buk_m1.name",
       "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
       "mobility": "vehicle", "moveSpeedKmh": 65, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 43.75, "lowAltitude": "medium", "origin": "soviet" },
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "buk_m1_missile", "nameKey": "weapon.buk_m1_missile.name", "kind": "missile", "interceptClass": "medium",
@@ -276,6 +302,7 @@
       "nameKey": "unit.hawk.name",
       "deployTier": "hours", "deployGameSec": 45, "packGameSec": 40,
       "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 50, "lowAltitude": "medium", "origin": "western" },
       "systemPriceMusd": 30,
       "weapons": [
         { "id": "hawk_missile", "nameKey": "weapon.hawk_missile.name", "kind": "missile", "interceptClass": "medium",
@@ -289,6 +316,7 @@
       "nameKey": "unit.aspide.name",
       "deployTier": "hours", "deployGameSec": 30, "packGameSec": 30,
       "mobility": "towed", "moveSpeedKmh": 40, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 31.25, "lowAltitude": "medium", "origin": "western" },
       "systemPriceMusd": 20,
       "weapons": [
         { "id": "aspide_missile", "nameKey": "weapon.aspide_missile.name", "kind": "missile", "interceptClass": "medium",
@@ -302,6 +330,7 @@
       "nameKey": "unit.nasams.name",
       "deployTier": "hours_short", "deployGameSec": 20, "packGameSec": 15,
       "mobility": "vehicle", "moveSpeedKmh": 70, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 50, "lowAltitude": "medium", "origin": "western" },
       "systemPriceMusd": 100,
       "weapons": [
         { "id": "nasams_missile", "nameKey": "weapon.nasams_missile.name", "kind": "missile", "interceptClass": "medium",
@@ -315,6 +344,7 @@
       "nameKey": "unit.iris_t_slm.name",
       "deployTier": "minutes", "deployGameSec": 10, "packGameSec": 10,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 50, "lowAltitude": "medium", "origin": "western" },
       "systemPriceMusd": 150,
       "weapons": [
         { "id": "iris_t_slm_missile", "nameKey": "weapon.iris_t_slm_missile.name", "kind": "missile", "interceptClass": "medium",
@@ -328,6 +358,7 @@
       "nameKey": "unit.s300ps.name",
       "deployTier": "minutes", "deployGameSec": 5, "packGameSec": 5,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 125, "lowAltitude": "medium", "origin": "soviet" },
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "s300_missile", "nameKey": "weapon.s300_missile.name", "kind": "missile", "interceptClass": "s300",
@@ -341,6 +372,7 @@
       "nameKey": "unit.s300pt.name",
       "deployTier": "hours", "deployGameSec": 60, "packGameSec": 60,
       "mobility": "towed", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 125, "lowAltitude": "medium", "origin": "soviet" },
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "s300_missile", "nameKey": "weapon.s300_missile.name", "kind": "missile", "interceptClass": "s300",
@@ -354,6 +386,7 @@
       "nameKey": "unit.samp_t.name",
       "deployTier": "minutes", "deployGameSec": 15, "packGameSec": 15,
       "mobility": "vehicle", "moveSpeedKmh": 70, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 125, "lowAltitude": "medium", "origin": "western" },
       "systemPriceMusd": 500,
       "weapons": [
         { "id": "aster_30", "nameKey": "weapon.aster_30.name", "kind": "missile", "interceptClass": "samp_t",
@@ -367,6 +400,7 @@
       "nameKey": "unit.patriot.name",
       "deployTier": "hours", "deployGameSec": 45, "packGameSec": 30,
       "mobility": "vehicle", "moveSpeedKmh": 60, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 200, "lowAltitude": "medium", "origin": "western" },
       "systemPriceMusd": 1000,
       "weapons": [
         { "id": "pac2", "nameKey": "weapon.pac2.name", "kind": "missile", "interceptClass": "pac2",
@@ -383,6 +417,7 @@
       "nameKey": "unit.s200.name",
       "deployTier": "fixed", "deployGameSec": null, "packGameSec": null,
       "mobility": "fixed", "moveSpeedKmh": null, "fireOnMove": "no",
+      "fireControlRadar": { "rangeKm": 312.5, "lowAltitude": "medium", "origin": "soviet" },
       "systemPriceMusd": null, "stockOnly": true,
       "weapons": [
         { "id": "s200_missile", "nameKey": "weapon.s200_missile.name", "kind": "missile", "interceptClass": "s200",
@@ -396,19 +431,21 @@
       "nameKey": "unit.interceptor_drone_team.name",
       "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 40, "selfAcquisition": "optical",
       "systemPriceMusd": 0.05,
       "weapons": [
         { "id": "interceptor_drone", "nameKey": "weapon.interceptor_drone.name", "kind": "interceptor_drone", "interceptClass": "interceptor_drone",
           "rangeKm": 40, "ceilingKm": 5, "shotCostMusd": 0.0035, "magazine": 10, "ammoSupply": "limited",
-          "targets": ["UAV", "DECOY"], "targetsFrom": [{ "tag": "JET_UAV", "from": "2026-09" }] }
+          "targets": ["UAV", "DECOY"], "targetsFrom": [{ "tag": "JET_UAV", "from": "2025-11" }] }
       ],
-      "_source": { "name": "拦截无人机班组（Sting 等）", "weapons[0].rangeKm": "15–40", "weapons[0].ceilingKm": "3–5", "weapons[0].shotCostMusd": "0.002–0.005", "weapons[0].magazine": "每班 10–30 架", "weapons[0].targets": "UAV, DECOY（2026.09 前不能打 JET_UAV）" }
+      "_source": { "name": "拦截无人机班组（Sting 等）", "weapons[0].rangeKm": "15–40", "weapons[0].ceilingKm": "3–5", "weapons[0].shotCostMusd": "0.002–0.005", "weapons[0].magazine": "每班 10–30 架", "weapons[0].targets": "UAV, DECOY（2025.11 起可打 JET_UAV，初值 10%，2026.09 起 35%，见 B-T2-13）" }
     },
     {
       "id": "jet_interceptor_drone",
       "nameKey": "unit.jet_interceptor_drone.name",
       "deployTier": "instant", "deployGameSec": 2, "packGameSec": 2,
       "mobility": "vehicle", "moveSpeedKmh": 80, "fireOnMove": "no",
+      "selfAcquisitionRangeKm": 30,
       "systemPriceMusd": 0.1,
       "weapons": [
         { "id": "jet_interceptor", "nameKey": "weapon.jet_interceptor.name", "kind": "interceptor_drone", "interceptClass": "jet_interceptor_drone",

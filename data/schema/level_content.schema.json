@@ -5,18 +5,19 @@
   "type": "object",
   "required": ["$schema", "kind"],
   "properties": {
-    "kind": { "enum": ["intel", "events"] }
+    "kind": { "enum": ["intel", "events", "level_flow"] }
   },
   "allOf": [
-    { "if": { "properties": { "kind": { "const": "intel" } } },  "then": { "$ref": "#/$defs/intel" } },
-    { "if": { "properties": { "kind": { "const": "events" } } }, "then": { "$ref": "#/$defs/events" } }
+    { "if": { "properties": { "kind": { "const": "intel" } } },      "then": { "$ref": "#/$defs/intel" } },
+    { "if": { "properties": { "kind": { "const": "events" } } },     "then": { "$ref": "#/$defs/events" } },
+    { "if": { "properties": { "kind": { "const": "level_flow" } } }, "then": { "$ref": "#/$defs/level_flow" } }
   ],
   "$defs": {
     "intel": {
       "type": "object",
       "required": ["nights"],
       "properties": {
-        "$schema": true, "kind": true,
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "nights": {
           "type": "array",
           "items": {
@@ -30,6 +31,7 @@
                   "properties": {
                     "textKey": { "$ref": "common.schema.json#/$defs/locKey" },
                     "accurate": { "type": "boolean", "description": "情报是否准确（可能有误，GDD 5.1）" },
+                    "confidence": { "enum": ["confirmed", "probable", "rumor"], "description": "可信度标签（06_client_graybox.md §3.3）" },
                     "relatedWave": { "$ref": "common.schema.json#/$defs/id" }
                   },
                   "additionalProperties": false
@@ -46,34 +48,82 @@
       "type": "object",
       "required": ["events"],
       "properties": {
-        "$schema": true, "kind": true,
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
         "events": {
           "type": "array",
           "items": {
             "type": "object", "required": ["id", "trigger", "actions"],
             "properties": {
               "id": { "$ref": "common.schema.json#/$defs/id" },
+              "once": { "type": "boolean", "description": "默认 true：单夜内只触发一次（05_campaign_economy.md §5.2）" },
               "trigger": {
                 "type": "object", "required": ["type"],
                 "properties": {
-                  "type": { "enum": ["night_start", "at_game_sec", "structure_destroyed", "unit_destroyed", "wave_spawned"] },
+                  "type": { "enum": ["night_start", "at_game_sec", "structure_destroyed", "unit_destroyed", "wave_spawned", "exposure_at_least"] },
                   "night": { "type": "integer", "minimum": 1 },
                   "gameSec": { "type": "number", "minimum": 0 },
-                  "ref": { "$ref": "common.schema.json#/$defs/id", "description": "相关的保护目标 / 单位 / 波次 ID" }
+                  "ref": { "$ref": "common.schema.json#/$defs/id", "description": "相关的保护目标 / 单位 / 波次 ID" },
+                  "threshold": { "type": "number", "description": "exposure_at_least 的暴露度阈值" }
                 },
                 "additionalProperties": false
               },
               "actions": {
                 "type": "array", "minItems": 1,
+                "items": { "$ref": "#/$defs/eventAction" }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventAction": {
+      "type": "object", "required": ["type"],
+      "properties": {
+        "type": { "enum": ["dialogue", "spawn_wave", "choice", "set_alert"] },
+        "dialogueKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "wave": { "$ref": "common.schema.json#/$defs/id" },
+        "choiceKey": { "$ref": "common.schema.json#/$defs/locKey" },
+        "timeoutGameSec": { "type": "number", "exclusiveMinimum": 0 },
+        "defaultOption": { "type": "integer", "minimum": 0 },
+        "optionEffects": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["option", "actions"],
+            "properties": {
+              "option": { "type": "integer", "minimum": 0 },
+              "actions": { "type": "array", "items": { "$ref": "#/$defs/eventAction" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "level_flow": {
+      "type": "object",
+      "required": ["segments"],
+      "properties": {
+        "$schema": true, "kind": true, "_source": { "$ref": "common.schema.json#/$defs/source" }, "provisional": { "$ref": "common.schema.json#/$defs/provisional" },
+        "segments": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["type"],
+            "properties": {
+              "type": { "enum": ["playable_night", "day", "time_jump", "auto_night", "supply_window"] },
+              "night": { "type": "integer", "minimum": 1 },
+              "daysSkipped": { "type": "integer", "minimum": 1 },
+              "nightsCount": { "type": "integer", "minimum": 1 },
+              "templateNight": { "type": "integer", "minimum": 0 },
+              "narrativeKey": { "$ref": "common.schema.json#/$defs/locKey" },
+              "ammoDelivery": {
+                "type": "array",
                 "items": {
-                  "type": "object", "required": ["type"],
+                  "type": "object", "required": ["weapon", "count"],
                   "properties": {
-                    "type": { "enum": ["dialogue", "spawn_wave", "choice", "set_alert"] },
-                    "dialogueKey": { "$ref": "common.schema.json#/$defs/locKey" },
-                    "wave": { "$ref": "common.schema.json#/$defs/id" },
-                    "choiceKey": { "$ref": "common.schema.json#/$defs/locKey" },
-                    "timeoutGameSec": { "type": "number", "exclusiveMinimum": 0 },
-                    "defaultOption": { "type": "integer", "minimum": 0 }
+                    "weapon": { "$ref": "common.schema.json#/$defs/id" },
+                    "count": { "type": "integer", "minimum": 0 }
                   },
                   "additionalProperties": false
                 }

@@ -40,7 +40,7 @@
       "id": "national_gnss_spoof",
       "nameKey": "support.national_gnss_spoof.name",
       "provider": "higher_ew", "effect": "accuracy_drop",
-      "accuracyTierDrop": 2, "affectsSameAsEwUnit": "area_nav_jammer",
+      "radiusKm": 30, "accuracyTierDrop": 2, "affectsSameAsEwUnit": "area_nav_jammer",
       "delay": { "kind": "game_sec", "gameSec": 3 },
       "duration": { "kind": "game_sec", "gameSec": 30 },
       "cost": { "commandPoints": 2 },

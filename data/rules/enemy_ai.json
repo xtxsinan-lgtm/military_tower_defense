@@ -1,0 +1,52 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "enemy_ai",
+  "_source": { "spec": "docs/spec/04_enemy_ai_commands.md §1.1.1" },
+  "knownTargets": {
+    "dedupeRadiusKm": 0.5,
+    "maxEntries": 32,
+    "carryMatchRadiusKm": 0.5,
+    "scoutedRadiusKm": 1.0,
+    "reasonWeights": {
+      "carried_in": 1.0,
+      "precision_exposure": 3.0,
+      "probe_fire": 1.5,
+      "emitting": 1.0
+    },
+    "kindWeights": {
+      "air_defense": 1.0,
+      "radar": 1.0,
+      "ew": 0.6,
+      "sensor": 0.3
+    },
+    "spreadFactor": 0.5
+  },
+  "exposure100": {
+    "retargetFrac": 0.25,
+    "preferAttracts": ["iskander_m", "lancet", "geran_2_heavy", "shahed_136"]
+  },
+  "probe": { "observeRadiusKm": 3.0 },
+  "suppress": { "minHoldGameSec": 0.25, "maxHoldGameSec": 2 },
+  "saturate": { "arrivalWindowGameSec": 0.5 },
+  "bypass": {
+    "tags": ["CM"],
+    "cellKm": 1.0,
+    "maxCells": 4096,
+    "marginKm": 5,
+    "threatWeight": 4.0,
+    "valleyWeight": 0.5,
+    "assumedAltitudeM": 50,
+    "siteAntennaHeightM": 10,
+    "useLineOfSight": true,
+    "maxSites": 8,
+    "radiusMult": 1.0,
+    "fakeLauncherAssumedRangeKm": 10,
+    "maxWaypoints": 16,
+    "a50": {
+      "radiusMult": 1.2,
+      "threatWeightMult": 2.0,
+      "siteMinExposure": 40,
+      "appliesToUntagged": true
+    }
+  }
+}

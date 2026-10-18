@@ -50,10 +50,13 @@
           "enum": ["frontline_attack", "must_enter_shorad", "low_strike", "standoff_release_and_return", "hunt_fighters_and_radars", "launch_from_map_edge", "global_alert_on_takeoff", "wave_source_only", "armed_recon", "spotter", "awacs"]
         },
         "standoffFrom": { "$ref": "common.schema.json#/$defs/yearMonth", "description": "从此时起在远程投弹后返航" },
+        "firstSeen": { "$ref": "common.schema.json#/$defs/yearMonth", "description": "首次投入战场的年月（C-T2-08）" },
+        "releaseRangeKm": { "type": ["number", "null"], "minimum": 0, "description": "平台默认防区外投放距离（B-T3-09）" },
+        "radioLinked": { "type": "boolean", "description": "是否有无线电控制链路（B-T2-43）" },
+        "reconQuality": { "type": ["string", "null"], "enum": ["low", "medium", "high", null], "description": "对假发射车的侦察识破质量（B-T2-41）" },
         "whileAlive": {
           "type": "object",
           "properties": {
-            "enemyAccuracyTierBoost": { "type": "integer", "minimum": 1, "description": "敌方精度档提升" },
             "cruiseMissilesAvoidAirDefense": { "type": "boolean" }
           },
           "additionalProperties": false,

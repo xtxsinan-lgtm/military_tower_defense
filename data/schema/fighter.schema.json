@@ -26,10 +26,11 @@
           "type": "array", "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["id", "nameKey", "interceptClass", "rangeKm", "shotCostMusd", "loadout", "targets"],
+            "required": ["id", "nameKey", "kind", "interceptClass", "rangeKm", "shotCostMusd", "loadout", "targets"],
             "properties": {
               "id": { "$ref": "common.schema.json#/$defs/id" },
               "nameKey": { "$ref": "common.schema.json#/$defs/locKey" },
+              "kind": { "enum": ["missile", "rocket"] },
               "interceptClass": { "$ref": "common.schema.json#/$defs/id" },
               "rangeKm": { "$ref": "common.schema.json#/$defs/positive" },
               "shotCostMusd": { "$ref": "common.schema.json#/$defs/nonNegative" },
@@ -37,7 +38,10 @@
               "targets": {
                 "type": "array", "minItems": 1, "uniqueItems": true,
                 "items": { "$ref": "common.schema.json#/$defs/targetTag" }
-              }
+              },
+              "reactionGameSec": { "type": ["number", "null"], "minimum": 0 },
+              "shotIntervalGameSec": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+              "interceptorSpeedKmh": { "type": ["number", "null"], "exclusiveMinimum": 0 }
             },
             "additionalProperties": false
           }

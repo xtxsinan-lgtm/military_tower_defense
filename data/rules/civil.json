@@ -1,0 +1,24 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "civil",
+  "_source": { "spec": "docs/spec/03_engagement_impact_scoring.md §1.12" },
+  "grid": {
+    "unitConnectRadiusCells": 1,
+    "unitCategoriesOnGrid": ["sensor", "ew"],
+    "unpoweredShelterProtectionMult": 0.5
+  },
+  "alert": {
+    "availableFromLevel": 6,
+    "shelterGameSec": 2,
+    "protectionFrac": 0.8,
+    "populationStructureTypes": ["residential"],
+    "freeRaisesPerNight": 2,
+    "fatiguePerExtraRaise": 0.1,
+    "minResponsiveness": 0.3
+  },
+  "scoring": {
+    "lossMusdBase": 0.1,
+    "platformPotentialLossMusd": 10,
+    "highThreatDamageLevel": 7
+  }
+}

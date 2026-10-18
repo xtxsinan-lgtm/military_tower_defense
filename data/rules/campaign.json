@@ -1,0 +1,45 @@
+{
+  "$schema": "../schema/rules.schema.json",
+  "kind": "campaign_rules",
+  "_source": { "spec": "docs/spec/05_campaign_economy.md §1.3" },
+  "crew": { "aceDeathChanceOnUnitDestroyed": 0.5, "woundedNights": 2, "xpPerHit": 1 },
+  "alert": { "dayRecovery": 0.2 },
+  "autoResolve": { "interceptProbMult": 1.0, "exposureGainMult": 1.0, "watchTrustBonus": 1 },
+  "adaptation": {
+    "alpha": 0.5,
+    "hysteresis": 0.1,
+    "positionRadiusM": 500,
+    "rules": [
+      { "id": "uav_fly_higher", "stat": "gun_kill_share", "threshold": 0.5, "notBefore": "2024-01", "effect": { "kind": "uav_altitude_add", "valueM": 1000 } },
+      { "id": "evasive_uav_early", "stat": "drone_kill_share", "threshold": 0.5, "notBefore": "2024-09", "effect": { "kind": "force_evasive_uav" } },
+      { "id": "position_priority", "stat": "position_nights", "threshold": 3, "effect": { "kind": "priority_position" } },
+      { "id": "suppress_then_strike", "stat": "arm_shutdown_rate", "threshold": 0.7, "effect": { "kind": "enable_trigger", "trigger": "silence_heavy" } },
+      { "id": "anti_ew_mix", "stat": "ew_coverage_frac", "threshold": 0.5, "effect": { "kind": "enable_trigger", "trigger": "ew_heavy" } }
+    ]
+  },
+  "dossier": {
+    "pointsPerKill": 1,
+    "maxPoints": 50,
+    "levels": [
+      { "minPoints": 5, "discriminationAdd": 0.05, "classifyTimeMult": 0.9 },
+      { "minPoints": 20, "discriminationAdd": 0.10, "classifyTimeMult": 0.75 }
+    ],
+    "families": [
+      { "id": "geran_jet", "members": ["geran_3", "geran_4", "geran_5"] },
+      { "id": "shahed", "members": ["shahed_136", "geran_2_heavy"] }
+    ]
+  },
+  "cityMemory": { "bonusFracPerVictory": 0.1, "maxBonusFrac": 0.2 },
+  "rewardCards": { "offerCount": 3 },
+  "balanceTargets": {
+    "trustFloorDwellMax": 0.15,
+    "trustFloorMargin": 5,
+    "recoveryRateMin": 0.6,
+    "resourceSpreadMax": 1.5,
+    "requestStrategySpreadMax": 0.15,
+    "winGapSlopeMax": 0.02,
+    "autoResolveGapMin": 0.03,
+    "autoResolveGapMax": 0.10,
+    "floorLevelWinRateMin": 0.4
+  }
+}

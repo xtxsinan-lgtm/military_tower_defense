@@ -36,6 +36,19 @@
           "description": "系统价格（一个火力单元 / 连）；null = 只有库存，无采购价"
         },
         "stockOnly": { "type": "boolean", "description": "苏制库存装备，不可采购" },
+        "fireControlRadar": {
+          "type": ["object", "null"],
+          "required": ["rangeKm", "lowAltitude", "origin"],
+          "properties": {
+            "rangeKm": { "$ref": "common.schema.json#/$defs/positive" },
+            "lowAltitude": { "enum": ["poor", "medium", "good", "very_good"] },
+            "origin": { "enum": ["soviet", "western"] },
+            "antennaHeightM": { "type": ["number", "null"], "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "selfAcquisitionRangeKm": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "selfAcquisition": { "type": ["string", "null"], "enum": ["optical", null] },
         "weapons": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/weapon" } },
         "_source": { "$ref": "common.schema.json#/$defs/source" },
         "provisional": { "$ref": "common.schema.json#/$defs/provisional" }
@@ -99,7 +112,11 @@
           "items": { "$ref": "common.schema.json#/$defs/id" },
           "description": "只能攻击这些敌方单位（引用 enemies/*.json 的 ID）"
         },
-        "barrelCooldown": { "type": "boolean", "description": "持续射击需要换枪管冷却" }
+        "barrelCooldown": { "type": "boolean", "description": "持续射击需要换枪管冷却" },
+        "reactionGameSec": { "type": ["number", "null"], "minimum": 0 },
+        "shotIntervalGameSec": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "interceptorSpeedKmh": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "roundsPerBurst": { "type": ["integer", "null"], "minimum": 1 }
       },
       "additionalProperties": false
     }

@@ -58,6 +58,9 @@
           "description": "精度档随时期升级"
         },
         "ewImmune": { "type": "boolean", "description": "不受电子战影响（数值表 3.1）" },
+        "radioLinked": { "type": "boolean", "description": "是否有无线电控制链路（B-T2-43）" },
+        "aiVisionFrom": { "$ref": "common.schema.json#/$defs/yearMonth", "description": "启用 AI 视觉末制导的年月（B-T2-35）" },
+        "firstSeen": { "$ref": "common.schema.json#/$defs/yearMonth", "description": "首次投入战场的年月（C-T2-08）" },
         "tracksEmittingRadarOnly": { "type": "boolean", "description": "只追踪开机雷达（反辐射）" },
         "releaseRangeKm": { "type": "number", "minimum": 0, "description": "投放距离；0 = 必须飞到目标上空" },
         "bonusVsFortification": { "type": "boolean" },
