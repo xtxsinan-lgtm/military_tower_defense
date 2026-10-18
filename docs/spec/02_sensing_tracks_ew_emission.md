@@ -167,7 +167,8 @@
 | `falseAlarmsPerGameSec` | `FalseAlarmsPerSec` | 按 `FalseAlarmLevel` 的对象（键 `some` `high`），每秒 | 0.02 / 0.1（每游戏秒） |
 | `reportDelayGameSec` | `ReportDelaySec` | 秒 | 0.5（= 30 s） |
 | `opticalWeatherRangeMult` | `OpticalWeatherRangeMult` | 按 `Weather` 的对象（键 `clear` `moonlit` `low_cloud` `fog`） | 1.0 / 1.3 / 0.6 / 0.3 |
-| `opticalNightRangeMult` | `OpticalNightRangeMult` | 倍率（`SelfAcquisition == Optical` 的火力单元在夜间的自主捕获距离倍率；缺省 `0.3`） | 0.3（B-T2-09） |
+| `opticalNightRangeMult` | `OpticalNightRangeMult` | 倍率（`SelfAcquisition == Optical` 的火力单元在夜间无辅助时的自主捕获距离倍率；缺省 `0.3`） | 0.3（B-T2-09） |
+| `opticalSearchlightRangeMult` | `OpticalSearchlightRangeMult` | 倍率（仅有探照灯辅助、无热成像时，`SelfAcquisition == Optical` 火力单元在夜间的自主捕获距离倍率；缺省 `0.7`） | 0.7（T-07） |
 | `unpoweredActiveRangeMult` | `UnpoweredActiveRangeMult` | 倍率（主动辐射源断电时的探测距离倍率） | 0.5（B-T2-05） |
 | `winterActiveRangeMult` | `WinterActiveRangeMult` | 倍率（冬季 `Season.Winter` 下主动雷达探测 / 火控距离倍率；缺省 `0.9`） | 0.9（C-T2-07） |
 
@@ -512,12 +513,15 @@ if t.AltM < DetectionRules.LowAltitudeBelowM:
 #### 3.2.5 火控雷达与自主捕获（`FireControlDetect(f)`）
 
 - **火控雷达**：`f.Def.FireControlRadar != null` 且 `f.DeployState == Deployed` 且 `!f.RadarDestroyed` 且 `!Suspended(f)`（A-2-12）且 `f.Emitter.On`。有效距离 `R = FireControlRadar.RangeM`，再按 3.2.3 依次乘断电倍率（`!f.Powered`）、冬季倍率（`season == Season.Winter` → `× DetectionRules.WinterActiveRangeMult`）、新阵地倍率、低空倍率（用 `FireControlRadar.LowAltitude`；火控雷达没有"低空盲区大"标记）。视线必需，调用 `Sensing.HorizonProfiles[f.Id].HasLineOfSightAgl(t.Pos, t.AltM)`（天线高度 `FireControlRadar.AntennaHeightM ?? Rules.Terrain.DefaultAntennaHeightM`）。通过 `ctx.ThreatGrid.QueryCircle` 遍历范围内、视线通的每个目标（ID 升序），产生 `Detection(f.Id, FireControl, Local, t.Id, 0, …, Quality = Precise, err = DetectionRules.ErrorRadiusM[Precise], ObservedAtSec = TimeSec)`，不延迟（B 线也不延迟：数值表 1.3"配属的车载雷达"）。
-- **自主捕获**（无火控雷达的单位，如单兵导弹、高炮、火力组；B-T2-09、C-T2-07）：`f.Def.SelfAcquisitionRangeM != null` 且 `!Suspended(f)`（A-2-12）且（`f.DeployState == Deployed`，或 `f.DeployState == Moving` 且 `f.Def.FireOnMove != No`）。有效距离：
+- **自主捕获**（无火控雷达的单位，如单兵导弹、高炮、火力组；B-T2-09、C-T2-07、T-07）：`f.Def.SelfAcquisitionRangeM != null` 且 `!Suspended(f)`（A-2-12）且（`f.DeployState == Deployed`，或 `f.DeployState == Moving` 且 `f.Def.FireOnMove != No`）。有效距离：
   ```
   R = f.Def.SelfAcquisitionRangeM
   if f.Def.SelfAcquisition == SelfAcquisitionKind.Optical:
-      hasNightAid = f.Placement?.Settings.NightAids != null && f.Placement.Settings.NightAids.Count > 0
-      nightMult   = (night.TimeOfDay == TimeOfDay.Day or hasNightAid) ? 1.0 : DetectionRules.OpticalNightRangeMult
+      aids = f.Placement?.Settings.NightAids
+      hasThermal     = aids != null && aids.Contains(NightAidKind.Thermal)
+      hasSearchlight = aids != null && aids.Contains(NightAidKind.Searchlight)
+      nightMult = (night.TimeOfDay == TimeOfDay.Day or hasThermal) ? 1.0
+                : (hasSearchlight ? DetectionRules.OpticalSearchlightRangeMult : DetectionRules.OpticalNightRangeMult)
       weatherMult = night.Weather == null ? 1.0 : DetectionRules.OpticalWeatherRangeMult[night.Weather]
       R = R × nightMult × weatherMult
   ```
@@ -633,14 +637,15 @@ PreciseHolderIds = preciseDets 的 SourceId 去重升序
 - 质量**升降都立即生效**（有探测的步）：例如本地交叉的两个传感器之一失去目标，当步即从"大致"降为"模糊"。
 - 航迹丢失后目标再次被探测 → 新建航迹（新 ID，甄别状态重置）。
 
-#### 3.3.8 诱饵甄别（含敌情档案加成，A-2-22 / R-02-1）
+#### 3.3.8 诱饵甄别（含敌情档案加成与快扫雷达加成，A-2-22 / R-02-1 / H-07）
 
 只对 `ThreatId != 0`、`!DecoyIdentified` 且目标 `Tag == DECOY` 的航迹（ID 升序）：
 
 ```
 q = k.Quality
 if k.DecoyCheckedQuality != null and q <= k.DecoyCheckedQuality: 跳过         # 每个质量等级最多掷一次；降级不重掷
-add   = DossierDiscriminationAdd(ctx, threat.DefId)                           # CarryIn.Dossier 中匹配项的 DiscriminationAdd，无则 0.0
+fastAdd = (q >= TrackQuality.Approximate && 存在 d ∈ sensorDets 其 SensorUnit.Def.FastUpdate == true) ? 0.15 : 0.0
+add   = DossierDiscriminationAdd(ctx, threat.DefId) + fastAdd                 # CarryIn.Dossier 中匹配项的 DiscriminationAdd + 快扫雷达加成（H-07）
 pNew  = Qualities[q].DecoyDiscrimination <= 0 ? 0.0 : Math.Min(1.0, Qualities[q].DecoyDiscrimination + add)
 pPrev = (k.DecoyCheckedQuality == null or Qualities[k.DecoyCheckedQuality].DecoyDiscrimination <= 0)
         ? 0.0 : Math.Min(1.0, Qualities[k.DecoyCheckedQuality].DecoyDiscrimination + add)
@@ -712,7 +717,7 @@ else:
     t.EwNav = Resisted
 ```
 
-`ReconcileNavAccuracy(t)`（统一维护 `t.EwExtraOffsetM` 与 `t.AccuracyTierDrop`，在 `NavEffect` 或 `NationalSpoof` 置 `Applied` 时调用；B-T3-08、A-2-07）：
+`ReconcileNavAccuracy(t)`（统一维护 `t.EwExtraOffsetM` 与 `t.AccuracyTierDrop`，在 `NavEffect` 或 `NationalSpoof` 置 `Applied` 时调用；B-T3-08、A-2-07、T-06）：
 
 ```
 if t.Kind != EntityThreatKind.Munition:
@@ -722,15 +727,18 @@ unitExtra = (t.EwNav == Applied) ? Accuracy.Tiers[T0].EwExtraM : 0.0
 natDrop   = (t.NationalSpoof == Applied) ? t.NationalSpoofDrop : 0          # national_gnss_spoof 为 2
 if natDrop == 0:
     t.AccuracyTierDrop = 0; t.EwExtraOffsetM = unitExtra; return
+order    = Accuracy.TierOrder                                               # [D, C, B, A]
+rawIdx   = order.IndexOf(T0) - natDrop
+overflow = Math.Max(0, -rawIdx)
+natExtra = overflow * 1000.0                                                # T-06：超出 D 档时每溢出 1 档追加 +1000 m 额外偏移
 if t.EwNav != Applied:
-    t.AccuracyTierDrop = natDrop; t.EwExtraOffsetM = 0.0; return
-# 单位电子战与国家级导航欺骗同时 Applied：按期望偏移增量取较大者，不叠加（B-T3-08）
-order = Accuracy.TierOrder                                                  # [D, C, B, A]
-Tdrop = order[Math.Clamp(order.IndexOf(T0) - natDrop, 0, order.Count - 1)]
-natDelta = 0.5 * (Accuracy.Tiers[Tdrop].OffsetM.Min + Accuracy.Tiers[Tdrop].OffsetM.Max)
-         - 0.5 * (Accuracy.Tiers[T0].OffsetM.Min    + Accuracy.Tiers[T0].OffsetM.Max)
+    t.AccuracyTierDrop = natDrop; t.EwExtraOffsetM = natExtra; return
+# 单位电子战与国家级导航欺骗同时 Applied：按实心圆盘采样期望偏移增量取较大者，不叠加（B-T3-08、T-06）
+Tdrop = order[Math.Clamp(rawIdx, 0, order.Count - 1)]
+natDelta = (0.5 * Accuracy.Tiers[Tdrop].OffsetM.Max + natExtra)
+         - 0.5 * Accuracy.Tiers[T0].OffsetM.Max
 if natDelta >= unitExtra:
-    t.AccuracyTierDrop = natDrop; t.EwExtraOffsetM = 0.0
+    t.AccuracyTierDrop = natDrop; t.EwExtraOffsetM = natExtra
 else:
     t.AccuracyTierDrop = 0; t.EwExtraOffsetM = unitExtra
 ```
@@ -1049,16 +1057,19 @@ FakeLauncherRecon()                                      # 3.7.3（唯一消耗 
 
 #### 3.6.2 辐射速率 `EmitRate(u)`
 
-| 单位 | 条件 | 每秒速率 |
+| 单位 | 条件 | 基础每秒速率 `baseEmit` |
 |---|---|---|
 | `SensorUnit`（辐射源） | `Emitter.On` | `SensorExposureLevelRatesPerSec[Def.ExposureLevel]` |
 | `FireUnit`（有火控） | `Emitter.On` | `FcMode == Cued` → `RatesPerSec.FireControlCued`；`SelfSearch` → `RatesPerSec.FireControlSelfSearch` |
 | `EwUnit` | `Emitter.On` | `EwExposureLevelRatesPerSec[Def.EmissionExposure]` |
 | `DeceptionUnit`（诱饵辐射源 / 牺牲雷达） | `Emitter.On` | `SensorExposureLevelRatesPerSec[Positions.Deception.DecoyEmitterExposureLevel]` |
-| 任意单位（追加项） | `EquipmentEwIds` 中每个装备定义 `d`，且单位 `DeployState != Packed` | `+ EwExposureLevelRatesPerSec[d.EmissionExposure]`（防护罩常开，B-T2-52） |
 | 其他 | | 0 |
 
-策略的 `ExposureMult` 与 `cueing.*.exposureMult` **不在运行时相乘**（它们作为平衡验证的目标平均暴露系数，实测偏差容忍 ±0.15；已决 B-T3-10）。
+对 `SensorUnit` 与 `FireUnit` 的主动辐射速率 `baseEmit`（T-05、B-T3-10）：
+- 若 `u.Emitter.PolicyId == "on_warning"`（`Activation == ApproximateWarning`）→ `baseEmit = baseEmit × 0.70`（预警引导定向扇区扫描折减）；
+- 若 `u.Emitter.PolicyId == "decoy_coordinated"`（`Activation == AfterDecoy`）且场上存在存活开机的 `FakeEmitter` / `SacrificialEmitter` 欺骗单位 `d`（`d.Emitter.On`）→ `baseEmit = baseEmit × 0.25`（诱饵辐射源分流敌方侦收定位折减）；
+- 其余策略（如 `always_on`、`intermittent`、`silent`）的 `ExposureMult` 由开关机占空比自然涌现，不在 `EmitRate` 中重复相乘。
+- 任意单位追加项：`EquipmentEwIds` 中每个装备定义 `d`（且 `u.DeployState != Packed`）追加 `+ EwExposureLevelRatesPerSec[d.EmissionExposure]`（防护罩常开，B-T2-52）。
 
 #### 3.6.3 侦察、发射、转移
 

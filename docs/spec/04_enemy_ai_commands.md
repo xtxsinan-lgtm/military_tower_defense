@@ -488,8 +488,8 @@ if !FireUnits.TryGet(fireUnitId, out f): return             # 发射后同一步
 seen = false
 # 条件 A：开火所针对的目标属于试探波
 if Threats.TryGetIncludingRemoved(threatId, out t) 且 IsProbeThreat(t): seen = true
-# 条件 B：任何存活的试探波目标在观察半径内（看到发射，经 ThreatGrid 空间索引查询，C-T1-08）
-if !seen 且 Probe.ObserveRadiusM > 0:
+# 条件 B：任何存活的试探波目标在观察半径内，且该单位已具备显著暴露（Exposure ≥ 15.0）或火控雷达正开机辐射（H-10，经 ThreatGrid 空间索引查询，C-T1-08）
+if !seen 且 Probe.ObserveRadiusM > 0 且 (f.Exposure ≥ 15.0 或 (f.Emitter != null 且 f.Emitter.On)):
     for t in ctx.ThreatGrid.QueryCircle(f.Pos, Probe.ObserveRadiusM):   # 按 ID 升序返回距离 ≤ ObserveRadiusM 的存活 Threat
         if IsProbeThreat(t): seen = true; break
 if seen: AddEntry(f.Id, f.DefId, AirDefense, f.Pos, ProbeFire)
@@ -498,6 +498,7 @@ IsProbeThreat(t) = t.WaveId != null 且 今晚 NightDef.Waves 中第一个 Id ==
 ```
 
 - `Pos` = **开火时**火力单元的位置（本步的 `f.Pos`）。行进间开火的单位（03 `CanAct`）记录的是开火位置，之后移动不影响记录。
+- 条件 B 的暴露度/辐射门槛（`f.Exposure ≥ 15.0 || (f.Emitter != null && f.Emitter.On)`，H-10）确保：不发射雷达波且暴露度极低的静默高炮/机枪对非试探波目标射击时，不会仅因 15 km 内恰有试探机路过就被无条件收入敌方已知防空清单，从而维持试探波诱使防空暴露的设计张力。
 - `ctx.ThreatGrid.QueryCircle(f.Pos, Probe.ObserveRadiusM)` 与全表扫描 `State.Threats` 按 `|t.Pos − f.Pos|² ≤ ObserveRadiusM²` 过滤的结果集合和顺序逐位完全一致（`00_core.md §3.3.1`，C-T1-08）。
 - 只记录火力单元。探测单位不开火；辐射源由 I3 实时可见，不需要试探。
 - 同一单位多次开火只产生一条记录（去重）。
@@ -563,6 +564,7 @@ Covers(s, p) = |p − s.Pos|² < s.RadiusM²
 ```
 
 - 视线与遮挡包络（C-T2-01）：当 `UseLineOfSight == true` 时，对每个防空站点调用 `ctx.Terrain.BuildHorizonProfile(s.Pos, SiteAntennaHeightM, s.RadiusM)`（见 `01_spawn_movement_terrain.md §3.3.4`）预计算径向多山脊最大遮挡斜率包络，随后对落入圆内的每个格子中心 `p` 以 $O(1)$ 的 `profile[s].HasLineOfSightAgl(p, AssumedAltitudeM)` 查表判定（替代 65,536 次全长射线步进，将重建尖峰从 ≈300 ms 降至 ≈5–10 ms）。在平坦地形（如 `Mini04`）上，`HorizonProfile.HasLineOfSightAgl` 与 `Terrain.HasLineOfSightAgl` 恒为 `true`，结果完全一致。在 `BypassPlanner.BuildPenalties` 单元测试中，仍支持直接注入 `losFn(s.Pos, p)` 委托（7.5）。
+- 远程防空全图覆盖退化保护（H-10）：当某已知防空站点的 `s.RadiusM` 过大以至于连目标建筑终点 `G` 也落入 `s.RadiusM` 内时，若对整个 `s.RadiusM` 施加均匀惩罚会导致终点附近无梯度可绕，此时对该站点可叠加或收紧核心高危圈半径 `min(s.RadiusM, 4500.0)`，使巡航导弹依然绕开防空阵地核心发射区。
 - 平时（`Set1`）只含已知清单——敌方**不会**因为某雷达此刻开机就自动绕开它（开机信息用于反辐射导弹，见 3.3.2）。
 
 #### 3.2.7 夜末带出 `EnemyIntelRules.BuildCarryOut(SimState s, LevelData level) : IReadOnlyList<KnownTargetCarry>`

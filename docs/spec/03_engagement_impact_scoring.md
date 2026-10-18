@@ -275,7 +275,7 @@ public static class WeaponParams
   "reactionGameSecByClass": {
     "gun": 0.05, "gun_radar": 0.05, "manpads": 0.05,
     "shorad": 0.1, "medium": 0.15,
-    "s300": 0.2, "samp_t": 0.2, "pac2": 0.2, "pac3": 0.2, "s200": 0.2,
+    "s300": 0.08, "samp_t": 0.05, "pac2": 0.05, "pac3": 0.033, "s200": 0.2,
     "jet_interceptor_drone": 0.3, "interceptor_drone": 0.5
   },
   "barrelCooldown": { "burstsBeforeCooldown": 5, "cooldownGameSec": 1 },
@@ -655,7 +655,11 @@ Solve:
     lo = (k0 − 1) * sampleSec
     for k = k0 .. K:
         t = k * sampleSec
-        if predict(t).Arrived: return null            # 目标在可达之前已落地 / 到达
+        if predict(t).Arrived:                        # 目标在 (lo, t] 区间内落地：二分找出落地前微邻域 t_pre 并检查可达性（T-01）
+            a_lo = lo; a_hi = t
+            repeat 16 times: a_mid = 0.5*(a_lo+a_hi); if predict(a_mid).Arrived: a_hi = a_mid else a_lo = a_mid
+            if a_lo > lo + 1e-4 and Reach(a_lo): hi = a_lo; goto Refine
+            return null
         if Reach(t): hi = t; goto Refine
         lo = t
     return null                                       # 追不上
@@ -1192,7 +1196,7 @@ now = ctx.TimeSec
 cellM = conventions.CellKm * 1000.0
 # A. 碎片（本步命中的拦截判定）
 for e in CurrentStep where e is InterceptResolved && e.Hit (Seq 升序):
-    if !Threats.TryGetIncludingRemoved(e.ThreatId, out t) or t.Kind != Munition: continue
+    if !Threats.TryGetIncludingRemoved(e.ThreatId, out t) or t.Kind != Munition or t.Tag == TargetTag.DECOY: continue   # T-03：诱饵碎片不造成地面伤害
     frac = e.OverUrban ? debris.UrbanFrac : debris.RuralFrac
     if frac <= 0: continue
     L = RoundLevel(MunitionDef(t).DamageLevel * frac)
@@ -1237,14 +1241,14 @@ SpotterAlive() = 存在 Alive 的 Threat p：p.Kind == Platform 且
 - 升档对地图上全部敌方弹药生效（“存活期间”），不要求侦察平台靠近目标；升档数统一以 `rules/accuracy.json` 的 `spotterTierBoost` 为唯一数值来源（`B-T2-14`，8.1 Q-D6）。
 - `t.AccuracyTierDrop` 由 02 `EwSystem.ReconcileNavAccuracy` 在步内写好（单路径合成单位级导航干扰与国家级导航欺骗，不双重叠加，`B-T3-08`）；`EwTierDrop` 为其兼容别名（2.4）。
 
-#### 3.5.4 落点偏移（`A-2-07`、`B-T3-08`）
+#### 3.5.4 落点偏移（`A-2-07`、`B-T3-08`、`T-06`）
 
 ```
 Offset(aim, tier, t, def):
     tierDef = accuracy.Tiers[tier]
     extra   = (def.EwImmune == true) ? 0.0
               : (t.EwExtraOffsetM > 0.0 ? t.EwExtraOffsetM : (t.EwAffected ? tierDef.EwExtraM : 0.0))
-    d  = Rng.Range(tierDef.OffsetM.Min, tierDef.OffsetM.Max) + extra     # 第 1 次 NextDouble
+    d  = Rng.Range(0.0, tierDef.OffsetM.Max + extra)                     # 第 1 次 NextDouble：实心圆盘半径采样（消除中空盲区，T-06）
     th = Rng.Range(0.0, 2.0 * Math.PI)                                    # 第 2 次 NextDouble（方位角，正北顺时针）
     return aim + new Vec2(Math.Sin(th), Math.Cos(th)) * d
 ```
@@ -1569,7 +1573,7 @@ WeightedLossFrac() = Σw == 0 ? 0 : Σ_s ( s.Weight * s.LossHp / s.MaxHp ) / Σ_
 WeightedLossFracAtNightStart 用 PostDeployInit 时的 LossHp 计算
 ```
 
-#### 3.8.3 交换比（GDD 9.3、数值表第 4 节，`B-T3-01`）
+#### 3.8.3 交换比与单发造价交换比（GDD 9.3、数值表第 4 节，`B-T3-01`、`T-04`）
 
 ```
 PotentialLoss(threatId):
@@ -1584,11 +1588,16 @@ PotentialLoss(threatId):
     damageValue = dmg * civil.Scoring.LossMusdBase * w
     enemyCost   = def.CostMusd ?? 0.0
     return Math.Max(enemyCost, damageValue)
+RawEnemyCost(threatId):
+    t = Threats.TryGetIncludingRemoved(threatId)
+    if t.Tag == DECOY: return 0.0
+    return (t.Kind == Platform) ? (PlatformDef(t).CostMusd ?? civil.Scoring.PlatformPotentialLossMusd) : (MunitionDef(t).CostMusd ?? 0.0)
 ExchangeRatio = TotalShotCostMusd > 0 ? TotalPotentialLossMusd / TotalShotCostMusd : null
 每种武器：Ratio = ShotCostMusd > 0 ? PotentialLossMusd / ShotCostMusd : null
+每种武器纯造价交换比（T-04，供 05 判定 wastefulWeapon）：RawCostRatio = ShotCostMusd > 0 ? RawEnemyCostMusd / ShotCostMusd : null
 ```
 
-- **公式说明（`B-T3-01`）**：`damageValue = 2^(damageLevel - 1) × LossMusdBase(0.1 M$) × w` 按伤害等级的指数标度衡量如果不拦截将对保护目标造成的破坏价值（例如 Shahed `damageLevel = 3` 攻击权重 `w = 5` 的电厂时，`damageValue = 4 × 0.1 × 5 = 2.0 M$`），再与敌方弹药造价 `enemyCost`（`costMusd`）取较大值（例如 Kh-101 造价 `13 M$`、Kinzhal `10 M$`、Iskander-M `3 M$` 即使攻击低权重目标也至少记其弹体价值）。
+- **公式说明（`B-T3-01`、`T-04`）**：宏观夜结算效费比 `ExchangeRatio` 使用混合公式 `max(enemyCost, 0.1 × 2^(damageLevel - 1) × w)` 衡量整体防空保护收益；而单武器“好弹打烂靶”（`wastefulWeapon` 调查追责）使用纯造价交换比 `RawCostRatio = RawEnemyCostMusd / ShotCostMusd`（配合 `minAvgShotCostMusd = 0.80 M$` 与 `maxExchangeRatio = 0.20`），避免因攻击高权重建筑的廉价无人机抬高结构项而掩盖昂贵导弹打廉价靶的浪费。
 - 分母是**全部发射**（含未命中、射向诱饵、夜晚结束时仍在飞行的拦截弹）的价格；支援发射也计入（按其武器价格）。
 - 信任度的增减由 05 依据 `ExchangeSummary` 与 `HighThreatLeaksWithReserve`（GDD 9.3 第 3 条“让高威胁目标突防，但昂贵弹药仍有剩余”）计算。
 
@@ -1686,7 +1695,8 @@ public sealed record ExchangeSummary
     public int DecoyShots { get; init; } public double DecoyCostMusd { get; init; }
     public IReadOnlyList<WeaponExchange> ByWeapon { get; init; }           // 有发射的武器，序数升序
 }
-public sealed record WeaponExchange(string WeaponId, int Shots, int Kills, double ShotCostMusd, double PotentialLossMusd, double? Ratio);
+public sealed record WeaponExchange(string WeaponId, int Shots, int Kills, double ShotCostMusd, double PotentialLossMusd, double? Ratio,
+                                    double RawEnemyCostMusd = 0.0, double? RawCostRatio = null, int WastefulShots = 0);
 
 public sealed record DebrisSummary
 {

@@ -770,14 +770,14 @@ issue = Min(req, NationalStock[w].Rounds)          # 不受比例修正、不受
 if r.Exchange.ExchangeRatio == null or r.Exchange.TotalShotCostMusd < minShotCostForExchangeMusd: dEx = 0
 else: dEx = bands 中 minRatio ≤ ratio 的最后一项的 delta        # bands 按 minRatio 严格升序，第一项 minRatio 必须为 0（加载校验）
 
-# 2) 浪费型武器（GDD 9.3 "用 PAC-3 打 Shahed"，按武器聚合判定，B-T3-01 / B-T2-103）
+# 2) 浪费型武器（GDD 9.3 "用 PAC-3 打 Shahed"，按武器纯造价交换比 RawCostRatio 或逐发 wastefulShots 判定，B-T3-01 / B-T2-103 / T-04）
 W = 0; wastedWeapons = []
 for x in r.Exchange.ByWeapon（序数顺序）:
     if x.Shots == 0 or x.Kills < wastefulWeapon.minKills: continue
     avg = x.ShotCostMusd / x.Shots
-    ratio = x.Ratio ?? 0
-    if avg ≥ wastefulWeapon.minAvgShotCostMusd and ratio < wastefulWeapon.maxRatio:   # 默认 minAvgShotCostMusd = 2.0, maxRatio = 0.2（PAC-3 打 Shahed 为 0.4/4 = 0.1 < 0.2）
-        W += x.Shots; wastedWeapons.Add(x.WeaponId)
+    rawRatio = x.RawCostRatio ?? (x.Ratio ?? 0)
+    if avg ≥ wastefulWeapon.minAvgShotCostMusd and rawRatio < wastefulWeapon.maxRatio:   # 默认 minAvgShotCostMusd = 0.80, maxRatio = 0.20（PAC-3 打 Shahed 纯造价比为 0.05/4 = 0.0125 < 0.20，T-04）
+        W += (x.WastefulShots > 0 ? x.WastefulShots : x.Shots); wastedWeapons.Add(x.WeaponId)
 dWaste = −Min(W × penaltyPerShot, maxPenaltyPerNight)
 
 # 3) 指挥部质询
@@ -1012,22 +1012,22 @@ TonightCrewNights(u, day):
 
 `flow.nights` 中 `Key` = 亲自指挥；`Auto` = 普通夜，默认自动结算；`Quiet` = 无空袭。日历按 3.2.2 逐日推进；没有夜晚条目的日子只有 `Day` 阶段。
 
-#### 3.8.2 `AutoResolveNight()`（`B-T3-07`、`C-T1-16`）
+#### 3.8.2 `AutoResolveNight()`（`B-T3-07`、`C-T1-16`、`T-09`）
 
 0. 保存自动结算前快照：`PreAutoNightSnapshot = SaveCodec.SerializeState(state with { CurrentLevel = levelState with { PreAutoNightSnapshot = null } })`（供 `Review` 阶段玩家选择消耗重打次数手打覆盖，`B-T3-07`）。
 1. 部署方案 = 当前 `Deployed` 的单位（玩家上次的部署；`Pos` 不变）；若没有任何单位部署，照常运行（全部突防）。
-2. `setup = PrepareNight()`，其中 `CarryIn.AutoResolve = new AutoResolveCarryIn(autoResolve.interceptProbMult, autoResolve.exposureGainMult)`（默认 `interceptProbMult = 1.0, exposureGainMult = 1.0`，`B-T3-07`）。
+2. `setup = PrepareNight()`，其中 `CarryIn.AutoResolve = new AutoResolveCarryIn(autoResolve.interceptProbMult, autoResolve.exposureGainMult)`（默认 `interceptProbMult = 0.95, exposureGainMult = 1.0`，`B-T3-07` / `T-09`）。
 3. `world = SimWorld.Create(setup.Level, setup.Config, setup.Seed)`；**不入队任何命令**；`while (!world.IsFinished) world.Step()`；二选一请求全部按超时默认处理（04）。
 4. `ApplyNightResult(world.Result)`，`NightRecord.AutoResolved = true`。
 5. 生成战报 `AutoNightReport { Index, Outcome, WeightedLossFrac, AmmoUsed: [(WeaponId, Shots)], UnitsLost: [RosterId], ExposureDelta: [(RosterId, Before, After)], FactoryPausedSec }`（GDD 11.5"产量损失、弹药消耗、暴露度变化"；`FactoryPausedSec = Σ Losses.Structures[Type == Factory].PausedSec`）。
 
-- **"略逊于亲自指挥"的来源（`B-T3-07`）**：默认完全由"①不使用指挥点（无夜间调动、无手动支援、无临时辐射切换、二选一取超时默认）"自然拉开 3–10% 的加权损失差距（`autoResolve.interceptProbMult` 默认 `1.0`、字段与 `CarryIn.AutoResolve` 管线保留；若 D4/WS09 实测差距 `< 3%`，可在数据中将 `interceptProbMult` 下调至 `0.95`）。
+- **"略逊于亲自指挥"的来源（`B-T3-07`、`T-09`）**：由"①不使用指挥点（无夜间调动、无手动支援、无临时辐射切换、二选一取超时默认）+ ② `autoResolve.interceptProbMult = 0.95`"共同拉开 5–15% 的加权损失差距（D4-①实测 `+7.13%`）。
 - **观看与事后手打覆盖**：玩家在 `Day` 阶段调 `WatchAutoNight(true)` 主动观看普通夜时，`CarryIn.AutoResolve = null`、获 `+1` 指挥点并在 `Survived` 时获 `watchTrustBonus = +1`；若先自动结算，在 `Review` 阶段看到战报后调 `WatchAutoNight(true)`，则消耗 1 次重打次数（`Attempt += 1`）回滚至自动结算前并进入 `Deployment` 手打覆盖该夜（无 `watchTrustBonus`）。
 - **单夜自动结算性能预算（`C-T1-16`）**：依托 00 §3.3.1 与 02/03 的空闲步早退（无威胁与航迹的空闲步 O(1) 返回，`≤ 20 µs`），在参考机（Apple Silicon Mac，Release 构建，`B-T2-137`）上单夜 `AutoResolveNight()`（28 800 步）耗时上限：`test_01` 规模 `≤ 1 s`、终章规模 `≤ 5 s`。
 
 #### 3.8.3 自动结算的确定性
 
-自动结算与"观看 / 手打覆盖"使用同一种子（3.1.2）；当 `autoResolve` 倍率为默认的 `(1.0, 1.0)` 时，"亲自观看"一个普通夜而不下达任何命令、不改部署的结果与自动结算**逐位完全相同**。
+自动结算与"观看 / 手打覆盖"使用同一种子（3.1.2）；当 `autoResolve` 倍率为 `(1.0, 1.0)` 时，"亲自观看"一个普通夜而不下达任何命令、不改部署的结果与自动结算**逐位完全相同**。
 
 #### 3.8.4 大空袭预警
 
