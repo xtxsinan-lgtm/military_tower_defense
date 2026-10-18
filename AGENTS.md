@@ -14,7 +14,8 @@ Godot 4（.NET）+ C#，Steam（Windows + macOS），个人开发 + AI 辅助。
 |---|---|---|
 | [GDD](docs/游戏设计文档_GDD_v1.md) | 做什么、为什么 | 设计层面以 GDD 为准 |
 | [WBS](docs/开发任务分解_WBS_v1.md) | 怎么做、验收标准、依赖 | 执行层面以 WBS 为准 |
-| [数值表](docs/塔防数值表_v1.md) | 所有数值与规则参数 | 数值以数值表为准 |
+| [技术规格书](docs/spec/)（`00`–`07`） | 模拟层、客户端、工具的精确算法与接口契约 | 实现细节以 `docs/spec/` 为准 |
+| [数值表](docs/塔防数值表_v1.md) | 所有数值与规则参数 | 数值以数值表与 `data/` 为准 |
 | [武器投入时间表](docs/俄乌战争塔防_武器投入时间表.md) | 历史依据 | — |
 | [战役关卡设计](docs/战役关卡设计_v1.md) | 关卡历史背景 | 与 GDD 冲突时以 GDD 为准 |
 
@@ -34,13 +35,14 @@ Godot 4（.NET）+ C#，Steam（Windows + macOS），个人开发 + AI 辅助。
 ```
 /
 ├─ AGENTS.md            本文件
-├─ docs/                设计文档
+├─ docs/                设计文档（含 docs/spec/ 00–07 精确技术规格书）
 ├─ data/                JSON 数据（唯一的数值来源）
 │  ├─ schema/           JSON Schema
+│  ├─ rules/            规则参数（19 个 JSON 文件）
 │  ├─ units/            玩家单位（枪、眼、盾、假）
 │  ├─ enemies/          敌方单位
 │  ├─ support/          外部支援
-│  ├─ levels/           关卡：<level_id>/level.json、waves.json、map/
+│  ├─ levels/           关卡：<level_id>/level.json、waves.json、intel.json、events.json、map/
 │  ├─ campaign/         战役、跨关影响、奖励卡
 │  ├─ narrative/        剧本、简报、台词
 │  └─ loc/              本地化文本（中文为源语言）
@@ -51,10 +53,10 @@ Godot 4（.NET）+ C#，Steam（Windows + macOS），个人开发 + AI 辅助。
 └─ art_src/             美术源文件（Git LFS）
 ```
 
-模拟层内部约定（WBS 01.A / 01.B）：
-- 时间单位为**世界秒**，固定 1 世界秒一步；坐标单位为米，x 向东、y 向北，高度单独存储。
+模拟层内部约定（WBS 01.A / 01.B，`docs/spec/00`–`01`）：
+- 时间单位为**世界秒**，固定 1 世界秒一步；坐标单位为米，原点西南角，x 向东、y 向北，高度单独存储（AGL 米）。
 - 浮点用 `double`；实体按类型分组存储、用整数 ID 引用，不使用深继承。
-- `SimWorld.Step()` 中各系统的执行顺序固定，见 WBS 01.B，**不得随意调整**。
+- `SimWorld.Step()` 中 14 个系统的执行顺序固定，见 WBS 01.B 与 `docs/spec/01_world_and_time.md` §3.1，**不得随意调整**。
 
 ## 5. 常用命令
 
