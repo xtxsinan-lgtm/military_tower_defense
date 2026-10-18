@@ -298,4 +298,14 @@
 
 ## 07_tools.md（新建）
 
+| 条目编号 | 状态 | 修改位置与说明 |
+|---|---|---|
+| C-T1-15 | 已应用 | 新建 `docs/spec/07_tools.md`（§0–§8 完整 9 节结构）并在 `docs/spec/README.md` 注册：完整规格化 `tools/validate`（WS06-004）与 `tools/simrun` 四种运行模式（单夜运行 WS06-006、回放确定性校验 WS01-027、批量多籽统计 WS06-007、性能基准测试 WS01-028）的 CLI 参数契约、退出码（`0..4`）、报告 JSON Schema（`ValidateReport`、`SimRunNightReport`、`ReplayVerifyReport`、`SimRunBatchSummary`、`BenchReport`）、内置策略机器人（`passive` / `default` / `always_emit` / `never_emit` / `hoarder` / `wasteful`）与 Type-7 连续线性插值分位数算法 |
+| C-T1-11, C-T2-04, C-T2-08, C-T2-09 | 已应用 | §2.1、§3.1、§7 `T-07-02..06`：`ValidateRunner` 复用 `00 §4.2` / `05 §2` 加载校验并补齐历史时间线检查（`E_TIMELINE_UNIT_UNAVAILABLE`、`E_TIMELINE_ENEMY_FIRST_SEEN`、`W_FIRST_SEEN_NEVER_APPEARS`、`W_HISTORICAL_UNIT_UNAVAILABLE`）、跨关引用与预设部署合法性检查，以及扩展静态分析警告（`W_IGNORED_WAYPOINTS`、`W_HUNT_NO_KNOWN_TARGETS_GROUP`、`W_SUPPRESS_NO_ARM_GROUP`、`W_ARM_STATIC_TARGET`、`W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`、`W_E_NO_SUPPLY_WINDOWS`、`W_EXPOSURE_MULT_DRIFT`、`W_BALLISTIC_WINDOW_TOO_SHORT`） |
+| A-2-11, B-T3-06 | 已应用 | §3.2、§3.3、§4、§6 #4–#5、§7 `T-07-09..11`：`SimRunner` 与 `ReplayVerifier` 每步强制调用 `world.DrainEvents()` 清空事件队列防膨胀，并按每 3600 世界秒及终态比对 `ComputeStateChecksum()`（不匹配返回退出码 `3`） |
+| B-T3-10, B-T3-05 | 已应用 | §2.3、§3.1、§3.4.3、§7 `T-07-04`/`T-07-13`/`T-07-14`：静态校验 `DutyCycle` 占空比与 `exposureMult` 偏差 `<= 0.15`（`W_EXPOSURE_MULT_DRIFT`），批量模式统计 `Exposure100TriggerRate` 与实测暴露比 `ExposureCalibration` 供 D3 校准 |
+| C-T2-02, C-T1-14, C-T1-16 | 已应用 | §2.4、§3.5、§7 `T-07-15..16`：`BenchRunner` 定义内存合成高压场景 `stress_50x15x20` 与终局 `finale_600`，锁定合格门禁（单步均值 `< 2.0 ms`、P99 `< 4.0 ms`、单步最大 `< 50.0 ms`、03 便宜优先分配子步骤均值 `<= 0.3 ms`），超标返回退出码 `4` |
+| C-T1-01, C-T1-04 | 已应用 | 创建 `tools/spec_calc/07/calc_07.py` 并通过 `python3` 全量验算（24 项断言 100% 通过），全部测试向量写入 §7 `T-07-01..18`；§0.2 与 §6 #7 明确禁用 `.NET 9+` 的 `Math.Hypot` |
+| A-2-16（跨文档收口：`02 §3.8` 覆盖网格三态返回值） | 已应用 | 同步更新 `docs/spec/02_sensing_tracks_ew_emission.md` §3.8 与 §8.3：`CoverageQuery.ComputeGrid` 正式定义为三态返回值（`0 = 名义距离外, 1 = 距离内盲区（地形遮挡/顶空盲区/高度越界）, 2 = 可探测`），与 `A-2-16` 及 `06_client_graybox.md` §3.9.6 完全一致 |
+
 ## 上位文档（GDD / 数值表 / data / test_01）

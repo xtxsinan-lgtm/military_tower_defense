@@ -551,3 +551,54 @@ public interface ISimStrategyBot
 5. **事件队列有界不变量（`B-T3-06`）**：在 `simrun` 的所有运行模式中，`SimWorld` 内部未排空事件数在任意步末均 $= 0$。
 6. **统计边界不变量**：对任意非空样本集，`MetricDistribution` 必满足 `Min <= P10 <= P50 <= P90 <= P99 <= Max` 且 `Min <= Mean <= Max`、`StdDev >= 0.0`。
 7. **无 `Math.Hypot` 约束（`B-T3-08`）**：`tools/` 与 `sim/` 代码均面向 `.NET 8`（`net8.0`），计算二维欧氏距离时一律使用 `Math.Sqrt(dx * dx + dy * dy)`，禁止调用 `.NET 9+` 才引入的 `Math.Hypot`。
+---
+
+## 7. 测试用例（`sim.tests/ToolsSpecTests.cs`）
+
+> 所有涉及算术、哈希与分布分位数的测试向量均由 [`tools/spec_calc/07/calc_07.py`](../../tools/spec_calc/07/calc_07.py) 验算通过。
+
+| 编号 | 被测模块 / 规则 | 给定输入 | 预期输出（精确断言） |
+|---|---|---|---|
+| `T-07-01` | `ValidateRunner` 全量干净数据与 `--strict` | 标准无错无警告小型数据集 | `IsValid == true`，`Errors.Count == 0`，`Warnings.Count == 0`，默认与 `--strict` 退出码均为 `0` |
+| `T-07-02` | `ValidateRunner` 时间线校验（`C-T2-08`） | 关卡 1（`2022-02-24`）可用单位含 `U08`（`firstAvailable.level == 4`），波次含 `M04`（`firstSeen == "2022-10"`）；全局目录含 `P04`（`firstSeen == "2023-03"`，晚于战役末关 `2023-01`） | 报 Error `E_TIMELINE_UNIT_UNAVAILABLE`、Error `E_TIMELINE_ENEMY_FIRST_SEEN`、Warning `W_FIRST_SEEN_NEVER_APPEARS`；`IsValid == false`，退出码 `2` |
+| `T-07-03` | `ValidateRunner` 扩展静态警告（`C-T1-11`） | ① `BM` 组含非空 `waypointsM`；② `AiTag.Hunt` 波次无 `known_targets`/`air_defense` 组；③ `AiTag.Suppress` 波次无反辐射组；④ 反辐射组 `targetRule == Structure`；⑤ `storyEventOnly == true` 的 `A02` 在普通波次；⑥ `TimeStructure.E` 关卡 `supplyWindows` 为空 | 依次报 `W_IGNORED_WAYPOINTS`、`W_HUNT_NO_KNOWN_TARGETS_GROUP`、`W_SUPPRESS_NO_ARM_GROUP`、`W_ARM_STATIC_TARGET`、`W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`、`W_E_NO_SUPPLY_WINDOWS`；默认退出码 `0`，`--strict` 退出码 `2` |
+| `T-07-04` | `ValidateRunner` 占空比暴露乘数漂移（`B-T3-10`） | `DutyCycle(onSec: 30, offSec: 30)`（理论占空比 $0.50$）：<br/>Case A: `exposureMult = 0.45`<br/>Case B: `exposureMult = 0.80` | Case A 漂移 $|0.45 - 0.50| = 0.05 \le 0.15$，无警告；<br/>Case B 漂移 $|0.80 - 0.50| = 0.30 > 0.15$，报 `W_EXPOSURE_MULT_DRIFT` |
+| `T-07-05` | `ValidateRunner` 反导窗口过短警告（`C-T2-09`） | 关卡含可用反导单位 `U07`（`canEngageBallistic: true, reactionSec: 12.0, shotIntervalSec: 15.0`，两发最低窗口 $27.0\text{ s}$）：<br/>Case A: `BM` 从 $(10000, 20000)$ 飞向 $(10000, 0)$，$d = 20000\text{ m}, v = 2000\text{ m/s} \implies t_{\text{fly}} = 10.0\text{ s}$<br/>Case B: `BM` 从 $(30000, 60000)$ 飞向 $(30000, 0)$，$d = 60000\text{ m}, v = 2000\text{ m/s} \implies t_{\text{fly}} = 30.0\text{ s}$ | Case A 因 $10.0 < 27.0$ 报 `W_BALLISTIC_WINDOW_TOO_SHORT`；<br/>Case B 因 $30.0 \ge 27.0$ 无警告 |
+| `T-07-06` | `ValidateRunner` 跨关引用与初始部署（`C-T2-04`） | `cross_level_links.json` 引用不存在的 `sourceStructureId: "S99"`；`deploy.json` 的 `initialDeployment` 将防空单位放在 `forbiddenZones` 内 | 报 `E_UNKNOWN_REF` 与 `D_FORBIDDEN_ZONE`（Severity 均为 `Error`），退出码 `2` |
+| `T-07-07` | `SimRunner` 单夜运行与指标计算 | 小型关卡：刷出 `10` 个敌方目标（含 `2` 个诱饵，真实威胁 `8` 个），拦截 `6` 个真实威胁，漏防 `2` 个（`NoDetector` 1, `RollFailed` 1），被击落敌机价值 $0.30\text{ M\$}$，消耗弹药成本 $0.12\text{ M\$}$，初期总权重 $10.0$、战损权重 $2.5$ | `InterceptRate == 6.0 / 8.0 == 0.75`，`AllTargetInterceptRate == 6.0 / 10.0 == 0.60`，`ExchangeRatio == 0.30 / 0.12 == 2.50`，`WeightedLossFrac == 2.5 / 10.0 == 0.25`，退出码 `0` |
+| `T-07-08` | `SimRunner` 默认种子确定性生成 | `simrun --level test_01 --night 1`（未显式传 `--seed`，默认 `campaignSeed = 1`） | `NightSeed(1, "test_01", 1) == 0x6DD180096484586DUL`（`Report.Seed == "0x6DD180096484586D"`） |
+| `T-07-09` | `SimRunner` 事件队列每步排空（`B-T3-06`） | 运行 3600 步的 `test_01` 关卡，每步后检查 `world.PendingEventCount` | 全程 3600 步每步末 `PendingEventCount == 0`，且 `Report.EventCounts` 准确累计全部事件数 |
+| `T-07-10` | `ReplayVerifier` 录制与重放 100% 通过（`A-2-11`） | 用 `simrun --level test_01 --seed 42 --strategy default --replay-out r.json` 录制含自动策略命令的 10800 秒单夜，再执行 `simrun --replay-in r.json` | `ReplayVerifyReport.Matched == true`，`FirstMismatchTimeSec == null`，`HourlyChecksums.Count == 3`（3600, 7200, 10800），退出码 `0` |
+| `T-07-11` | `ReplayVerifier` 篡改检测与退出码 `3` | 将 `T-07-10` 生成的 `r.json` 中 `t = 7200` 处的 `StateChecksum` 异或 `0x1UL` 后传入 `simrun --replay-in` | `Matched == false`，`FirstMismatchTimeSec == 7200`，输出期望与实际摘要对比，进程返回退出码 `3` |
+| `T-07-12` | `StatsCalculator` 分位数与标准差公式 | 样本 $X = [0.80, 0.60, 0.90, 0.75, 0.70]$（$N = 5$，排序后 $[0.60, 0.70, 0.75, 0.80, 0.90]$） | `Mean == 0.75`，`StdDev == 0.10`，`Min == 0.60`，`P10 == 0.64`，`P50 == 0.75`，`P90 == 0.86`，`P99 == 0.896`，`Max == 0.90` |
+| `T-07-13` | `BatchRunner` 10 种子汇总统计 | 10 次运行：`InterceptRate` 为 $[0.50, 0.60, 0.65, 0.70, 0.72, 0.78, 0.80, 0.85, 0.90, 1.00]$；其中 2 次未开火（`ShotCost == 0`），其余 8 次 `ExchangeRatio` 为 $[1.2, 1.5, 1.8, 2.0, 2.4, 2.8, 3.2, 3.5]$；`WeightedLossFrac` 为 $[0.0, 0.05, 0.10, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.55]$；存活 9 次，触发暴露满值 3 次 | `InterceptRate`: `Mean = 0.75, StdDev = 0.14028542333400146, P10 = 0.59, P50 = 0.75, P90 = 0.91`；<br/>`ExchangeRatio`（$N=8$）: `Mean = 2.30, P50 = 2.20, P10 = 1.41, P90 = 3.29`；<br/>`WeightedLossFrac`: `Mean = 0.21, P50 = 0.175`；<br/>`SurvivalRate = 0.90`，`Exposure100TriggerRate = 0.30` |
+| `T-07-14` | `BatchRunner` 辐射暴露校准比（`B-T3-10`） | 雷达单位在 `always_emit` 下平均全夜累积暴露 `120.0`，在 `DutyCycle(exposureMult: 0.45)` 下实测平均累积暴露 `56.4` | `EmpiricalExposureRatio == 56.4 / 120.0 == 0.47`，`AbsoluteDrift == |0.45 - 0.47| == 0.02 <= 0.15` |
+| `T-07-15` | `BenchRunner` 合格判定（`C-T2-02`, `C-T1-14`） | 100 步采样：95 步 `1.0 ms`、4 步 `2.0 ms`、1 步 `3.5 ms`；交战分配子步骤均值 `0.18 ms` | `StepWallMs`: `Mean == 1.065 ms < 2.0`，`P50 == 1.0 ms`，`P99 == 2.015 ms < 4.0`，`Max == 3.5 ms < 50.0`；`EngagementAllocationMeanMs == 0.18 <= 0.30` $\implies$ `Passed == true`，退出码 `0` |
+| `T-07-16` | `BenchRunner` P99 超标门禁（退出码 `4`） | 100 步采样：98 步 `1.5 ms`、2 步 `6.0 ms`（阈值 `MaxP99 = 4.0 ms`） | `StepWallMs.P99 == 6.0 ms >= 4.0 ms` $\implies$ `Passed == false`，`Violations` 非空，进程返回退出码 `4` |
+| `T-07-17` | 单夜与批量种子一致性不变量 | 执行 `simrun --level test_01 --seeds 5 --seed-start 10`，并与逐个执行 `--seed <NightSeed(1, "test_01", 10..14)>` 对比 | 5 个种子的 `FinalStateChecksum`、`InterceptRate`、`Outcome` 与单夜独立运行 100% 相等 |
+| `T-07-18` | CLI 参数校验与错误退出码 `1` | ① 同时传 `--seed 1 --seeds 10`；② 传未知策略 `--strategy magic`；③ 传 `--seeds 0` | 均向 `stderr` 输出明确错误提示，进程退出码均为 `1` |
+
+---
+
+## 8. 已决问题与跨规格契约
+
+### 8.1 已决设计问题
+
+| # | 问题 | 决议 |
+|---|---|---|
+| Q1 | 是否单独设立 `tools/balance` 可执行工程？ | **否**。遵循 WBS 06.A WS06-007 与 `C-T1-15` 决议，批量模拟与统计直接作为 `tools/simrun` 的 `--seeds <N>` 模式实现，避免维护两套重复的 `SimWorld` 驱动壳。 |
+| Q2 | 分位数（`P10` / `P50` / `P90` / `P99`）采用离散最近邻还是连续线性插值？ | 采用 **Type-7 连续线性插值**（$h = p(N-1)$，与 NumPy `np.percentile(..., method='linear')` 及 Excel `PERCENTILE.INC` 完全一致），在小样本（如 $N=5, 10$）与大样本（$N=100, 18000$）下均连续且无跳变。 |
+| Q3 | 单夜或批量某局未发射任何拦截弹（`TotalShotCostMusd == 0`）时费效比如何表示？ | JSON 不支持 `NaN` / `Infinity`；单夜报告 `ExchangeRatio` 设为 `null`，批量报告仅对 `TotalShotCostMusd > 0` 的有效开火局统计 `ExchangeRatio` 分布（若全部未开火则为 `null`）。 |
+| Q4 | `stress_50x15x20` 性能基准场景是否依赖 `data/levels/` 下的正式关卡文件？ | **不依赖**。由 `SyntheticScenarioBuilder` 在内存中用最小合成定义构造 50 威胁 + 15 火力 + 20 传感器的确定性高压世界，使 WS01-028 在 M1 阶段（正式关卡数据尚未制作前）即可独立执行并作为 CI 门禁。 |
+
+### 8.2 跨规格契约核对表
+
+| 对接文件 | 契约点 | 状态 |
+|---|---|---|
+| [`00_core.md`](00_core.md) | `DataLoader` 错误码 `E_*`、`DeploymentValidator` 错误码 `D_*`、`SimRng.NightSeed`、`SimWorld.ComputeStateChecksum`、`NightReplay` 格式、单步 `< 2.0 ms / P99 < 4.0 ms` 预算 | 已对齐 |
+| [`01_time_map_movement_waves.md`](01_time_map_movement_waves.md) | `BM`/`HBM`/`GB` 忽略 `waypointsM`（`W_IGNORED_WAYPOINTS`）、`storyEventOnly`（`W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`）、地图尺寸与弹道飞行窗口（`W_BALLISTIC_WINDOW_TOO_SHORT`） | 已对齐 |
+| [`02_sensing_tracks_ew_emission.md`](02_sensing_tracks_ew_emission.md) | `DutyCycle` 占空比与 `exposureMult` 漂移检查（`W_EXPOSURE_MULT_DRIFT`）、实测暴露比校准（`ExposureCalibration`）、`CoverageQuery.ComputeGrid` 三态（`0 / 1 / 2`）契约 | 已对齐 |
+| [`03_engagement_weapons_collateral.md`](03_engagement_weapons_collateral.md) | 便宜优先交战分配子步骤耗时监控 `EngagementAllocationMeanMs <= 0.3 ms`、`EnemyLeakedEvent(LeakReason)` 分类统计 | 已对齐 |
+| [`04_layered_defense_decoys_saturation_ai.md`](04_layered_defense_decoys_saturation_ai.md) | `AiTag.Hunt` / `AiTag.Suppress` 与反辐射目标规则静态检查（`W_HUNT_NO_KNOWN_TARGETS_GROUP`、`W_SUPPRESS_NO_ARM_GROUP`、`W_ARM_STATIC_TARGET`）、单位暴露满 100 触发率统计 | 已对齐 |
+| [`05_campaign_economy.md`](05_campaign_economy.md) | `CampaignDataLoader`、`cross_level_links.json` 校验、`TimeStructure.E` 补给窗口检查（`W_E_NO_SUPPLY_WINDOWS`）、历史事件停用单位警告（`W_HISTORICAL_UNIT_UNAVAILABLE`）、单夜战果与战损权重 | 已对齐 |
+| [`06_client_graybox.md`](06_client_graybox.md) | `SimWorld.DrainEvents()` 每步排空契约、`CoverageQuery.ComputeGrid` 三态返回码（`0 / 1 / 2`） | 已对齐 |
