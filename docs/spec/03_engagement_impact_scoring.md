@@ -1178,15 +1178,18 @@ AssetRadius(def):
 
 #### 3.5.1 `Initialize`
 
-1. 保护目标：填 2.7 字段；`CarryIn` 给出 HP / `LossHp` 时使用之。
-2. 电网节点：填 `Type`、`OffMapSupply`、`FacilityStructureId`；建立邻接表（3.6.1）。
-3. 我方单位接入电网（3.6.2）。
-4. 计算一次电网（3.6.3），**不发事件**；`GridState.Collapsed` 按结果设置，若为 true 则 `CollapsedAtSec = 0`。
+1. **阶段 1（`Initialize`）**：按 `level.json` 创建保护目标（填 2.7 字段）与电网节点（填 `Type`、`OffMapSupply`、`FacilityStructureId`，建立邻接表 3.6.1）。
+2. **阶段 2（`RestoreCarryIn`）**：若 `CarryIn?.Structures` 非空，按 `StructureCarryState.StructureId == s.DefId` 恢复 `s.Hp` 与 `s.LossHp`（`A-3-10`）。
+3. **阶段 3（`PostDeployInit`）**：在我方单位部署完成并恢复 `CarryIn` 后，执行我方单位接入电网（3.6.2），再计算一次电网（3.6.3，`emitEvents: false`）；`GridState.Collapsed` 按结果设置，若为 true 则 `CollapsedAtSec = 0`。
 
 #### 3.5.2 每步流程
 
 ```
+# 空闲快速路径（C-T1-16）：本步无命中拦截、无威胁到达、且电网无脏标记时 O(1) 返回
+if CurrentStep 无 InterceptResolved{Hit=true} 且无 ThreatArrived 且 !Grid.Dirty: return
+
 now = ctx.TimeSec
+cellM = conventions.CellKm * 1000.0
 # A. 碎片（本步命中的拦截判定）
 for e in CurrentStep where e is InterceptResolved && e.Hit (Seq 升序):
     if !Threats.TryGetIncludingRemoved(e.ThreatId, out t) or t.Kind != Munition: continue
@@ -1194,8 +1197,12 @@ for e in CurrentStep where e is InterceptResolved && e.Hit (Seq 升序):
     if frac <= 0: continue
     L = RoundLevel(MunitionDef(t).DamageLevel * frac)
     if L < 1: continue
-    S = e.OverUrban ? debris.UrbanRadiusM : 0
-    first = ApplyDamageAt(e.Pos, L, S, vehicleMult: 1.0, sourceThreatId: t.Id, cause: Debris)   # 返回第一个受损保护目标的实体 ID，无则 0
+    # C-T2-05：当 OverUrban 且 UrbanRadiusM == 0（urbanInterceptRadiusCells == 0，“影响被击落点所在格”）时，
+    # 按 1 km 网格同格判定（SameCell(e.Pos, target.Pos, cellM)）；配置了 UrbanRadiusM > 0 时按半径 S 判定
+    sameCellOnly = e.OverUrban && debris.UrbanRadiusM <= 0
+    S = sameCellOnly ? 0.0 : (e.OverUrban ? debris.UrbanRadiusM : 0.0)
+    first = ApplyDamageAt(e.Pos, L, S, vehicleMult: 1.0, sourceThreatId: t.Id, sourceDefId: t.DefId,
+                          cause: Debris, sameCellOnly: sameCellOnly)   # 返回第一个受损保护目标的实体 ID，无则 0
     emit DebrisFell { Pos = e.Pos, StructureId = first, DamageLevel = L, SourceThreatId = t.Id }
     # 注意：DebrisFell 在其造成的 StructureDamaged 之后发出（ApplyDamageAt 内部先发）
 # B. 落地
@@ -1207,35 +1214,43 @@ for e in CurrentStep where e is ThreatArrived (Seq 升序):
 if Grid.Dirty: RecomputeGrid(emitEvents: true); Grid.Dirty = false
 ```
 
+- **同格判定（`C-T2-05`）**：
+  `SameCell(a, b, cellM) ⇔ (int)Math.Floor(a.X / cellM) == (int)Math.Floor(b.X / cellM) && (int)Math.Floor(a.Y / cellM) == (int)Math.Floor(b.Y / cellM)`。
+  当 `sameCellOnly == true` 时，凡中心 `Pos` 与拦截点 `e.Pos` 同格的保护目标与我方单位均取 `r = 0, S = 0`（受全额碎片伤害等级 `L`），非同格者不受碎片伤害。
+
 > 碎片的 `DebrisFell` 顺序约定：为让事件流读起来是“碎片落下 → 造成损伤”，实现时先计算受损目标再发事件会更直观，但为了只遍历一次，**本规格规定 `DebrisFell` 在 `ApplyDamageAt` 之后发出**。测试按此顺序断言。
 
-#### 3.5.3 有效精度档
+#### 3.5.3 有效精度档（`A-2-07`、`B-T2-14`、`B-T3-08`）
 
 ```
 EffectiveTier(def, t):
     order = accuracy.TierOrder                     # [D, C, B, A]
     idx   = order.IndexOf(def.Accuracy)
     boost = SpotterAlive() ? accuracy.SpotterTierBoost : 0
-    drop  = (def.EwImmune == true) ? 0 : t.EwTierDrop
+    drop  = (def.EwImmune == true) ? 0 : t.AccuracyTierDrop
     idx   = Math.Clamp(idx + boost − drop, 0, order.Count − 1)
     return order[idx]
-SpotterAlive() = 存在 Alive 的 Threat：Kind == Platform 且 PlatformDef(t).WhileAlive?.EnemyAccuracyTierBoost > 0
+SpotterAlive() = 存在 Alive 的 Threat p：p.Kind == Platform 且
+                 (PlatformDef(p).Behavior == PlatformBehavior.Spotter || PlatformDef(p).WhileAlive?.EnemyAccuracyTierBoost > 0)
 ```
 
-升档对地图上全部敌方弹药生效（“存活期间”），不要求侦察平台靠近目标（8.1 Q-D6）。
+- 升档对地图上全部敌方弹药生效（“存活期间”），不要求侦察平台靠近目标；升档数统一以 `rules/accuracy.json` 的 `spotterTierBoost` 为唯一数值来源（`B-T2-14`，8.1 Q-D6）。
+- `t.AccuracyTierDrop` 由 02 `EwSystem.ReconcileNavAccuracy` 在步内写好（单路径合成单位级导航干扰与国家级导航欺骗，不双重叠加，`B-T3-08`）；`EwTierDrop` 为其兼容别名（2.4）。
 
-#### 3.5.4 落点偏移
+#### 3.5.4 落点偏移（`A-2-07`、`B-T3-08`）
 
 ```
 Offset(aim, tier, t, def):
     tierDef = accuracy.Tiers[tier]
-    extra   = (t.EwAffected && def.EwImmune != true) ? tierDef.EwExtraM : 0
+    extra   = (def.EwImmune == true) ? 0.0
+              : (t.EwExtraOffsetM > 0.0 ? t.EwExtraOffsetM : (t.EwAffected ? tierDef.EwExtraM : 0.0))
     d  = Rng.Range(tierDef.OffsetM.Min, tierDef.OffsetM.Max) + extra     # 第 1 次 NextDouble
     th = Rng.Range(0.0, 2.0 * Math.PI)                                    # 第 2 次 NextDouble（方位角，正北顺时针）
     return aim + new Vec2(Math.Sin(th), Math.Cos(th)) * d
 ```
 
-无论 `Min == Max == 0` 与否，都恰好消耗 2 次 `NextDouble`（保持序列对齐）。
+- 正式流程中 02 `ReconcileNavAccuracy` 已将导航干扰的额外偏移米数写入 `t.EwExtraOffsetM`（`A-2-07`）；单元测试替身未运行 02 而直接置 `t.EwAffected = true` 时，回退取 `tierDef.EwExtraM`。
+- 无论 `Min == Max == 0` 与否，都恰好消耗 2 次 `NextDouble`（保持序列对齐）。
 
 #### 3.5.5 伤害衰减与等级取整
 
@@ -1251,23 +1266,39 @@ BandFor(lv)   = damage.Bands 中 MinLevel ≤ lv ≤ MaxLevel 的一项（lv ≥
 
 取整方式见 8.1 Q-D2。
 
-#### 3.5.6 `ApplyDamageAt(P, L, S, vehicleMult, sourceThreatId, cause)`
+#### 3.5.6 `ApplyDamageAt(P, L, S, vehicleMult, sourceThreatId, sourceDefId, cause, sameCellOnly = false)`
 
 ```
 firstStructure = 0
+cellM = conventions.CellKm * 1000.0
 # 保护目标（ID 升序；Hp == 0 的跳过）
 for s in Structures:
     if s.Hp == 0: continue
-    r  = Math.Max(0, |P − s.Pos| − s.RadiusM)
-    lv = RoundLevel(LevelRaw(L, r, S))
+    if sameCellOnly:
+        if !SameCell(P, s.Pos, cellM): continue
+        lv = L
+    else:
+        r  = Math.Max(0, |P − s.Pos| − s.RadiusM)
+        lv = RoundLevel(LevelRaw(L, r, S))
     if lv >= 1 and ApplyStructureEffect(s, lv, sourceThreatId, cause) and firstStructure == 0: firstStructure = s.Id
 # 我方单位（按 EntityKind 顺序：FireUnits、Sensors、EwUnits、DeceptionUnits；各自 ID 升序）
 for u in 四类存储:
-    r   = Math.Max(0, |P − u.Pos| − damage.UnitFootprintM)
-    raw = LevelRaw(L, r, S)
+    if u.IsVirtualSectorCoverage: continue                                 # B-T2-89：场外扇区覆盖虚拟单位不受落地或碎片伤害
+    if sameCellOnly:
+        if !SameCell(P, u.Pos, cellM): continue
+        raw = (double)L
+    else:
+        r   = Math.Max(0, |P − u.Pos| − damage.UnitFootprintM)
+        raw = LevelRaw(L, r, S)
     if u is FireUnit and UnitDef(u).Mobility ∈ {Vehicle, Towed}: raw *= vehicleMult
     lv  = RoundLevel(raw)
-    if lv >= 1: ApplyUnitEffect(u, lv, sourceThreatId)
+    if lv < 1: continue
+    # B-T2-52：车载自卫电子战（vehicle_shield，02 §3.4.7）在直接命中判定时提供命中率折减
+    if cause == DamageCause.Impact and sourceDefId != null:
+        shieldMult = EwQueries.ShieldHitProbMult(ctx.State, ctx.Level.Catalog, u.Id, sourceDefId)
+        if shieldMult < 1.0:
+            if !(Rng.NextDouble() < shieldMult): continue                  # 被自卫干扰偏转，不受伤（仅在 shieldMult < 1 时消耗 1 次）
+    ApplyUnitEffect(u, lv, sourceThreatId)
 return firstStructure
 ```
 
@@ -1291,7 +1322,7 @@ if isGrid and s.GridNodeId != 0: Grid.Dirty = true
 return true
 ```
 
-`ApplyUnitEffect(u, lv, src)`：
+`ApplyUnitEffect(u, lv, src)`（`A-2-05`、`A-2-08`、`A-2-20`、`A-3-05`、`B-T1-24`）：
 
 ```
 e = BandFor(lv).UnitEffect
@@ -1301,39 +1332,47 @@ switch e:
       m = band.EfficiencyMult ?? 1.0
       if m < u.DamageEfficiencyMult: u.DamageEfficiencyMult = m           # 不叠乘，取最小
       u.LightDamaged = true
-      emit PlayerUnitDamaged { UnitId, DefId, Kind = Category(u), Effect = LightDamage, Component = None, SourceThreatId = src }
+      emit PlayerUnitDamaged { UnitId = u.Id, DefId = u.DefId, Category = Category(u), Effect = LightDamage, Component = None, SourceThreatId = src }
   HeavyDamage:
       u.SuspendedUntilSec = Math.Max(u.SuspendedUntilSec, now + band.SuspendSec!.Value)
-      emit PlayerUnitDamaged { …, Effect = HeavyDamage, Component = None }
+      emit PlayerUnitDamaged { UnitId = u.Id, DefId = u.DefId, Category = Category(u), Effect = HeavyDamage, Component = None, SourceThreatId = src }
   DestroyComponent:                                                        # 只有 FireUnit 会到这里
       roll = Rng.NextDouble()                                              # 恒消耗 1 次
-      if u.HasFireControlRadar and !u.RadarDestroyed and roll < damage.ComponentRadarChance:
+      if FireControlQueries.HasFireControlRadar(u) and !u.RadarDestroyed and roll < damage.ComponentRadarChance:
           u.RadarDestroyed = true
-          emit PlayerUnitDamaged { …, Effect = DestroyComponent, Component = Radar }
+          emit PlayerUnitDamaged { UnitId = u.Id, DefId = u.DefId, Category = Category(u), Effect = DestroyComponent, Component = Radar, SourceThreatId = src }
       else:
           w = u.Weapons 中 Launchers.Count 最大的一项（并列取下标最小）
           if w.Launchers.Count == 0: Destroy(u, src); break
           w.Launchers.RemoveAt(w.Launchers.Count − 1)
-          emit PlayerUnitDamaged { …, Effect = DestroyComponent, Component = Launcher }
+          u.LaunchersLost += 1                                             # A-2-20：累计损失发射架数供 CarryOut 读取
+          emit PlayerUnitDamaged { UnitId = u.Id, DefId = u.DefId, Category = Category(u), Effect = DestroyComponent, Component = Launcher, SourceThreatId = src }
           if 所有武器的 Launchers.Count 都为 0: Destroy(u, src)
           else AnnounceDepletion(u, w)
   DestroyFireUnit, DestroyFireUnitAndAdjacent:
       Destroy(u, src)
-Destroy(u, src): 对应存储 Remove(u.Id)；emit PlayerUnitDestroyed { UnitId = u.Id, DefId = u.DefId, Kind = Category(u), SourceThreatId = src }
+
+Destroy(u, src):
+    # A-2-20 / A-3-10：在从存储删除前记录亡者状态快照（供 ExposureSummary 与 CarryOut.Units 使用）
+    Scoring.DestroyedExposureEnd[u.Id] = u.Exposure
+    if u.RosterId != 0 and !u.IsVirtualSectorCoverage:
+        Scoring.DestroyedUnitSnapshots[u.RosterId] = SnapshotCarryOut(u, alive: false)
+    对应存储 Remove(u.Id)
+    emit PlayerUnitDestroyed { UnitId = u.Id, DefId = u.DefId, Category = Category(u), SourceThreatId = src, Pos = u.Pos }
 ```
 
 “波及相邻格”由溅射本身体现，`DestroyFireUnitAndAdjacent` 不追加额外效果（8.1 Q-D4）。
 
-#### 3.5.7 `ResolveImpact(t, aim)`
+#### 3.5.7 `ResolveImpact(t, aim)`（`A-2-07`）
 
 ```
 def = MunitionDef(t)
-if def.TracksEmittingRadarOnly == true:                                    # 反辐射导弹
-    pHit = Math.Clamp(t.ArmHitProbMult, 0, 1)
+if def.TracksEmittingRadarOnly == true:                                    # 反辐射导弹（t.TargetUnitId 由 01/02 维护）
+    pHit = Math.Clamp(t.ArmHitProbMult ?? 1.0, 0.0, 1.0)
     if !(Rng.NextDouble() < pHit):                                         # 恒消耗 1 次
         emit ThreatImpacted { ThreatId = t.Id, DefId = def.Id, Pos = aim, AimPos = aim, DamageLevel = 0,
                               Tier = def.Accuracy, Outcome = ArmMissed, SubIndex = 0, LeakReason = null, LeakMask = 0 }
-        return                                                             # 失锁：无伤害，不算突防
+        return                                                             # 失锁：无伤害，不算突防（计入 ThreatsArmMissed）
 tier = EffectiveTier(def, t)
 (reason, mask) = LeakAnalysis(t)                                            # 3.8.4
 if def.Submunitions != null:
@@ -1341,12 +1380,12 @@ if def.Submunitions != null:
         P = Offset(aim, tier, t, def)
         emit ThreatImpacted { …, Pos = P, AimPos = aim, DamageLevel = Sub.DamageLevel, Tier = tier, Outcome = Submunition,
                               SubIndex = k, LeakReason = (k == 0 ? reason : null), LeakMask = (k == 0 ? mask : 0) }
-        ApplyDamageAt(P, Sub.DamageLevel, Sub.SplashM, def.VehicleDamageMult ?? 1.0, t.Id, Impact)
+        ApplyDamageAt(P, Sub.DamageLevel, Sub.SplashM, def.VehicleDamageMult ?? 1.0, t.Id, def.Id, Impact)
 else:
     P = Offset(aim, tier, t, def)
     emit ThreatImpacted { …, Pos = P, AimPos = aim, DamageLevel = def.DamageLevel, Tier = tier, Outcome = Normal,
                           SubIndex = 0, LeakReason = reason, LeakMask = mask }
-    ApplyDamageAt(P, def.DamageLevel, def.SplashM, def.VehicleDamageMult ?? 1.0, t.Id, Impact)
+    ApplyDamageAt(P, def.DamageLevel, def.SplashM, def.VehicleDamageMult ?? 1.0, t.Id, def.Id, Impact)
 ```
 
 - 有子弹头的弹药只结算子弹头，母弹的 `damageLevel` 不另行结算（数值表“6 × 6 次命中”）。
@@ -1363,7 +1402,7 @@ else:
 
 ```
 R = civil.Grid.UnitConnectRadiusM
-for u in 我方单位（EntityKind 顺序，ID 升序）where Category(u) ∈ civil.Grid.UnitCategoriesOnGrid:
+for u in 我方单位（EntityKind 顺序，ID 升序）where !u.IsVirtualSectorCoverage && Category(u) ∈ civil.Grid.UnitCategoriesOnGrid:
     best = 0; bestD = +∞
     for n in GridNodes (ID 升序) where n.Type ∈ {Consumer, Substation}:
         d = |n.Pos − u.Pos|
@@ -1392,31 +1431,42 @@ for n in GridNodes (ID 升序):
 for s in Structures: s.Powered = (s.GridNodeId == 0) or GridNode(s.GridNodeId).Powered
 for u in 我方单位: if u.GridNodeId != 0: u.Powered = GridNode(u.GridNodeId).Powered
 consumers = GridNodes where Type == Consumer
-Grid.Collapsed = consumers.Count >= 1 and consumers 全部 !Powered
+Grid.TotalConsumerCount = consumers.Count
+Grid.UnpoweredConsumerCount = consumers 中 !Powered 的数量
+Grid.Collapsed = consumers.Count >= 1 and Grid.UnpoweredConsumerCount == consumers.Count
 if Grid.Collapsed and Grid.CollapsedAtSec < 0: Grid.CollapsedAtSec = now
 ```
 
-- `Initialize` 时所有节点 `Powered` 初值为 false，调用 `RecomputeGrid(emitEvents: false)`。
+- 阶段 3（`PostDeployInit`）时所有节点 `Powered` 初值为 false，调用 `RecomputeGrid(emitEvents: false)`。
 - 一个节点没有电网设施（如 `node_city`）时不会因攻击失效，只会因上游断开而断电。
-- 电网崩溃后又不会恢复（夜间无维修），`Collapsed` 一旦为 true 保持 true（重算结果必然仍为 true）。
+- 电网崩溃后不会恢复（夜间无维修），`Collapsed` 一旦为 true 保持 true（重算结果必然仍为 true）。
 
 #### 3.6.4 断电的效果
 
 | 对象 | 效果 | 实现者 |
 |---|---|---|
-| 探测单位、电子战单位（`Powered == false`） | 效能下降 / 停机，数值待决 | **02** 读取 `Powered`（8.1 Q-G2） |
+| 探测单位、电子战单位（`Powered == false`） | 探测距离 `× 0.5`（02 `radarRangeMultWhenUnpowered`）；电子战不受影响（自带车载电源，`B-T2-78`） | **02** 读取 `Powered` |
 | 火力单元 | 无（不接入电网） | — |
 | 工厂（`StructureType.Factory`） | 停产：`PausedSec` 累计（3.7.3） | 05 换算产量 |
 | 避难所（`StructureType.Shelter`） | 防护打折：`ShelterQuality`（3.7.3） | 本文件 |
-| `grid_collapse` 失败条件 | `Grid.Collapsed` | 本文件 3.8.5 |
+| `grid_collapse` 失败条件 | `Grid.Collapsed`（或按 `c.Fraction` 比例判定，`B-T2-79`） | 本文件 3.8.5 |
 
 ### 3.7 空袭警报（WS01-024；状态切换在阶段 0，效果在 `ScoringSystem`）
 
-#### 3.7.1 命令 `SetAirRaidAlert`（处理者：`ScoringSystem`，00 Q5）
+#### 3.7.1 命令 `SetAirRaidAlert`（处理者：`ScoringSystem`，00 Q5，`A-2-17`、`C-T2-04`）
 
-`Validate`：`cmd.On == Civil.AlertOn` → `InvalidState`。`Apply`：`CivilRules.SetAlert(ctx, cmd.On, AlertCause.Command)`。指挥点由 04 规定（GDD 5.2 列为指挥点操作）。
+`Validate`（按顺序检查，首个不满足返回对应 `CommandRejectReason`）：
 
-#### 3.7.2 `CivilRules.SetAlert(ctx, on, cause)`（04 的剧情动作 `set_alert` 也调用此函数，`cause = Story`）
+1. **首次可用关卡闸门（`C-T2-04`）**：若 `Meta.Number != null && Meta.Number < civil.Alert.AvailableFromLevel`（默认 6）→ `NotAvailable`。
+2. **状态检查**：`cmd.On == Civil.AlertOn` → `InvalidState`。
+3. **指挥点检查（`A-2-17`）**：`cost = CommandPointRules.CostOf(ctx.Level, SimCommandType.SetAirRaidAlert)`（默认 1，测试未配置指挥点规则时按 0）；若 `cost > 0 && !CommandPointRules.CanSpend(ctx, cost)` → `NoCommandPoints`。
+
+`Apply`：
+
+1. 若 `cost > 0`：`CommandPointRules.Spend(ctx, cost, SimCommandType.SetAirRaidAlert)`。
+2. `CivilRules.SetAlert(ctx, cmd.On, AlertCause.Command)`。
+
+#### 3.7.2 `CivilRules.SetAlert(ctx, on, cause)`（04 的剧情动作 `set_alert` 也调用此函数，`cause = Story`，不受关卡闸门与指挥点限制）
 
 ```
 if on == Civil.AlertOn: return                 # 剧情动作重复设置时静默忽略
@@ -1461,64 +1511,88 @@ CivilFactor(s) = s.Type ∈ civil.Alert.PopulationStructureTypes
 
 ### 3.8 `ScoringSystem`（Order 13，子流 `scoring`，0 消耗，WS01-023）
 
-#### 3.8.1 每步流程
+#### 3.8.1 每步流程（`A-2-20`、`A-3-10`、`A-4-04`、`C-T2-03`）
 
 ```
 1. 空袭警报更新（3.7.3）
 2. for e in CurrentStep (Seq 升序):
-     ThreatSpawned       → ThreatsSpawned += 1
+     ThreatSpawned, MunitionReleased → ThreatsSpawned += 1                                          # A-4-04
      ThreatExited        → ThreatsExited  += 1
+                           if WasEverEwCovered(e.ThreatId): ThreatsEverEwCovered += 1
      InterceptorLaunched → Tally(e.WeaponId).Shots += 1; c = ShotCost(e.WeaponId); Tally.ShotCostMusd += c; TotalShotCostMusd += c
                            if TrueTag(e.ThreatId) == DECOY: Tally.DecoyShots += 1; Tally.DecoyCostMusd += c
      GunFired            → 同上，另 Tally.GunRoundsUsed += e.RoundsUsed
-     InterceptResolved   → if e.Hit: ThreatsIntercepted += 1; Tally(e.WeaponId).Hits += 1
-                                     v = PotentialLoss(e.ThreatId); Tally.PotentialLossMusd += v; TotalPotentialLossMusd += v
-                                     if e.OverUrban: InterceptsOverUrban += 1
-                                     if e.SupportAssetId != 0: SupportKills += 1
-     ThreatImpacted      → if e.Outcome != ArmMissed and e.SubIndex == 0:
-                               ThreatsImpacted += 1; Leaks.Add(LeakRecord(e))
-                               if e.DamageLevel(母弹定义的 damageLevel；子弹头取 Submunitions.Count × Sub.DamageLevel) >= civil.Scoring.HighThreatDamageLevel
-                                  and (e.LeakMask 含 HeldByRule): HighThreatLeaksWithReserve += 1
+     InterceptResolved   → if e.Hit:
+                               ThreatsIntercepted += 1; Tally(e.WeaponId).Hits += 1
+                               v = PotentialLoss(e.ThreatId); Tally.PotentialLossMusd += v; TotalPotentialLossMusd += v
+                               if e.OverUrban: InterceptsOverUrban += 1
+                               if e.SupportAssetId != 0: SupportKills += 1
+                               if e.FireUnitId != 0: UnitHits[e.FireUnitId] = UnitHits.GetValueOrDefault(e.FireUnitId) + 1
+                               if TrueDefId(e.ThreatId) is string defId: KillsByEnemy[defId] = KillsByEnemy.GetValueOrDefault(defId) + 1
+                               if WasEverEwCovered(e.ThreatId): ThreatsEverEwCovered += 1
+                               if ZoneRuleAt(e.Pos).NeighborCountry:
+                                   BorderViolations.Add(new(BorderViolationKind.DebrisInNeighbor, e.Pos, e.ThreatId))
+                           else if e.InterceptorId != null && ZoneRuleAt(e.Pos).NeighborCountry:
+                               BorderViolations.Add(new(BorderViolationKind.InterceptorInNeighbor, e.Pos, e.ThreatId))
+     ThreatImpacted      → if e.SubIndex == 0:
+                               if WasEverEwCovered(e.ThreatId): ThreatsEverEwCovered += 1
+                               if e.Outcome == ArmMissed:
+                                   ThreatsArmMissed += 1                                             # A-4-04
+                               else:
+                                   ThreatsImpacted += 1; Leaks.Add(LeakRecord(e))
+                                   if e.DamageLevel(母弹定义的 damageLevel；子弹头取 Submunitions.Count × Sub.DamageLevel) >= civil.Scoring.HighThreatDamageLevel
+                                      and (e.LeakMask 含 HeldByRule): HighThreatLeaksWithReserve += 1
+                                   if WasNavDiverted(e.ThreatId) && ZoneRuleAt(e.Pos).NeighborCountry:
+                                       BorderViolations.Add(new(BorderViolationKind.DivertedMunitionInNeighbor, e.Pos, e.ThreatId))
+     EwLinkCut           → if e.Outcome == EwLinkCutOutcome.Crash:                                   # A-4-04
+                               ThreatsEwDowned += 1
+                               KillsByEnemy[e.DefId] = KillsByEnemy.GetValueOrDefault(e.DefId) + 1
+                               ThreatsEverEwCovered += 1
+     ArmThreatDetected   → ArmDetections += 1                                                        # A-2-20
+     EmitterSwitched     → if !e.On && e.Cause == EmitterSwitchCause.ArmShutdown: ArmShutdowns += 1  # A-2-20
      StructureDamaged    → if e.Cause == Debris: DebrisHpLost += e.HpBefore − e.HpAfter
      DebrisFell          → DebrisEvents += 1
      PlayerUnitDamaged / PlayerUnitDestroyed → UnitLosses.Add(UnitLossRecord(e))
-3. for u in 我方单位（EntityKind 顺序，ID 升序）: ExposureMax[u.Id] = max(ExposureMax.GetValueOrDefault(u.Id, u.Exposure), u.Exposure)
-4. if State.EndRequest == null:
+3. if State.EndRequest == null:
      for c in Meta.Defeat（数据顺序）:
         if Holds(c): State.EndRequest = new EndRequest(Defeated, DefeatCondition, Detail(c)); break
 ```
 
-- `TrueTag(threatId)`：`Threats.TryGetIncludingRemoved` 取 `Tag`；本步已压缩掉的旧目标（不可能出现：事件与删除同步）按 `null`。
+- `TrueTag(threatId)` / `TrueDefId(threatId)` / `WasEverEwCovered(threatId)` / `WasNavDiverted(threatId)`：通过 `Threats.TryGetIncludingRemoved(threatId, out t)` 读取 `t.Tag`、`t.DefId`、`t.EwEverCovered || t.EwCovered`、`t.EwNav == EwAffectState.Applied || t.EwPull == EwAffectState.Applied || t.NationalSpoof == EwAffectState.Applied`。
 - `ShotCost(weaponId)`：先查 `GameCatalog.Weapons`（`ShotCostMusd ?? 0`），再查战斗机武器（`ShotCostMusd`）。加载器校验战斗机武器 ID 与防空武器 ID 不重复（8.2）。
-- `Initialize`：`ExposureStart[u.Id] = u.Exposure`（全部我方单位）。
+- **暴露度记录（`A-3-10`）**：阶段 3（`PostDeployInit`）记录全部非虚拟我方单位的初始暴露度 `ExposureStart[u.Id] = (u.DefId, Category(u), u.Exposure)`。由于夜内暴露度单调不减（02 §3.5.3），不再每步遍历全单位维护 `ExposureMax` / `ExposureLast`；夜晚结束构造 `ExposureSummary` 时，存活单位取当前 `u.Exposure` 作为 `End` 与 `Max`，被毁单位取 `Destroy(u)` 时记录的 `DestroyedExposureEnd[u.Id]` 作为 `End` 与 `Max`。
 
 #### 3.8.2 加权损失
 
 ```
 WeightedLossFrac() = Σw == 0 ? 0 : Σ_s ( s.Weight * s.LossHp / s.MaxHp ) / Σ_s s.Weight          # 全部保护目标，按 ID 升序累加
-WeightedLossFracAtNightStart 用 Initialize 时的 LossHp 计算
+WeightedLossFracAtNightStart 用 PostDeployInit 时的 LossHp 计算
 ```
 
-#### 3.8.3 交换比（GDD 9.3、数值表第 4 节）
+#### 3.8.3 交换比（GDD 9.3、数值表第 4 节，`B-T3-01`）
 
 ```
 PotentialLoss(threatId):
     t = Threats.TryGetIncludingRemoved(threatId)
-    if t.Tag == DECOY: return 0                                              # 诱饵没有潜在损失：打诱饵 = 纯消耗
+    if t.Tag == DECOY: return 0.0                                            # 诱饵没有潜在损失：打诱饵 = 纯消耗
     if t.Kind == Platform: return civil.Scoring.PlatformPotentialLossMusd
     def = MunitionDef(t)
-    L = def.Submunitions != null ? def.Submunitions.Count * def.Submunitions.DamageLevel : def.DamageLevel
+    dmg = def.Submunitions != null
+          ? def.Submunitions.Count * Math.Pow(2.0, def.Submunitions.DamageLevel − 1)
+          : Math.Pow(2.0, def.DamageLevel − 1)
     w = (t.TargetStructureId != 0) ? Structure(t.TargetStructureId).Weight : 1.0
-    return L * civil.Scoring.LossMusdPerDamageLevel * w
+    damageValue = dmg * civil.Scoring.LossMusdBase * w
+    enemyCost   = def.CostMusd ?? 0.0
+    return Math.Max(enemyCost, damageValue)
 ExchangeRatio = TotalShotCostMusd > 0 ? TotalPotentialLossMusd / TotalShotCostMusd : null
 每种武器：Ratio = ShotCostMusd > 0 ? PotentialLossMusd / ShotCostMusd : null
 ```
 
+- **公式说明（`B-T3-01`）**：`damageValue = 2^(damageLevel - 1) × LossMusdBase(0.1 M$) × w` 按伤害等级的指数标度衡量如果不拦截将对保护目标造成的破坏价值（例如 Shahed `damageLevel = 3` 攻击权重 `w = 5` 的电厂时，`damageValue = 4 × 0.1 × 5 = 2.0 M$`），再与敌方弹药造价 `enemyCost`（`costMusd`）取较大值（例如 Kh-101 造价 `13 M$`、Kinzhal `10 M$`、Iskander-M `3 M$` 即使攻击低权重目标也至少记其弹体价值）。
 - 分母是**全部发射**（含未命中、射向诱饵、夜晚结束时仍在飞行的拦截弹）的价格；支援发射也计入（按其武器价格）。
-- 敌方成本 `costMusd` 不进入交换比，只在 `LeakRecord` / 复盘中显示（8.1 Q-X1）。
 - 信任度的增减由 05 依据 `ExchangeSummary` 与 `HighThreatLeaksWithReserve`（GDD 9.3 第 3 条“让高威胁目标突防，但昂贵弹药仍有剩余”）计算。
 
-#### 3.8.4 突防原因（`LeakAnalysis`，GDD 15.5）
+#### 3.8.4 突防原因（`LeakAnalysis`，GDD 15.5，`A-2-07`）
 
 在 `ImpactSystem` 结算落地时调用（目标仍在），结果写入 `ThreatImpacted`。
 
@@ -1538,18 +1612,20 @@ public enum LeakReason { Undetected = 0, DecoyDrain = 1, AmmoDepleted = 2, Emiss
 | `PoorTrack` | `HeldMask` 含 `TrackQualityTooLow` | （补充）航迹质量不足 |
 | `Saturated` | `HeldMask` 含 `ChannelBusy`、`CannotIntercept`、`BarrelCooling` 之一 | （补充）火力饱和 / 追不上 |
 | `DefenseDamaged` | `HeldMask` 含 `Suspended` 或 `FireControlOff` | （补充）防空受损 |
-| `EwIneffective` | `t.EwCovered` | 电子战失效 |
+| `EwIneffective` | `t.EwEverCovered \|\| t.EwCovered` | 电子战失效 |
 | `OutOfCoverage` | 以上都不满足 | （补充）不在任何火力覆盖内 |
 
 `LeakMask = Σ (1 << (int)r)`，对所有条件成立的 `r`（`OutOfCoverage` 只在其余全不成立时置位）；`LeakReason` = 成立者中值最小的一个。
 
-#### 3.8.5 胜负条件
+#### 3.8.5 胜负条件（`B-T2-79`）
 
 ```
 Holds(c):
     StructureDestroyed:     Structure(StructureIdByDefId[c.StructureId]).Hp == 0
     WeightedDamageAtLeast:  WeightedLossFrac() >= c.Fraction
-    GridCollapse:           Grid.Collapsed
+    GridCollapse:           c.Fraction == null
+                            ? Grid.Collapsed
+                            : (Grid.TotalConsumerCount >= 1 && Grid.UnpoweredConsumerCount >= c.Fraction.Value * Grid.TotalConsumerCount − Eps)
     SurviveNights, SurviveGameSec: false             # 出现在 defeat 中无意义：加载器报 E_RANGE（8.2）
 Detail(c):
     StructureDestroyed    → "structure_destroyed:" + c.StructureId
@@ -1560,9 +1636,9 @@ Detail(c):
 - 失败条件满足时立即结束当夜（00 Q3）。
 - 胜利条件（`victory[]`）不在夜内判定：`survive_nights` / `survive_game_sec` 由 05 用多夜结果判定（00 Q4）；夜晚以 `Survived` 结束即本夜“守住”。`victory` 中出现 `structure_destroyed` / `weighted_damage_at_least` / `grid_collapse` → 加载器报 `E_RANGE`（8.2）。
 
-#### 3.8.6 `NightResult`（`BuildResult`）
+#### 3.8.6 `NightResult` 与 `CarryOut`（`BuildResult`，`P42`、`A-2-20`、`A-3-10`、`A-4-04`、`B-T1-16`、`B-T2-36`、`C-T2-03`）
 
-`ScoringSystem.BuildResult(ctx, outcome, reason)` 由 `CheckNightEnd` 调用（00 3.5），只读状态，不发事件、不用随机数。03 负责的部分：
+`ScoringSystem.BuildResult(ctx, outcome, reason)` 由 `CheckNightEnd` 调用（00 3.5），只读状态，不发事件、不用随机数。03 负责构造 `NightResult` 及其内嵌的 `CarryOut`：
 
 ```csharp
 public sealed record LossesSummary
@@ -1575,10 +1651,15 @@ public sealed record LossesSummary
     public IReadOnlyList<LeakReasonCount> LeakReasonCounts { get; init; }  // LeakReason 全部 11 个值，按枚举值升序，含 0
     public int ThreatsSpawned { get; init; } public int ThreatsIntercepted { get; init; }
     public int ThreatsImpacted { get; init; } public int ThreatsExited { get; init; }
+    public int ThreatsEwDowned { get; init; } public int ThreatsArmMissed { get; init; }   // A-4-04
     public int HighThreatLeaksWithReserve { get; init; }
     public bool GridCollapsed { get; init; } public double? GridCollapsedAtSec { get; init; }
     public IReadOnlyList<string> UnpoweredGridNodeIds { get; init; }        // 数据 ID，按实体 ID 升序
+    public IReadOnlyList<BorderViolationRecord> BorderViolations { get; init; } // C-T2-03：事件顺序
 }
+public enum BorderViolationKind { InterceptorInNeighbor = 0, DebrisInNeighbor = 1, DivertedMunitionInNeighbor = 2 }
+public sealed record BorderViolationRecord(BorderViolationKind Kind, Vec2 Pos, int ThreatId);
+
 public sealed record StructureResult(string StructureId, StructureType Type, double Weight, int MaxHp, int HpStart, int HpEnd,
                                      double LossHp, bool Destroyed, bool PoweredAtEnd, double UnpoweredSec, double PausedSec);
 public enum UnitLossKind { Damaged = 0, Destroyed = 1 }
@@ -1591,11 +1672,11 @@ public sealed record LeakReasonCount(LeakReason Reason, int Count);
 
 public sealed record AmmoSummary
 {
-    public IReadOnlyList<WeaponAmmoResult> Weapons { get; init; }          // 本夜出现过（部署了或发射过）的武器，WeaponId 序数升序
+    public IReadOnlyList<WeaponAmmoResult> Weapons { get; init; }          // 本夜出现过（非虚拟单位部署了或发射过）的武器，WeaponId 序数升序
     public IReadOnlyList<PoolRemainingResult> PoolRemaining { get; init; }  // EngagementState.AmmoPoolRemaining 的副本，序数升序
 }
 public sealed record WeaponAmmoResult(string WeaponId, int Shots, int Hits, int GunRoundsUsed, double ShotCostMusd, bool CostUnknown,
-                                      int RoundsRemaining /* 全部存活单位该武器余弹之和；任一为 −1 则 −1 */, int PerLevelUsedTotal);
+                                      int RoundsRemaining /* 全部存活非虚拟单位该武器余弹之和；任一为 −1 则 −1 */, int PerLevelUsedTotal);
 public sealed record PoolRemainingResult(string WeaponId, int Rounds);
 
 public sealed record ExchangeSummary
@@ -1615,21 +1696,30 @@ public sealed record DebrisSummary
 }
 public sealed record ExposureSummary { public IReadOnlyList<UnitExposure> Units { get; init; } }  // ExposureStart 的键序（单位 ID 升序）
 public sealed record UnitExposure(int UnitId, string UnitDefId, PlayerUnitCategory Category, double Start, double End, double Max, bool Alive);
-                                     // 已被毁的单位：End = 被毁前最后一步的值（取 ExposureMax 记录时同步保存的最近值），Alive = false
+                                     // 已被毁的单位：End = Max = DestroyedExposureEnd[UnitId]，Alive = false
 
-public sealed record CivilSummary      // 【新】NightResult.Civil
+public sealed record CivilSummary      // NightResult.Civil
 {
     public int AlertRaises { get; init; } public double AlertActiveSec { get; init; } public bool AlertOnAtEnd { get; init; }
     public double ResponsivenessStart { get; init; } public double ResponsivenessEnd { get; init; } public double ShelteredPeakFrac { get; init; }
 }
-public sealed record SupportSummary    // 【新】NightResult.Support
+public sealed record SupportSummary    // NightResult.Support
 {
     public int CallsAccepted { get; init; } public int CallsRefused { get; init; } public int SortiesRemaining { get; init; } public int Kills { get; init; }
 }
 ```
 
 - `InterceptsTotal = ThreatsIntercepted`。
-- `UnitExposure.End`：为得到被毁单位的最后暴露度，`ScoringState` 另存 `ExposureLast: SortedDictionary<int,double>`（第 3 步与 `ExposureMax` 同时写当前值）。
+- **`CarryOut` 组装（`P42`、`A-2-20`、`A-3-10`、`B-T1-16`、`B-T2-36`）**：
+  - `CarryOut.Units`：收集全部 `RosterId != 0 && !u.IsVirtualSectorCoverage` 的当前存活我方单位（调 `SnapshotCarryOut(u, alive: true)`）与 `Scoring.DestroyedUnitSnapshots.Values`，按 `RosterId` 升序排列。
+  - `CarryOut.Structures`：按 `Structures` 实体 ID 升序输出 `new StructureCarryState(s.DefId, s.Hp, s.LossHp)`。
+  - `CarryOut.AmmoPoolRemaining` / `PerLevelUsedTotal`：按 `WeaponId` 序数升序从 `EngagementState` 复制（不含虚拟扇区覆盖单位）。
+  - `CarryOut.AlertResponsiveness = Civil.Responsiveness`。
+  - `CarryOut.KnownTargets`：调用 04 `DeploymentSystem.BuildKnownTargetsForCarryOut(ctx)`（按 `TargetId` 升序）。
+  - `CarryOut.PlayStats`：填充 `NightPlayStats`（含 `ArmDetections`、`ArmShutdowns`、`EwEffectiveTracks = ThreatsEverEwCovered`、`EwRevealedDecoys = ctx.State.Ew.RevealedDecoyCount`、`DecoyMissions = ctx.State.Ew.DecoyMissionsTonight` 等）。
+  - `CarryOut.KillsByEnemy`：按 `EnemyId` 序数升序输出 `Scoring.KillsByEnemy`。
+  - `CarryOut.CustomMetrics`：按 `MetricId` 序数升序输出关卡/里程碑自定义指标（如 `"urban_nav_jam_triggered"` = `ctx.State.Ew.UrbanNavJamSec >= Rules.Ew.UrbanNavJamMinSec ? 1.0 : 0.0`，`B-T2-36`）。
+  - `CarryOut.StoryChoiceResults`：从 04 复制本夜剧情选择结果列表（`B-T1-16`）。
 - **序列化**：`System.Text.Json`，`JsonSerializerOptions { PropertyNamingPolicy = CamelCase, WriteIndented = false, NumberHandling = Strict }` + `JsonStringEnumConverter`；`Vec2` 序列化为 `{"x":…,"y":…}`；所有 `double` 有限（比值无定义时为 `null`，不得写 `NaN` / `Infinity`）；集合顺序如上注明，保证同一夜两次序列化逐字节相同。反序列化后与原对象逐字段相等（集合按序比较）。
 
 ---
@@ -1643,7 +1733,7 @@ public enum HoldReason { HoldFire = 0, IdentifiedDecoy = 1, TagNotAllowedByRule 
                          FireControlOff = 5, AmmoDepleted = 6, PerLevelLimitReached = 7, AmmoReserve = 8, NoEngagementZone = 9,
                          FighterExclusiveZone = 10, NotConfirmedHostile = 11, CannotIntercept = 12, ChannelBusy = 13,
                          Suspended = 14, BarrelCooling = 15 }
-public enum InterceptorExpiryCause { TargetGone = 0 }
+public enum InterceptorExpiryCause { TargetGone = 0, TargetManeuvered = 1, TargetArrived = 2 }   // A-2-09, A-4-02
 public enum ImpactOutcome { Normal = 0, Submunition = 1, ArmMissed = 2 }
 public enum DamageCause { Impact = 0, Debris = 1 }
 public enum AlertCause { Command = 0, Story = 1 }
@@ -1659,37 +1749,37 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 |---|---|---|---|---|---|
 | 300 | `InterceptorLaunched` | `int FireUnitId, int LauncherIndex, string WeaponId, int InterceptorId, int TrackId, int ThreatId, int SupportAssetId` | `ThreatId`、`SupportAssetId` | null | 7、9 |
 | 301 | `GunFired` | `int FireUnitId, string WeaponId, int TrackId, int ThreatId, double Probability, int RoundsUsed` | `ThreatId`、`Probability`、`RoundsUsed` | null | 7 |
-| 302 | `InterceptResolved` | `int? InterceptorId, int ThreatId, bool Hit, double Probability, Vec2 Pos, double AltM, bool OverUrban, string WeaponId, int FireUnitId, int SupportAssetId` | `Pos`、`AltM`、`OverUrban`、`WeaponId`、`FireUnitId`、`SupportAssetId` | 拦截弹 = 拦截时刻；身管 = null | 8 |
-| 303 | `InterceptorExpired` | `int InterceptorId, InterceptorExpiryCause Cause` | — | null | 8 |
+| 302 | `InterceptResolved` | `int? InterceptorId, int ThreatId, bool Hit, double Probability, Vec2 Pos, double AltM, bool OverUrban, string WeaponId, int FireUnitId, int SupportAssetId` | `Pos`、`AltM`、`OverUrban`、`WeaponId`、`FireUnitId`、`SupportAssetId` | 拦截弹 = 规范化 `InterceptAtSec`（`A-4-06`）；身管 = null | 8 |
+| 303 | `InterceptorExpired` | `int InterceptorId, InterceptorExpiryCause Cause` | `Cause` 含 `TargetGone / TargetManeuvered / TargetArrived`（`A-2-09`、`A-4-02`） | null | 8 |
 | 304 | `EngagementHeld` | `int FireUnitId, string WeaponId, int TrackId, int ThreatId, HoldReason Reason` | 全部字段（00 只写了含义） | null | 7 |
 | 305 | `AmmoDepleted` | `int FireUnitId, string WeaponId` | — | null | 7、10 |
 | 306 | `ThreatImpacted` | `int ThreatId, string DefId, Vec2 Pos, Vec2 AimPos, int DamageLevel, AccuracyTier Tier, ImpactOutcome Outcome, int SubIndex, LeakReason? LeakReason, int LeakMask` | `DefId`、`AimPos`、`Tier`、`Outcome`、`SubIndex`、`LeakReason`、`LeakMask` | null | 10 |
 | 307 | `StructureDamaged` | `int StructureId, int HpBefore, int HpAfter, int SourceThreatId, DamageCause Cause` | `Cause` | null | 10 |
 | 308 | `StructureDestroyed` | `int StructureId` | — | null | 10 |
-| 309 | `PlayerUnitDamaged` | `int UnitId, string DefId, PlayerUnitCategory Kind, UnitDamageEffect Effect, DamagedComponent Component, int SourceThreatId` | 全部字段 | null | 10 |
-| 310 | `PlayerUnitDestroyed` | `int UnitId, string DefId, PlayerUnitCategory Kind, int SourceThreatId` | `SourceThreatId` | null | 10 |
+| 309 | `PlayerUnitDamaged` | `int UnitId, string DefId, PlayerUnitCategory Category, UnitDamageEffect Effect, DamagedComponent Component, int SourceThreatId` | 字段名统一为 `Category`（`A-3-05`） | null | 10 |
+| 310 | `PlayerUnitDestroyed` | `int UnitId, string DefId, PlayerUnitCategory Category, int SourceThreatId, Vec2 Pos` | 字段名统一为 `Category`（`A-3-05`），末尾含 `Vec2 Pos`（`A-2-05`、`B-T1-24`） | null | 10 |
 | 311 | `DebrisFell` | `Vec2 Pos, int StructureId, int DamageLevel, int SourceThreatId` | `DamageLevel`、`SourceThreatId`；`StructureId` 由 `int?` 改为 `int`（0 = 无） | null | 10 |
 | 312 | `GridPowerChanged` | `int GridNodeId, bool Powered` | — | null | 10 |
 | 313 | `AirRaidAlertChanged` | `bool On, AlertCause Cause` | — | null | 阶段 0 |
 | 314 | `SupportRequested` | `string SupportDefId, int SupportAssetId` | — | null | 9 |
 | 315 | `SupportRefused` | `string SupportDefId, SupportRefusalReason Reason` | — | null | 9 |
 | 316 | `SupportArrived` | `int SupportAssetId` | — | null | 9 |
-| 317 | `SupportEnded` | `int SupportAssetId, SupportEndReason Reason` | `Reason` | null | 9 |
+| 317 | `SupportEnded` | `string SupportDefId, int SupportAssetId, SupportEndReason Reason` | `Reason`（保留 `SupportAssetId` 供调试，同时可带 `SupportDefId`） | null | 9 |
 
-`PlayerUnitCategory` 即 00 1.6 的枚举（`Fire / Sensor / Ew / Deception`），事件中字段名沿用 00 的 `Kind`。
+`PlayerUnitCategory` 即 00 1.6 的枚举（`Fire / Sensor / Ew / Deception`），事件 `PlayerUnitDamaged` / `PlayerUnitDestroyed` 中属性名统一为 `Category`（`A-3-05`）。
 
-**本文件读取的其他规格事件**：`ThreatSpawned`（101）、`ThreatArrived`（103）、`ThreatExited`（104）——只读，用于 3.5.2 与 3.8.1。
+**本文件读取的其他规格事件**：`ThreatSpawned`（101）、`MunitionReleased`（102）、`ThreatArrived`（103）、`ThreatExited`（104）、`ThreatManeuvered`（107）、`EmitterSwitched`（204）、`EwLinkCut`（206）、`ArmThreatDetected`（208）——只读，用于 3.3.1、3.5.2 与 3.8.1。
 
-### 4.3 命令（00 4.3 总表 300–303 的细化）
+### 4.3 命令（00 4.3 总表 300–303 的细化，`A-2-17`、`C-T2-04`）
 
 | 值 | 命令 | 字段 | 处理者 | 生效 | 拒绝原因（按检查顺序） |
 |---|---|---|---|---|---|
-| 300 | `SetEngagementRule` | `int FireUnitId, string? WeaponId, EngagementRule Rule` | `EngagementSystem` | 阶段 0；同一步系统 7 即按新规则决策 | `UnknownEntity` / `WrongEntityKind`（ID 不在 `FireUnits`）；`InvalidArgument`（`WeaponId` 非 null 且不属于该单位；`Rule.SalvoSize ∉ [1, MaxSalvoSize]`；`Rule.AmmoReserve < 0`） |
+| 300 | `SetEngagementRule` | `int FireUnitId, string? WeaponId, EngagementRule Rule` | `EngagementSystem` | 阶段 0；同一步系统 7 即按新规则决策 | `UnknownEntity` / `WrongEntityKind`（ID 不在 `FireUnits`，或为虚拟扇区单位 `IsVirtualSectorCoverage`）；`InvalidArgument`（`WeaponId` 非 null 且不属于该单位；`Rule.SalvoSize ∉ [1, MaxSalvoSize]`；`Rule.AmmoReserve < 0`）；`NoCommandPoints`（`cost = CommandPointRules.CostOf(ctx.Level, SetEngagementRule)`，默认 1，且 `!CanSpend(ctx, cost)`，`A-2-17`） |
 | 301 | `CallSupport` | `string SupportDefId, Vec2? TargetPos` | `ExternalSupportSystem` | 阶段 0 接受；同一步系统 9 掷拒绝骰、创建支援 | 见 3.4.1 |
-| 302 | `SetAirRaidAlert` | `bool On` | `ScoringSystem` | 阶段 0 立即切换 | `InvalidState`（与当前相同） |
-| 303 | `SetFighterZone` | `int SupportAssetId, bool Exclusive` | `ExternalSupportSystem` | 阶段 0 | `UnknownEntity` / `WrongEntityKind` |
+| 302 | `SetAirRaidAlert` | `bool On` | `ScoringSystem` | 阶段 0 立即切换 | `NotAvailable`（`Meta.Number < AvailableFromLevel`，`C-T2-04`）；`InvalidState`（与当前相同）；`NoCommandPoints`（`cost = CommandPointRules.CostOf(ctx.Level, SetAirRaidAlert)`，默认 1，且 `!CanSpend(ctx, cost)`，`A-2-17`） |
+| 303 | `SetFighterZone` | `int SupportAssetId, bool Exclusive` | `ExternalSupportSystem` | 阶段 0 | `UnknownEntity` / `WrongEntityKind`（不消耗指挥点，`A-2-17`） |
 
-`SetEngagementRule.Apply`：`WeaponId == null` → 替换 `Default`；否则替换（或追加）`PerWeapon` 中该武器的项。**不重置**已锁定目标与反应计时：新规则下目标不再合格时，系统 7 自然放弃它。
+`SetEngagementRule.Apply`：若 `cost > 0` 先调用 `CommandPointRules.Spend(ctx, cost, SimCommandType.SetEngagementRule)`；随后 `WeaponId == null` → 替换 `Default`；否则替换（或追加）`PerWeapon` 中该武器的项。**不重置**已锁定目标与反应计时：新规则下目标不再合格时，系统 7 自然放弃它。
 
 **新增拒绝原因**（03 段，从 300 起）：`NoSortiesLeft = 300`、`InRiskZone = 301`、`AirbaseUnavailable = 302`。
 
@@ -1701,8 +1791,9 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 |---|---|---|
 | 1 | 拦截弹飞行途中目标已被别的拦截弹 / 身管击落 | 到点时 `TryGet` 失败 → `InterceptorExpired(TargetGone)`，不掷骰 |
 | 2 | 同一齐射两枚拦截弹同一时刻到达 | 按 ID 顺序结算；第一枚命中后第二枚 `TargetGone` |
-| 3 | 目标在拦截时刻之前落地（预测失准，如被电子战诱偏后提前到达） | 落地在系统 10 结算并删除目标；拦截弹下一步 `TargetGone` |
-| 4 | 拦截时刻与落地在同一步 | 系统 8 先于 10：拦截判定在先；命中则不再落地 |
+| 3 | 目标在拦截时刻之前落地（预测失准，如被电子战诱偏后提前到达） | 落地在系统 10 结算并删除目标；拦截弹到点步 `TargetGone` |
+| 4 | 拦截时刻与落地在同一步（`ThreatArrived` 已在系统 2 发出，`Phase == Arrived`） | 系统 8 比较 `m.InterceptAtSec` 与 `arrivedEvt.AtSec`（`A-4-02`）：若 `m.InterceptAtSec <= arrivedEvt.AtSec + Eps` 则拦截弹先到并正常掷骰（命中则删除目标，系统 10 跳过）；若 `m.InterceptAtSec > arrivedEvt.AtSec + Eps` 则目标已先落地，拦截弹 `InterceptorExpired(TargetArrived)` |
+| 4b | 拦截弹飞行途中目标因电子战诱偏、失控或盘旋改道发出 `ThreatManeuvered` | 系统 8 步首扫描本步 `ThreatManeuvered`，对该目标所有在途拦截弹按 ID 升序发出 `InterceptorExpired(TargetManeuvered)` 并移除（`A-2-09`）；下一拍系统 7 可重新锁定并发射 |
 | 5 | 航迹被删除（`TrackLost`）但目标仍在 | 已发射的拦截弹照常飞向 `TargetThreatId` 并结算；系统 7 不再以该航迹为候选，`TargetTrackId` 失效后下一步置 0 |
 | 6 | 同一目标有两条航迹 | 占用数按 `ThreatId` 统计，不会重复射击；两条航迹各自可被 `MarkHeld` |
 | 7 | 弹药为 0 | `AmmoDepleted` 保留原因；`AmmoDepleted` 事件每武器一夜只发一次 |
@@ -1715,7 +1806,7 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 | 14 | `rule.SalvoSize` 大于余弹 | `n` 截断为余弹数 |
 | 15 | `perLevelLimit` 已用完（`CarryIn` 带入） | `PerLevelLimitReached`，夜内一发不发 |
 | 16 | 武器 `targets` 中有标签但拦截类别矩阵缺该列 | 不视为可交战（3.2.4 第 1 步跳过） |
-| 17 | 未甄别诱饵（`PerceivedTag = UAV`），武器 `targets` 含 `UAV` 不含 `DECOY` | 照常交战（玩家看不出是诱饵）；概率按 `decoyUsesColumn`；计入 `DecoyShots` |
+| 17 | 未甄别诱饵（`Track.Tag = UAV`），武器 `targets` 含 `UAV` 不含 `DECOY` | 照常交战（玩家看不出是诱饵）；概率按 `decoyUsesColumn`；计入 `DecoyShots` |
 | 18 | `restrictToEnemies` 武器面对非精确航迹 | 跳过（需要精确航迹才能识别型号） |
 | 19 | 敌方平台被击落时仍携带弹药 | 弹药随平台消失（01 负责不再投放） |
 | 20 | 精度档升档到 A 以上 / 降档到 D 以下 | 截断在 `TierOrder` 两端 |
@@ -1726,6 +1817,7 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 | 25 | 反辐射导弹追踪的雷达在落地前已被毁 | 照常结算落点（01 给出的到达点）；`ArmHitProbMult` 由 02 维持 |
 | 26 | 碎片源目标是平台 | 平台没有伤害等级，不产生碎片 |
 | 27 | 拦截点在城区边界上 | 由 `Geo.PointInPolygon` 的半开规则决定，不另做特判 |
+| 27b | 城区拦截且 `urbanInterceptRadiusCells == 0` | 按 1 km 网格同格判定（`SameCell(e.Pos, target.Pos, 1000)`），同格内保护目标与非虚拟我方单位受全额碎片等级 `L`（`C-T2-05`） |
 | 28 | 电网中某节点无连线 | 若为电源 → 自身供电；否则永远断电 |
 | 29 | 电网没有任何 `consumer` 节点 | `Collapsed` 恒为 false |
 | 30 | 电源节点的电厂被毁后同一步又有碎片命中下游变电站 | 本步末一次重算，事件按节点 ID 升序 |
@@ -1744,22 +1836,23 @@ public enum SupportEndReason { Duration = 0, AmmoOut = 1, KillsReached = 2 }
 | 43 | 同一步满足多个失败条件 | 按 `defeat[]` 数据顺序取第一个写 `Detail` |
 | 44 | 失败条件与夜晚到时同一步 | `EndRequest` 优先（00 5 第 7 条） |
 | 45 | 拦截点恰在禁止交战区边界 | 由 `PointInPolygon` 决定 |
-| 46 | `level.number = null` 的测试关卡 | 支援不设首次可用关卡闸门 |
+| 46 | `level.number = null` 的测试关卡 | 支援与空袭警报不设首次可用关卡闸门 |
 | 47 | 解析拦截时目标正在远离且速度大于拦截弹 | `Solve` 无可行采样点 → `null` → `CannotIntercept` |
 | 48 | 目标已在发射点正上方 | 第 1 个采样点通常即可行，二分得到很小的 `t`；拦截可能在本步系统 8 即结算（`AtSec ≤ Tick`） |
+| 49 | 昂贵武器已锁定就绪，而更低期望单发成本武器也已锁定同一目标但尚未完成反应计时 | 若更便宜武器在 `now + RemainingReaction` 发射后其拦截弹能在目标落地前至少提前 `ShotIntervalSec` 到达（留有补射余地），昂贵武器本步礼让不开火；若来不及补射则昂贵武器立即开火（`B-T3-02`、`C-T1-14`） |
 
 ---
 
 ## 6. 不变量（`CheckInvariants` 时每步末尾检查）
 
 1. 每个 `LauncherState.RoundsLeft ≥ −1`；`WeaponState.ShotsFired ≥ 0`；`PerLevelLimit` 非空时 `PerLevelUsedBefore + ShotsFired ≤ PerLevelLimit`。
-2. 每个 `Interceptor`：`LaunchAtSec ≤ InterceptAtSec`；`InterceptAtSec > TimeSec − StepSec`（未结算的拦截弹不会“过期未处理”）；`0 ≤ HitProbability ≤ 1`；`FireUnitId` 与 `SupportAssetId` 恰有一个非 0。
+2. 每个 `Interceptor`：`LaunchAtSec ≤ InterceptAtSec`；`InterceptAtSec > TimeSec − StepSec`（未结算的拦截弹不会“过期未处理”）；`0 ≤ HitProbability ≤ 1`；`FireUnitId` 与 `SupportAssetId` 恰有一个非 0；`LaunchAtSec` 与 `InterceptAtSec` 满足 `NormalizeTime` 幂等（`A-4-06`）。
 3. 每个 `Structure`：`0 ≤ Hp ≤ MaxHp`；`0 ≤ LossHp ≤ MaxHp − Hp + 1e-9`。
 4. 每个我方单位：`0 < DamageEfficiencyMult ≤ 1`；`SuspendedUntilSec ≥ 0`。
 5. `0 ≤ Civil.ShelteredFrac ≤ Civil.Responsiveness ≤ 1`；`Civil.Responsiveness ≥ MinResponsiveness`（若开局值已低于下限则 `≥` 开局值）；`AlertOn == false ⇒ ShelteredFrac == 0`。
 6. `Support.SortiesRemaining ≥ 0`；步末 `Support.PendingCalls` 为空。
 7. 电网：`Powered ⇒ Operational`；每个 `Powered` 节点可从某个 `Operational` 的电源 / 场外供电节点经 `Operational` 节点到达（重算结果自洽）；`Collapsed` 与 3.6.3 的定义一致。
-8. `ScoringState`：`ThreatsIntercepted ≤` 本夜 `InterceptResolved(Hit)` 事件数（相等）；`InterceptsOverUrban ≤ ThreatsIntercepted`；`TotalShotCostMusd ≥ 0`；`TotalPotentialLossMusd ≥ 0`。
+8. `ScoringState`：`ThreatsIntercepted ==` 本夜 `InterceptResolved(Hit)` 事件数；`InterceptsOverUrban ≤ ThreatsIntercepted`；`TotalShotCostMusd ≥ 0`；`TotalPotentialLossMusd ≥ 0`；**威胁守恒不变量（`A-4-04`）**：`ThreatsSpawned == Threats.AliveCount + ThreatsIntercepted + ThreatsImpacted + ThreatsArmMissed + ThreatsExited + ThreatsEwDowned`。
 9. 每个 `SupportAsset`：`State == Active ⇒ ArriveAtSec ≤ TimeSec + Eps`；`RoundsLeft ≥ 0`；`KillsLeft ≥ −1`。
 10. `EngagementSystem`、`ScoringSystem` 子流的状态在整夜中不变（0 消耗；`engagement` 子流保留）。
 11. 每个 `Threat` 的 `HeldMask` 只含 `HoldReason` 定义的位（`< 1 << 16`）。
