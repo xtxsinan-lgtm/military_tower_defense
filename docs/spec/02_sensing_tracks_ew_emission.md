@@ -1,7 +1,7 @@
 # 02 探测、航迹、电子战、辐射与暴露度
 
 > 本文件覆盖"眼 / 盾 / 假"三类我方单位的全部模拟规则，以及防空单位自带火控雷达的探测与开关机。
-> 术语、类型、子流名、实体类型、事件 / 命令名称以 [00_core.md](00_core.md) 为准；本文件新增的名字列在第 8.2 节"需登记到 00_core"。
+> 术语、类型、子流名、实体类型、事件 / 命令名称以 [00_core.md](00_core.md) 为准；本文件在 D2b 审查中提出的登记项已全部合入 [00_core.md](00_core.md)（历史汇总保留在第 8.2 节备查）。
 
 ---
 
@@ -17,40 +17,42 @@
 | 辐射策略状态机、触发规则、火控指示联动、关机时机 | 6 `EmissionSystem` | WS01-013、014 | 3.5 |
 | 暴露度累积、开火增量、侦察、静默、转移、阈值事件 | 11 `ExposureSystem` | WS01-012 | 3.6 |
 | 欺骗单位（诱饵辐射源、牺牲雷达、假发射车）、备用阵地 / 新阵地效能 | 分散在 3、6、11（见 3.7） | WS01-016 | 3.7 |
+| 部署覆盖预计算查询（`CoverageQuery.ComputeGrid`，只读供客户端） | 灰盒客户端查询 | WS04-002 | 3.8 |
 
-**不在本文件**：敌方目标的生成与移动（01，本文件只写对 01 的要求）、交战与拦截判定（03）、反辐射导弹 / 定点打击的**目标选择**（04 / 01，本文件只提供查询）、外部支援的**呼叫流程**（03，本文件只实现国家级导航欺骗的**效果**）、部署状态机与转移执行（04）、天气 / 昼夜的整体建模（WS01-026，本文件只用到夜晚与天气对光学传感器的修正）。
+**不在本文件**：敌方目标的生成与移动（01，本文件通过 01 的 `ThreatRouting` 接口触发诱导改航、悬停与返航）、交战与拦截判定（03）、反辐射导弹 / 定点打击的**目标选择**（04 / 01，本文件只提供查询并维护 `HomingUnitId`）、外部支援的**呼叫流程**（03，本文件只实现国家级导航欺骗的**效果**）、部署状态机与转移执行（04）、天气 / 昼夜的战役层推进（05，本文件只实现昼夜、天气与冬季对探测和电子战的夜内修正）。
 
 ### 0.2 依据
 
 - [GDD v1.3](../游戏设计文档_GDD_v1.md)：3.2–3.3（指挥权限、信息来源）、4.1（B 线空情"有延迟，精度最高为大致"）、5.2（指挥点操作、二选一）、7.4（敌方 AI）、8.1（探测与航迹质量）、8.2（辐射策略与反防空压制）、8.3（电子战）、8.5（雷达断电）、8.8（天气与昼夜）、11.3（新阵地首夜）、12.3（解锁节奏）、15.1–15.2（航迹显示、覆盖层）、17（敏感内容）。
 - [数值表 v1.2](../塔防数值表_v1.md)：1.3（探测单位、航迹质量规则、火控指示、B 线限制）、1.4（电子战、效能衰减、副作用）、1.5（欺骗单位、备用阵地）、1.6（国家级导航欺骗）、3.1（精度档与电子战偏移）、3.3（拦截概率修正，仅引用）、3.4（暴露度）、3.5（辐射策略、触发规则、关机时机）、5.3（规则补充）。
 - [WBS](../开发任务分解_WBS_v1.md)：01.A、01.B、WS01-007、008、012 – 016。
-- 数据：`units/sensors.json`、`units/ew.json`、`units/deception.json`、`units/air_defense.json`（仅火控相关新增字段）、`enemies/munitions.json`、`enemies/platforms.json`（仅本文件用到的标记）、`rules/tracks.json`、`rules/emission.json`、`rules/exposure.json`、`rules/ew.json`、`rules/positions.json`、`rules/accuracy.json`（仅 `ewExtraCells`）、`support/support.json`（仅 `national_gnss_spoof`）、`levels/<id>/waves.json`（`entryPoints[].warningGameSec`、`weather`）、`levels/<id>/map/layers.json`（`urban`）、`levels/<id>/map/deploy.json`（`alternatePositions`）。
+- 数据：`units/sensors.json`、`units/ew.json`、`units/deception.json`、`units/air_defense.json`（仅火控与自主捕获字段）、`units/weapons.json`（`reactionGameSec`）、`enemies/munitions.json`、`enemies/platforms.json`（仅本文件用到的标记）、`rules/tracks.json`、`rules/emission.json`、`rules/exposure.json`、`rules/ew.json`、`rules/positions.json`、`rules/terrain.json`（`defaultAntennaHeightM`）、`rules/engagement.json`（武器类别默认反应时间）、`rules/accuracy.json`（仅 `ewExtraCells`）、`support/support.json`（仅 `national_gnss_spoof`）、`levels/<id>/waves.json`（`entryPoints[].warningGameSec`、`weather`、`timeOfDay`、`season`）、`levels/<id>/map/layers.json`（`urban`）、`levels/<id>/map/deploy.json`（`alternatePositions`）。
 
 ### 0.3 依赖
 
-- **00_core**：全部框架（`SimWorld`、`EntityStore`、`SimRandom`、事件 / 命令、数据加载契约、`SimTime`、`Vec2`、方位角约定）。
-- **01**（尚在编写，本文件以"接口要求"的形式写明依赖，名称以 01 定稿为准，差异由一致性审查合并）：
-  - 地形视线：`TerrainQuery.HasLineOfSight(Vec2 fromPos, double fromAltM, Vec2 toPos, double toAltM) : bool`（高度均为 AGL；`true` = 视线未被地形遮挡）。
-  - `Threat` 的 `Pos`、`AltM`、`VelMps`（00 已登记）与 `TargetUnitId`（见 8.2，需 01 / 04 写入）。
-  - 01 的移动必须读取本文件写入的 `Threat.EwDivertPos`、`Threat.LinkCutState`（见 3.4.6）。
-- 本文件**不依赖** 03 / 04 的实现，只读取它们产生的事件和少量字段（见 8.2 "跨规格字段"）。
+- **00_core**：全部框架（`SimWorld`、`EntityStore`、`SimRandom`、`SpatialGrid`、事件 / 命令、数据加载契约、`SimTime`、`Vec2`、方位角约定、`Geo` 公共几何工具、`WeaponParams` 公共武器参数查询、`EnvironmentResolver.SeasonFor`）。
+- **01**（[01_spawn_movement_terrain.md](01_spawn_movement_terrain.md)）：
+  - 地形视线与地平线包络：`ctx.Terrain.BuildHorizonProfile(Vec2 pos, double antennaAglM, double maxRangeM) : HorizonProfile` 与 `HorizonProfile.HasLineOfSightAgl(Vec2 targetPos, double targetAglM) : bool`（高度均为 AGL；含等效地球曲率 $R_{\text{eff}} = k R_e$，见 01 §2.5、§3.3.4；A-2-26、B-T2-31、C-T2-01）。
+  - 波次过滤：`WaveSpawnRules.IsStoryOnlyWave(LevelData level, string waveId) : bool`（01 §3.1.1，用于排除仅剧情注入的波次；A-2-28）。
+  - 目标路径改写：`ThreatRouting.Retarget(SimContext ctx, Threat t, Vec2 newAim)`、`ThreatRouting.Hover(SimContext ctx, Threat t)`、`ThreatRouting.BeginEgress(SimContext ctx, Threat t)`（01 §3.2.8；A-2-27）。
+  - `Threat` 的 `Pos`、`AltM`、`VelMps`、`Phase`（`ThreatPhase`）、`TargetUnitId`（由 01 唯一写入，本文件只读；A-2-04）与 `HomingUnitId`（01 拥有，本文件第 6 步写入、01 第 2 步 `ApplyHoming` 读取；A-2-06）。
+- **03 / 04 / 05 跨规格交互**：本文件不依赖 03 / 04 的系统实现，只读取它们维护的实体字段（`FireUnit.RadarDestroyed`、`PlayerUnitCommon.SuspendedUntilSec`、`SupportAsset` 的 `State / CenterPos / RadiusM`、`SimConfig.CarryIn`）与事件，并在命令处理中调用 04 的 `CommandPointRules`（A-2-12、A-2-17、A-2-21、A-2-22）。
 
 ### 0.4 已作的关键选择（理由见各节）
 
 | # | 选择 | 理由 | 章节 |
 |---|---|---|---|
-| D1 | **航迹按真实 `ThreatId` 关联**（不做空间关联） | 确定性强、实现简单、不会出现"错配"带来的不可复现 bug；战争迷雾通过质量、延迟、误差圈、误报航迹体现，而不是通过关联错误体现 | 3.3.1 |
-| D2 | **"精确"是火力单元私有的**：航迹的 `PreciseHolderIds` 记录"哪些火力单元的自带火控雷达 / 自主捕获此刻锁定了它" | 数值表 1.3：精确 = 防空系统**自带**火控雷达；若精确在网络中共享，一部雷达开机即可让全网发射导弹，火控指示联动就失去意义 | 3.3.4 |
+| D1 | **航迹按真实 `ThreatId` 关联**（不做空间关联，已决 B-T1-07） | 确定性强、实现简单、不会出现"错配"带来的不可复现 bug；战争迷雾通过质量、延迟、误差圈、误报航迹体现，而不是通过关联错误体现 | 3.3.1 |
+| D2 | **"精确"是火力单元私有的**：航迹的 `PreciseHolderIds` 记录"哪些火力单元的自带火控雷达 / 自主捕获此刻锁定了它"（已决 B-T2-33） | 数值表 1.3：精确 = 防空系统**自带**火控雷达；若精确在网络中共享，一部雷达开机即可让全网发射导弹，火控指示联动就失去意义 | 3.3.4 |
 | D3 | 探测是**确定性**的（在范围内且视线通就探测到），随机只用于误报、诱饵甄别、电子战判定 | 避免航迹逐步闪烁；数值表没有给出探测概率 | 3.2 |
-| D4 | 电子战效能解释为**每个目标、每类效果只掷一次**的概率，结果锁存到当夜结束 | 每步重掷会让效果随停留时间无限累积，数值表的百分比失去意义 | 3.4 |
-| D5 | 辐射策略的 `exposureMult` **不在模拟中相乘**，暴露度只在雷达实际开机时按基础速率累积（待决 Q6） | 开关机状态机已经产生了时间占比上的差异，再乘系数会重复计算；`cueing.cued.exposureMult = 0.3` 恰好等于 `fireControlCued / fireControlSelfSearch = 0.6 / 2.0`，说明这些系数是"概括值" | 3.5、3.6 |
+| D4 | 电子战效能解释为**每个目标、每类效果只掷一次**的概率，结果锁存到当夜结束（已决 B-T3-08） | 每步重掷会让效果随停留时间无限累积，数值表的百分比失去意义 | 3.4 |
+| D5 | 辐射策略的 `exposureMult` **不在模拟中相乘**，暴露度只在雷达实际开机时按基础速率累积（已决 B-T3-10：作为平衡验证的目标平均暴露系数） | 开关机状态机已经产生了时间占比上的差异，再乘系数会重复计算；`cueing.cued.exposureMult = 0.3` 恰好等于 `fireControlCued / fireControlSelfSearch = 0.6 / 2.0`，说明这些系数是"目标平均比值" | 3.5、3.6 |
 
 ---
 
 ## 1. 数据输入
 
-> 换算规则见 00 的 0.4.2；下表"C# 字段"已是换算后的名字与单位。**标 ★ 的是本文件提出、需要新增到 `data/` 与 Schema 的字段**（同时列在 8.2，建议默认值列在第 8 节待决问题中）。可选字段缺失时的处理写在"缺省"列，加载器不填默认值（00 的 1.2 第 6 条）。
+> 换算规则见 00 的 0.4.2；下表"C# 字段"已是换算后的名字与单位。**标 ★ 的是本文件提出并已在 D2b 批准新增到 `data/` 与 Schema 的字段**（同时列在 8.2，裁决见第 8.1 节）。可选字段缺失时的处理写在"缺省"列，加载器不填默认值（00 的 1.2 第 6 条）。
 
 ### 1.1 `units/sensors.json` → `SensorDef`
 
@@ -76,8 +78,8 @@
 | `priceMusd` / `stockOnly` | `PriceMusd` / `StockOnly` | | 本文件不用 |
 | `automatic` | `Automatic` | `bool?` | false |
 | `firstAvailable` | `FirstAvailable` | `FirstAvailableDef?`（`int? Level, int? FullStrengthLevel, bool? Optional, bool? InfoSourceOnly`） | `null` |
-| ★ `lineOfSight` | `LineOfSight` | `bool?` | `null` = true（需要地形视线）；建议 `acoustic_post` 填 `false` |
-| ★ `antennaHeightM` | `AntennaHeightM` | `double?`，米 AGL | `null` = `rules.tracks.detection.sensorHeightM` |
+| ★ `lineOfSight` | `LineOfSight` | `bool?` | `null` = true（需要地形视线）；`acoustic_post` 填 `false`（B-T2-50） |
+| ★ `antennaHeightM` | `AntennaHeightM` | `double?`，米 AGL | `null` = `Rules.Terrain.DefaultAntennaHeightM`（`10` m，B-T2-03 / A-2-26；`tethered_balloon` 填 `300`） |
 
 ### 1.2 `units/ew.json` → `EwUnitDef`
 
@@ -86,8 +88,8 @@
 | `id` / `nameKey` | `Id` / `NameKey` | `string` | 必填 |
 | `radiusKm` | `RadiusM` | `double`，米 | 必填 |
 | `effect` | `Effect` | `EwEffect { NavJam = 0, NavSpoof = 1, LinkCut = 2, LinkCutDirectional = 3, SelfProtection = 4 }` | 必填 |
-| `offsetCellsAdd` | `OffsetAddM` | `double?`，米（**加载器特例**：后缀 `Cells` 不在末尾，见 8.2） | 本文件默认不用（待决 Q8） |
-| `accuracyTierDrop` | `AccuracyTierDrop` | `int?` | `null` = 0 |
+| `offsetCellsAdd`（将改名 `offsetAddCells`） | `OffsetAddM` | `double?`，米（00 0.4.2 #7 临时特例，A-3-04） | **仅界面显示**，模拟不读（单位电子战统一按 `Accuracy.Tiers[tier].EwExtraM`，已决 B-T3-08） |
+| `accuracyTierDrop` | `AccuracyTierDrop` | `int?` | 单位电子战不降精度档（模拟忽略此字段，国家级欺骗用 `SupportDef.AccuracyTierDrop`，已决 B-T3-08） |
 | `pullChance` | `PullChance` | `double?`，概率 | `null` = 不能诱导 |
 | `aiVisionEffectMult` | `AiVisionEffectMult` | `double?` | `null` = 1.0 |
 | `linkCutOutcomes[]` | `LinkCutOutcomes` | `IReadOnlyList<LinkCutOutcome>?`，`LinkCutOutcome { Crash = 0, Hover = 1, Return = 2 }` | `LinkCut*` 效果必填（加载器校验，缺失 → `E_MISSING_FIELD`） |
@@ -98,7 +100,6 @@
 | `emissionExposure` | `EmissionExposure` | `EwExposureLevel { High = 0, Medium = 1, Low = 2 }` | 必填 |
 | `deployGameSec` / `packGameSec` / `priceMusd` | `DeploySec` / `PackSec` / `PriceMusd` | | 04 / 05 使用 |
 | `firstAvailable` | `FirstAvailable` | `FirstAvailableDef?` | `FullStrengthLevel` 用于 3.4.3 |
-| ★ — | （无，见 Q13） | | |
 
 "有效对象"判定：**只看 `EffectiveAgainst` 是否包含 `Threat.DefId`**；此外 `MunitionDef.EwImmune == true` 的目标对**所有**电子战效果免疫（即使误列在 `EffectiveAgainst` 中）。
 
@@ -113,15 +114,16 @@
 | `duration` / `durationNights` | `Duration` / `DurationNights` | `DeceptionDuration { OneShot = 0, UntilDestroyed = 1, Nights = 2 }` / `int?` | 05 使用 |
 | `priceMusd` / `stockOnly` / `firstAvailable` | | | 本文件不用 |
 
-### 1.4 `units/air_defense.json` → `AirDefenseUnitDef`（本文件只用下列字段，全字段见 03）
+### 1.4 `units/air_defense.json` → `AirDefenseUnitDef` 与 `units/weapons.json` → `WeaponDef`（本文件只用下列字段，全字段见 03）
 
-| JSON 字段 | C# 字段 | 类型 / 单位 | 缺省 |
+| 来源 → JSON 字段 | C# 字段 | 类型 / 单位 | 缺省 |
 |---|---|---|---|
-| `weapons[]` | `WeaponIds` → `WeaponDef`（`Kind`、`RangeM`、`RangeByTagM`、`CeilingM`、`Targets`） | | 03 定义 |
-| `fireOnMove` | `FireOnMove` | `FireOnMove { Yes = 0, Partial = 1, No = 2 }` | 必填 |
-| ★ `fireControlRadar` | `FireControlRadar` | `FireControlRadarDef?`：`RangeM`（`rangeKm`）、`LowAltitude`（`LowAltitudeCapability`）、`Origin`（`SystemOrigin { Soviet = 0, Western = 1 }`）、`AntennaHeightM`（`double?`） | `null` = 无火控雷达（不是辐射源） |
-| ★ `reactionGameSec` | `ReactionSec` | `double?`，秒 | `null` = 0（火控指示窗口只在目标已进入射程时打开）；03 也使用此字段（首发反应时间） |
-| ★ `selfAcquisitionRangeKm` | `SelfAcquisitionRangeM` | `double?`，米 | `null` = 无自主捕获（见 3.2.5、Q4） |
+| `air_defense.json` → `weapons[]` | `WeaponIds` → `WeaponDef`（`Kind`、`RangeM`、`RangeByTagM`、`CeilingM`、`Targets`、`ReactionSec`） | | 03 定义；有效射程通过 `Nightwatch.Sim.Rules.WeaponParams.RangeFor(w, tag)` 读取（A-3-09） |
+| `air_defense.json` → `fireOnMove` | `FireOnMove` | `FireOnMove { Yes = 0, Partial = 1, No = 2 }` | 必填 |
+| ★ `air_defense.json` → `fireControlRadar` | `FireControlRadar` | `FireControlRadarDef?`：`RangeM`（`rangeKm`）、`LowAltitude`（`LowAltitudeCapability`）、`Origin`（`SystemOrigin { Soviet = 0, Western = 1 }`）、`AntennaHeightM`（`double?`，`null` = `Rules.Terrain.DefaultAntennaHeightM`） | `null` = 无火控雷达（不是辐射源；B-T2-34） |
+| ★ `air_defense.json` → `selfAcquisitionRangeKm` | `SelfAcquisitionRangeM` | `double?`，米 | `null` = 无自主捕获（见 3.2.5、B-T2-09） |
+| ★ `air_defense.json` → `selfAcquisition` | `SelfAcquisition` | `SelfAcquisitionKind? { Optical = 0 }` | `null` = 非光学自主捕获；`Optical` 受夜间 `0.3` 倍率与光学天气倍率影响（`mobile_fire_team`、`zu23_2`、`stinger`、`igla`、`piorun`、`starstreak`、`martlet`、`rbs70`、`mistral`、`interceptor_drone_team` 填 `"optical"`；`gepard`、`avenger`、`strela_10`、`osa` 填 `null`；B-T2-09、C-T2-07） |
+| ★ `weapons.json` → `reactionGameSec` | `WeaponDef.ReactionSec` | `double?`，秒 | `null` = 按 `Rules.Engagement.ByWeaponKind[w.Kind].ReactionSec` 取类别默认（`Gun 0`、`InterceptorDrone 0`、`ShortRangeSam 0.05` 游戏秒 = 3 s、`MediumRangeSam 0.1` = 6 s、`LongRangeSam 0.2` = 12 s）；统一通过 `WeaponParams.ReactionSec(w, Rules.Engagement)` 读取（已决 B-T2-01、P15、A-2-30） |
 
 ### 1.5 `enemies/*.json`（只列本文件读取的字段）
 
@@ -131,10 +133,10 @@
 | munitions → `ewImmune` | `MunitionDef.EwImmune` | 3.4 | `null` = false |
 | munitions → `tracksEmittingRadarOnly` | `MunitionDef.TracksEmittingRadarOnly` | 识别反辐射导弹（3.5.5） | `null` = false |
 | munitions → `accuracy`（已按时期解析） | `MunitionDef.Accuracy` | 3.4.4 取 `ewExtraCells` | |
-| platforms → `behavior` | `PlatformDef.Behavior`（`PlatformBehavior`，snake → Pascal，顺序同 Schema） | 侦察平台判定：`Spotter`、`ArmedRecon`（Q21） | |
-| ★ munitions / platforms → `radioLinked` | `RadioLinked` | `bool?` | `null` = false（无线电侦测器只探测 `true` 的目标） |
-| ★ munitions → `aiVisionFrom` | 解析为 `bool AiVisionActive`（00 的 1.4 形态 C 闸门） | 3.4.5 | 缺省 = `false` |
-| ★ platforms → `reconQuality` | `ReconQuality? { Low = 0, Medium = 1, High = 2 }` | 3.7.3 假发射车识破 | `null` = 该平台不会识破 |
+| platforms → `behavior` | `PlatformDef.Behavior`（`PlatformBehavior`，snake → Pascal，顺序同 Schema） | 侦察平台判定：`Spotter`、`ArmedRecon`（B-T2-41） | |
+| ★ munitions / platforms → `radioLinked` | `RadioLinked` | `bool?` | `null` = false（无线电侦测器只探测 `true` 的目标；B-T2-43） |
+| ★ munitions → `aiVisionFrom` | 解析为 `bool AiVisionActive`（00 的 1.4 形态 C 闸门） | 3.4.5 | 缺省 = `false`（B-T3-08） |
+| ★ platforms → `reconQuality` | `ReconQuality? { Low = 0, Medium = 1, High = 2 }` | 3.7.3 假发射车识破 | `null` = 该平台不会识破（B-T2-41） |
 
 "无标签目标"（`Tag == null`，如无制导炸弹）同样可以被探测和形成航迹；是否交战由 03 决定。
 
@@ -144,21 +146,20 @@
 |---|---|---|
 | `qualities[]` | `Qualities`：`IReadOnlyList<TrackQualityRuleDef>`，**按 `TrackQuality` 值排序**（下标 0/1/2 = Vague/Approximate/Precise）；三个 `id` 必须各出现一次，否则 `E_RANGE` | `TrackQualityRuleDef(TrackQuality Id, double DecoyDiscrimination, bool MissilesAllowed, TrackDisplay Display, IReadOnlyList<TrackAction> Actions)`；`Display`、`Actions` 只供 03 / 06 |
 | `approximateFromLocalSensorCount` | `ApproximateFromLocalSensorCount`（`int`） | 3.3.3 |
-| `cueing.cued` | `Cueing.Cued`：`MinTrackQuality`（`TrackQuality`）、`FireControlOnlyLastReactionTime`（`bool`）、`ExposureMult`（只读、模拟不乘，D5） | 3.5.4 |
-| `cueing.uncued` | `Cueing.Uncued`：`ExposureMult`（不乘）、`FirstShotReactionTimeMult`（03 使用） | |
+| `cueing.cued` | `Cueing.Cued`：`MinTrackQuality`（`TrackQuality`）、`FireControlOnlyLastReactionTime`（`bool`）、`ExposureMult`（仅平衡目标与界面显示，模拟不乘，D5 / B-T3-10） | 3.5.4 |
+| `cueing.uncued` | `Cueing.Uncued`：`ExposureMult`（不乘）、`FirstShotReactionTimeMult`（**仅界面显示**；`DataLoader` 校验其值与 `intercept.modifiers.noCueSelfSearch.firstShotReactionTimeMult` 相等，不等报 `E_RANGE`，03 运行时只读后者；A-2-08） | |
 | `warningRadarEnemyAiWeightAs` | `WarningRadarEnemyAiWeightAs`（`string`） | 04 使用 |
 | `bLine` | `BLine`：`RegionalRadarDirectControl`（`bool`）、`RelayDelaySec`（`relayDelayGameSec` × 60）、`MaxTrackQuality` | 3.2.7 |
-| ★ `detection` | `Detection`：`DetectionRulesDef`，字段见下表 | 3.2 |
+| ★ `detectionRules` | `DetectionRules`：`DetectionRulesDef`，字段见下表（命名为 `DetectionRules` 以免与 `Detection` 结构体撞名；A-3-06、P17） | 3.2 |
 
-★ `detection` 对象（全部必填；建议默认值见 Q1、Q26–Q32）：
+★ `detectionRules` 对象（全部必填，除另有注明外；已决 B-T2-32、B-T2-45～B-T2-50、B-T2-05、B-T2-09、C-T2-07）：
 
-| JSON 字段 | C# 字段 | 单位 / 类型 | 建议默认 |
+| JSON 字段 | C# 字段 | 单位 / 类型 | 默认值 |
 |---|---|---|---|
 | `lowAltitudeBelowM` | `LowAltitudeBelowM` | 米 AGL；`AltM <` 此值即"低空" | 1000 |
 | `lowAltitudeRangeMult` | `LowAltitudeRangeMult` | 按 `LowAltitudeCapability` 的对象（键 `poor` `medium` `good` `very_good`，四个必填） | 0.3 / 0.6 / 0.9 / 1.0 |
 | `largeBlindZoneLowAltitudeRangeMult` | `LargeBlindZoneLowAltitudeRangeMult` | 倍率 | 0.5 |
 | `coverageLowAltitudeMinCapability` | `CoverageLowAltitudeMinCapability` | `LowAltitudeCapability` | `good` |
-| `sensorHeightM` | `SensorHeightM` | 米 AGL | 10 |
 | `closeRangeFraction` | `CloseRangeFraction` | 0–1 | 0.5 |
 | `errorRadiusM` | `ErrorRadiusM` | 按 `TrackQuality` 的对象（键 `vague` `approximate` `precise`） | 5000 / 1000 / 0 |
 | `fastUpdateErrorRadiusMult` | `FastUpdateErrorRadiusMult` | 倍率 | 0.5 |
@@ -166,33 +167,37 @@
 | `falseAlarmsPerGameSec` | `FalseAlarmsPerSec` | 按 `FalseAlarmLevel` 的对象（键 `some` `high`），每秒 | 0.02 / 0.1（每游戏秒） |
 | `reportDelayGameSec` | `ReportDelaySec` | 秒 | 0.5（= 30 s） |
 | `opticalWeatherRangeMult` | `OpticalWeatherRangeMult` | 按 `Weather` 的对象（键 `clear` `moonlit` `low_cloud` `fog`） | 1.0 / 1.3 / 0.6 / 0.3 |
-| `unpoweredActiveRangeMult` | `UnpoweredActiveRangeMult` | 倍率（主动辐射源断电时的探测距离倍率） | 0.5 |
+| `opticalNightRangeMult` | `OpticalNightRangeMult` | 倍率（`SelfAcquisition == Optical` 的火力单元在夜间的自主捕获距离倍率；缺省 `0.3`） | 0.3（B-T2-09） |
+| `unpoweredActiveRangeMult` | `UnpoweredActiveRangeMult` | 倍率（主动辐射源断电时的探测距离倍率） | 0.5（B-T2-05） |
+| `winterActiveRangeMult` | `WinterActiveRangeMult` | 倍率（冬季 `Season.Winter` 下主动雷达探测 / 火控距离倍率；缺省 `0.9`） | 0.9（C-T2-07） |
+
+> 默认天线高度统一放在 `rules/terrain.json` 的 `defaultAntennaHeightM`（`10` m），不在 `detectionRules` 中重复定义（已决 B-T2-03、P17、A-2-26）。
 
 ### 1.7 `rules/emission.json` → `EmissionRulesDef`
 
 | JSON 字段 | C# 字段 | 说明 |
 |---|---|---|
-| `strategies[]` | `Strategies`：`IReadOnlyList<EmissionStrategyDef>`（数据顺序） | `EmissionStrategyDef(string Id, string NameKey, EmissionActivation Activation, double ExposureMult, double ReactionTimeMult, bool? TrackInterrupted, bool? ConfigurableOnOff, bool? CanRelocate, IReadOnlyList<StrategyRequirement>? Requires, int? AvailableFromLevel, bool? WesternSystemsOnly)`；`EmissionActivation { Always = 0, ApproximateWarning = 1, DutyCycle = 2, LastMoment = 3, AfterDecoy = 4 }`；`StrategyRequirement { ApproximateTrack = 0, Network = 1, Decoy = 2 }`。`configurableOnOffGameSec` 是**布尔**字段，加载器特例：不做时间换算，C# 名 `ConfigurableOnOff`（见 8.2） |
+| `strategies[]` | `Strategies`：`IReadOnlyList<EmissionStrategyDef>`（数据顺序） | `EmissionStrategyDef(string Id, string NameKey, EmissionActivation Activation, double ExposureMult, double ReactionTimeMult, bool? TrackInterrupted, bool? ConfigurableOnOff, bool? CanRelocate, IReadOnlyList<StrategyRequirement>? Requires, int? AvailableFromLevel, bool? WesternSystemsOnly)`；`EmissionActivation { Always = 0, ApproximateWarning = 1, DutyCycle = 2, LastMoment = 3, AfterDecoy = 4 }`；`StrategyRequirement { ApproximateTrack = 0, Network = 1, Decoy = 2 }`。`ExposureMult` 为平衡验证的目标平均暴露系数（运行时不乘，B-T3-10）。`configurableOnOffGameSec`（将改名 `configurableOnOff`）是**布尔**字段，加载器特例不做时间换算（00 0.4.2 #7、A-3-04） |
 | `triggers.onAntiRadiationIncoming[]` | `Triggers.OnAntiRadiationIncoming`：`IReadOnlyList<ArmResponse>`，`ArmResponse { ShutdownImmediately = 0, ShutdownAfterCurrentIntercept = 1, KeepEngaging = 2 }` | Schema 允许任意字符串；加载器按此 enum 解析，未知值 → `E_ENUM`。**第 0 项为默认值** |
 | `triggers.afterFiring[]` | `Triggers.AfterFiring`：`IReadOnlyList<AfterFiringAction>`，`{ Stay = 0, RelocateToAlternate = 1 }` | 第 0 项为默认值 |
 | `triggers.onMainRadarDestroyed[]` | `Triggers.OnMainRadarDestroyed`：`IReadOnlyList<RadarDestroyedResponse>`，`{ NeighborRadarTakesOver = 0 }` | 列出可选项；是否启用由单位设置 `NeighborTakeover` 决定（缺省 false） |
 | `shutdownTiming[]` | `ShutdownTiming`：`IReadOnlyList<ShutdownTimingTierDef(double ArmDistanceFractionAbove, double ArmHitProbMult)>`（**数据顺序**，按顺序取第一个满足条件者） | 3.5.5 |
-| ★ `defaultStrategy` | `DefaultStrategyId`（`string`，须 ∈ `strategies[].id`，否则 `E_UNKNOWN_REF`） | 单位未设置策略时使用；建议 `always_on` |
-| ★ `dutyCycleDefaultOnGameSec` / `dutyCycleDefaultOffGameSec` | `DutyCycleDefaultOnSec` / `DutyCycleDefaultOffSec` | 间歇开机未设置周期时使用；建议 1 / 1 |
-| ★ `decoyLeadGameSec` | `DecoyLeadSec` | 诱饵配合：诱饵须先开机的时长；建议 0.25 |
-| ★ `defaultReferenceRangeKm` | `DefaultReferenceRangeM` | 没有自身距离的辐射源（诱饵）用于"按预警开机"的参考距离；建议 30 |
+| ★ `defaultStrategy` | `DefaultStrategyId`（`string`，须 ∈ `strategies[].id`，否则 `E_UNKNOWN_REF`） | 单位未设置策略时使用；默认 `always_on`（B-T2-38） |
+| ★ `dutyCycleDefaultOnGameSec` / `dutyCycleDefaultOffGameSec` | `DutyCycleDefaultOnSec` / `DutyCycleDefaultOffSec` | 间歇开机未设置周期时使用；默认 1 / 1（B-T2-39） |
+| ★ `decoyLeadGameSec` | `DecoyLeadSec` | 诱饵配合：诱饵须先开机的时长；默认 0.25（B-T2-39） |
+| ★ `defaultReferenceRangeKm` | `DefaultReferenceRangeM` | 没有自身距离的辐射源（诱饵）用于"按预警开机"的参考距离；默认 30（B-T2-39） |
 
 ### 1.8 `rules/exposure.json` → `ExposureRulesDef`
 
 | JSON 字段 | C# 字段 | 说明 |
 |---|---|---|
 | `min` / `max` | `Min` / `Max` | 夹取范围 |
-| `ratesPerGameSec.*` | `RatesPerSec`：`WarningRadarSoviet`、`WarningRadarWestern`、`FireControlSelfSearch`、`FireControlCued`、`HighPowerEw`、`Silent`、`EnemyReconNearby`（全部 ÷ 60，每秒） | 本文件使用 `FireControlSelfSearch`、`FireControlCued`、`Silent`、`EnemyReconNearby`；`WarningRadar*`、`HighPowerEw` 与下面两张"等级速率表"重复，**不使用**（Q38） |
+| `ratesPerGameSec.*` | `RatesPerSec`：`FireControlSelfSearch`、`FireControlCued`、`Silent`、`EnemyReconNearby`（全部 ÷ 60，每秒） | `WarningRadarSoviet`、`WarningRadarWestern`、`HighPowerEw` 与下面两张"等级速率表"重复，已决删除（B-T1-10），模拟只读等级速率表 |
 | `perMissileLaunched` | `PerMissileLaunched` | 一次性增量，不换算 |
 | `enemyReconRadiusKm` | `EnemyReconRadiusM` | 米 |
 | `onRelocate` | `OnRelocate`：`ResetTo`、`ToScoutedPositionMult` | 3.6.3 |
-| `sensorExposureLevelRates` | `SensorExposureLevelRatesPerSec`（按 `SensorExposureLevel`） | **加载器特例**：字段名无单位后缀，但值是每游戏秒，加载时 ÷ 60（见 8.2；建议改名为 `…PerGameSec`） |
-| `ewExposureLevelRates` | `EwExposureLevelRatesPerSec`（按 `EwExposureLevel`） | 同上 |
+| `sensorExposureLevelRates`（将改名 `sensorExposureLevelRatesPerGameSec`） | `SensorExposureLevelRatesPerSec`（按 `SensorExposureLevel`） | 00 0.4.2 #7 临时特例：改名前加载时亦 ÷ 60（B-T1-09、A-3-04） |
+| `ewExposureLevelRates`（将改名 `ewExposureLevelRatesPerGameSec`） | `EwExposureLevelRatesPerSec`（按 `EwExposureLevel`） | 同上 |
 | `thresholds[]` | `Thresholds`：`IReadOnlyList<ExposureThresholdDef(double AtLeast, ExposureConsequence Consequence)>`，加载后**按 `AtLeast` 升序稳定排序**；`ExposureConsequence { AntiRadiationPriorityTonight = 0, KnownTargetListNextNight = 1, PrecisionStrikeTonight = 2 }` | 3.6.4 |
 
 ### 1.9 `rules/ew.json` → `EwRulesDef`
@@ -200,26 +205,29 @@
 | JSON 字段 | C# 字段 | 说明 |
 |---|---|---|
 | `effectivenessByPeriod`（已按关卡日期解析为单行） | `Effectiveness`：`EwEffectivenessDef(double Nav, double CounterUas, bool NavTerminalIneffectiveVsAiVision)`（JSON 缺省 → false） | 3.4.3 |
-| `sideEffects` | `SideEffects`：`FriendlyInterceptorDroneMult`、`OwnDroneLinkCut`、`UrbanNavJamCityResiliencePerNight` | 3.4.7、3.4.8 |
-| ★ `linkCutOutcomeWeights` | `LinkCutOutcomeWeights`（按 `LinkCutOutcome`，键 `crash` `hover` `return`，非负，三者之和 > 0） | 建议 0.5 / 0.25 / 0.25（Q10） |
-| ★ `hoverBeforeCrashGameSec` | `HoverBeforeCrashSec` | 悬停后坠落的时长；建议 2 |
-| ★ `belowFullStrengthMult` | `BelowFullStrengthMult` | 关卡序号 < `fullStrengthLevel` 时的效能倍率；建议 0.5（Q12） |
-| ★ `urbanNavJamMinGameSec` | `UrbanNavJamMinSec` | 当夜城区内导航干扰累计开启达到此值才算"长时间"；建议 60（Q14） |
+| `sideEffects` | `SideEffects`：`FriendlyInterceptorDroneMult`（仅界面显示或删除，03 只读 `intercept.json`，B-T1-08）、`OwnDroneLinkCut`（本版不实现，B-T1-08）、`UrbanNavJamCityResiliencePerNight` | 3.4.7、3.4.8 |
+| ★ `linkCutOutcomeWeights` | `LinkCutOutcomeWeights`（按 `LinkCutOutcome`，键 `crash` `hover` `return`，非负，三者之和 > 0） | 默认 0.5 / 0.25 / 0.25（B-T2-35） |
+| ★ `hoverBeforeCrashGameSec` | `HoverBeforeCrashSec` | 悬停后坠落的时长；默认 2（B-T2-35） |
+| ★ `belowFullStrengthMult` | `BelowFullStrengthMult` | 关卡序号 < `fullStrengthLevel` 时的效能倍率；默认 0.5（B-T2-35） |
+| ★ `unpoweredEffectMult` | `UnpoweredEffectMult` | 电子战单位断电（`!Powered`）时的效能概率倍率；缺省 `0.5`（B-T2-05、A-2-12） |
+| ★ `winterEffectMult` | `WinterEffectMult` | 冬季（`Season.Winter`）下电子战单位效能概率倍率；缺省 `0.9`（C-T2-07） |
+| ★ `urbanNavJamMinGameSec` | `UrbanNavJamMinSec` | 当夜城区内导航干扰累计开启达到此值才算"长时间"；默认 60（B-T2-36） |
 
 ### 1.10 其他规则与关卡数据
 
 | 来源 | C# | 用途 |
 |---|---|---|
-| `rules/accuracy.json` → `tiers.<档>.ewExtraCells` | `AccuracyRulesDef.Tiers[tier].EwExtraM`（米） | 3.4.4 导航干扰的额外落点偏移 |
+| `rules/terrain.json` → `defaultAntennaHeightM`、`earthRadiusM`、`refractionK` | `TerrainRulesDef.DefaultAntennaHeightM`（`10` m）、`EarthRadiusM`（`6371000`）、`RefractionK`（`4.0 / 3.0`） | 3.2.4、3.2.5 默认天线高度与地平线视线模型（B-T2-02、B-T2-03） |
+| `rules/accuracy.json` → `tiers.<档>.ewExtraCells` | `AccuracyRulesDef.Tiers[tier].EwExtraM`（米） | 3.4.4 单位电子战的额外落点偏移 |
 | `rules/intercept.json` → `decoyUsesColumn` | `InterceptRulesDef.DecoyUsesColumn`（`TargetTag`） | 3.3.6 未识别的诱饵对外显示的标签 |
 | `rules/positions.json` → `newUnsurveyed.firstNightEfficiencyMult` | `PositionRulesDef.NewUnsurveyed.FirstNightEfficiencyMult` | 3.7.4 |
-| ★ `rules/positions.json` → `deception.fakeLauncherSeeThroughChance` | `PositionRulesDef.Deception.FakeLauncherSeeThroughChance`（按 `ReconQuality`，键 `low` `medium` `high`） | 3.7.3；建议 0.1 / 0.3 / 0.6 |
-| ★ `rules/positions.json` → `deception.decoyEmitterExposureLevel` | `PositionRulesDef.Deception.DecoyEmitterExposureLevel`（`SensorExposureLevel`） | 3.6.2；建议 `high` |
+| ★ `rules/positions.json` → `deception.fakeLauncherSeeThroughChance` | `PositionRulesDef.Deception.FakeLauncherSeeThroughChance`（按 `ReconQuality`，键 `low` `medium` `high`） | 3.7.3；默认 0.1 / 0.3 / 0.6（B-T2-41） |
+| ★ `rules/positions.json` → `deception.decoyEmitterExposureLevel` | `PositionRulesDef.Deception.DecoyEmitterExposureLevel`（`SensorExposureLevel`） | 3.6.2；默认 `high`（B-T2-42） |
 | `support/support.json` → `national_gnss_spoof`：`accuracyTierDrop`、`affectsSameAsEwUnit` | `SupportDef.AccuracyTierDrop`、`SupportDef.AffectsSameAsEwUnitId` | 3.4.6 |
-| ★ `support/support.json` → `national_gnss_spoof.radiusKm` | `SupportDef.RadiusM` | "某区域"的半径；建议 30（Q13） |
-| `level.json` → `protagonist`、`number` | `Meta.Protagonist`、`Meta.Number` | B 线（3.2.7）、关卡闸门 |
+| ★ `support/support.json` → `national_gnss_spoof.radiusKm` | `SupportDef.RadiusM` | "某区域"的半径；默认 30 km（B-T2-04；由 03 写入 `SupportAsset.RadiusM`，A-2-21） |
+| `level.json` → `protagonist`、`number`、`dateRange.from` | `Meta.Protagonist`、`Meta.Number`、`Meta.DateRange.From` | B 线（3.2.7）、关卡闸门、季节解析 |
 | `waves.json` → `entryPoints[].warningGameSec` | `EntryPointDef.WarningSec` | 3.2.8 国家预警 |
-| `waves.json` → `nights[].weather` | `NightDef.Weather`（`null` = 无天气修正，倍率 1.0） | 3.2.3 |
+| `waves.json` → `nights[].weather` / ★ `timeOfDay` / ★ `season` | `NightDef.Weather`（`null` = 倍率 1.0）、`NightDef.TimeOfDay`（`TimeOfDay { Night = 0, Day = 1 }`，缺省 `Night`）、`NightDef.Season`（经 `EnvironmentResolver.SeasonFor(night, Meta.DateRange.From)` 解析为 `Season`） | 3.2.3、3.2.5、3.4.3（B-T2-45、C-T2-07） |
 | `layers.json` → `urban[].polygonM` | `UrbanAreaDef.Polygon` | 民众上报覆盖（3.2.6）、城区导航干扰（3.4.8） |
 | `deploy.json` → `alternatePositions[]` | `AlternatePositionDef(Id, Pos, Surveyed)` | 3.7.4 |
 
@@ -235,7 +243,7 @@
 | `AfterFiring` | `AfterFiringAction?` | 火力单元 | `Triggers.AfterFiring[0]` |
 | `NeighborTakeover` | `bool?` | 辐射源 | false |
 | `LurePoint` | `Vec2?` | `NavSpoof` 电子战单位 | 无诱导点（只偏移、不诱导） |
-| `NightAids` | `IReadOnlyList<NightAid>?` | 探测单位 | 无 |
+| `NightAids` | `IReadOnlyList<NightAid>?` | 探测单位、带光学自主捕获的火力单元 | 无 |
 | `EquipmentEwIds` | `IReadOnlyList<string>?` | 车辆类我方单位；元素为 `EquipmentSlot == true` 的 `EwUnitDef.Id` | 无 |
 
 合法性（策略可用性、装备能否安装、夜视器材是否可用）由 04 的 `DeploymentValidator` 校验；本文件在 3.5.2 规定策略约束的判定函数 `EmissionPolicyRules.CheckAvailable`，供 04 与命令处理共用。
@@ -246,16 +254,28 @@
 
 > "写 / 读"列中的数字是 Step 序号（3 = `SensorSystem` …），"0" = 阶段 0（命令），"I" = `Initialize`。所有字段**按表中行顺序**写入状态哈希，标"不哈希"的除外。
 
-### 2.1 我方单位公共字段（`PlayerUnitCommon` 追加；适用 `FireUnit` `SensorUnit` `EwUnit` `DeceptionUnit`）
+### 2.1 我方单位公共字段（`PlayerUnitCommon`，适用 `FireUnit` `SensorUnit` `EwUnit` `DeceptionUnit`）
 
-| 字段 | C# 类型 | 单位 | 初值 | 写 | 读 |
-|---|---|---|---|---|---|
-| `Placement` | `PlacedUnit?` | — | 部署方案中的对应条目；运行时创建 / 自动单位为 `null` | 00（Create 第 7 步） | 全部（**不哈希**：配置输入） |
-| `Emitter` | `EmitterControl?` | — | 辐射源 = 新实例（2.2）；否则 `null` | I（3 号系统）、0、6 | 3、5、6、11、03、04 |
-| `ExposurePeak` | `double` | 0–100 | = 初始 `Exposure` | 11 | 04、03（结算） |
-| `NewPositionPenalty` | `bool` | — | `Placement?.FirstNightAtNewPosition ?? false` | 11 | 3、5、03 |
-| `PendingRelocationAltId` | `string?` | — | `null` | 6（写入）、04（执行后清空） | 04 |
-| `EquipmentEwIds` | `List<string>` | — | `Placement?.Settings.EquipmentEwIds` 的副本（按数据顺序），无则空 | I | 11、03（经 `EwQueries`） |
+完整 14 个参与哈希的公共字段与 2 个不哈希字段已合入 [00_core.md §2.4](00_core.md)（P22）；下表列出本文件拥有或直接读写的字段及其在 `PlayerUnitCommon` 中的哈希序号：
+
+| 哈希序号 | 字段 | C# 类型 | 单位 | 初值 | 写 | 读 | 拥有者 |
+|---|---|---|---|---|---|---|---|
+| 1–3 | `DeployState` / `DeployTimerSec` / `DeployTargetPos` | — | — | 见 00 2.4 | 0、1 | 3、5、6、11、03、04 | 00 / 04 |
+| 4 | `Exposure` | `double` | 0–100 | `CarryIn.Units` 或 `0.0` | Create 第 8 步、11 | 11、03、04 | 00 / 02 |
+| 5 | `ExposurePeak` | `double` | 0–100 | = 初始 `Exposure` | I、11 | 03（`NightResult.Exposure` 结算，A-3-10）、04 | 02 |
+| 6–7 | `GridNodeId` / `Powered` | `int` / `bool` | — | `0` / `true` | 10 | 3、5（断电倍率，B-T2-05）、03 | 00 / 03 |
+| 8 | `Emitter` | `EmitterControl?` | — | 辐射源 = 新实例（2.2）；否则 `null` | I（3 号系统）、0、6 | 3、5、6、7、11、04 | 02 |
+| 9 | `NewPositionPenalty` | `bool` | — | `Placement?.FirstNightAtNewPosition ?? false` | I、11 | 3、5、7（03 统一读此字段，A-2-13 / B-T2-06） | 02 |
+| 10 | `PendingRelocationAltId` | `string?` | — | `null` | 6（写入）、0（04 执行后清空） | 04 | 02 |
+| 11 | `EquipmentEwIds` | `List<string>` | — | `Placement?.Settings.EquipmentEwIds` 副本（数据顺序），无则空 | I | 11、10（经 `EwQueries`） | 02 |
+| 12 | `DamageEfficiencyMult` | `double` | — | `CarryIn` 或 `1.0` | 10 | 7、02 | 03 |
+| 13 | `SuspendedUntilSec` | `double` | 秒 | `0.0` | 10 | 3、5、6、7（`Suspended(u)` 判定，A-2-12） | 03 |
+| 14 | `LightDamaged` | `bool` | — | `CarryIn` 或 `false` | 10 | 05 | 03 |
+| — | `Placement` | `PlacedUnit?` | — | 部署条目；运行时创建 / 自动单位为 `null` | Create 第 7 步 | 全部（**不哈希**） | 02 |
+| — | `RosterId` | `int` | — | `Placement?.RosterId ?? 0` | Create 第 7 步 | 05、03、02（**不哈希**） | 05 |
+
+暂停辅助谓词（全文件通用，A-2-12）：
+`Suspended(u) = u.SuspendedUntilSec > ctx.TimeSec + 1e-9`。
 
 辐射源（拥有 `Emitter`）判定，**创建时确定、之后不变**：
 
@@ -278,11 +298,11 @@
 | `AfterFiring` | `AfterFiringAction` | — | 设置值或默认（非火力单元也存，但不生效） | I、0 | 6 |
 | `NeighborTakeover` | `bool` | — | 设置值或 false | I、0 | 6 |
 | `Forced` | `SectorForce { None = 0, Silence = 1, ForceOn = 2 }` | — | `None` | 0 | 6 |
-| `ArmSilenced` | `bool` | — | false | 6 | 6 |
-| `ArmPending` | `bool` | — | false（"完成当前拦截后关机"的等待标记） | 6 | 6 |
+| `ArmSilenced` | `bool` | — | false | 0（经 `ApplyArmChoice`，A-2-11）、6 | 6 |
+| `ArmPending` | `bool` | — | false（"完成当前拦截后关机"的等待标记） | 0（经 `ApplyArmChoice`，A-2-11）、6 | 6 |
 | `TakeoverActive` | `bool` | — | false | 6 | 6 |
-| `OnSinceTick` | `int` | 步 | 初始为开 → 0；否则 −1 | 6 | 6（诱饵配合） |
-| `FcMode` | `FireControlMode { Off = 0, Cued = 1, SelfSearch = 2 }` | — | `Off`（仅火力单元有意义；其他实体恒为 `Off`） | 6 | 11、03（首发反应时间） |
+| `OnSinceTick` | `int` | 步 | 初始为开 → 0；否则 −1（曾开机后关机置为 −2） | 6 | 6（诱饵配合）、11（条令 `forward_ambush`） |
+| `FcMode` | `FireControlMode { Off = 0, Cued = 1, SelfSearch = 2 }` | — | `Off`（仅火力单元有意义；其他实体恒为 `Off`） | 6 | 11（暴露速率；03 改读 `FireControlQueries.Cued(track)`，A-2-08） |
 | `FiredSinceRelocation` | `bool` | — | false | 6 | 6 |
 | `LastShotTick` | `int` | 步 | −1 | 6 | 6 |
 
@@ -298,10 +318,10 @@
 | 实体 | 字段 | C# 类型 | 初值 | 写 | 读 |
 |---|---|---|---|---|---|
 | `EwUnit` | `LurePoint` | `Vec2?` | `Placement?.Settings.LurePoint` | I | 5 |
-| `DeceptionUnit` | `SeenThrough` | `bool` | false | 11 | 04 |
+| `DeceptionUnit` | `SeenThrough` | `bool` | `CarryIn.Units[RosterId].SeenThrough`（有匹配时）否则 `false`（R-02-2） | I、11 | 04、03（`BuildResult`） |
 | `DeceptionUnit` | `ReconCheckedThreatIds` | `List<int>`（升序、无重复） | 空 | 11 | 11 |
 | `DeceptionUnit` | `AttractedThreatIds` | `List<int>`（升序、无重复） | 空 | 6 | 6 |
-| `FireUnit` | （无额外字段；火控状态在 `Emitter` 中） | | | | |
+| `FireUnit` | （本文件无专有字段；火控状态在 `Emitter` 中，03 定义 `RadarDestroyed` 等专有字段） | | | | |
 
 ### 2.5 `Track`（实体，`EntityKind.Track`；本文件拥有全部字段）
 
@@ -312,8 +332,8 @@
 | `ThreatId` | `int` | 实体 ID | 关联的目标；误报航迹 = 0 | 4 | 03、6（**界面不得显示**） |
 | `Quality` | `TrackQuality` | — | 创建时的融合质量 | 4 | 03、04、6、06 |
 | `PhantomKey` | `int` | — | 真实航迹 = 0；误报航迹 = 其误报编号（≥ 1） | 4 | 4 |
-| `NetworkQuality` | `TrackQuality?` | — | 本步来自**探测单位**（`SensorUnit`）的融合质量；本步无此类探测 = `null` | 4 | 6（火控指示） |
-| `Tag` | `TargetTag?` | — | 3.3.6 | 4 | 03、06 |
+| `NetworkQuality` | `TrackQuality?` | — | 本步来自**探测单位**（`SensorUnit`）的融合质量；本步无此类探测 = `null` | 4 | 6、03（经 `FireControlQueries.Cued`） |
+| `Tag` | `TargetTag?` | — | 3.3.6（全目录统一名 `Track.Tag`，A-2-01 / B-T1-23） | 4 | 03、06 |
 | `VelMps` | `Vec2` | m/s | 来自选中探测 | 4 | 6、03 |
 | `ErrorRadiusM` | `double` | m | 3.3.5 | 4 | 03、06 |
 | `LastDetectedTick` | `int` | 步 | 创建步 | 4 | 4 |
@@ -324,22 +344,25 @@
 | `DecoyIdentified` | `bool` | — | false | 4 | 03、06 |
 | `ArmWarned` | `bool` | — | false | 6 | 6 |
 
-### 2.6 `Threat` 追加字段（01 拥有实体；以下字段由本文件写）
+### 2.6 `Threat` 追加字段（01 拥有实体；以下 11 项字段由本文件拥有并写入，对应 00 2.4 `Threat` 第 33–43 项）
 
 | 字段 | C# 类型 | 单位 | 初值 | 写 | 读 |
 |---|---|---|---|---|---|
 | `EwNav` | `EwRollState { None = 0, Applied = 1, Resisted = 2 }` | — | `None` | 5 | 03 |
-| `EwExtraOffsetM` | `double` | m | 0 | 5 | 03（落点偏移） |
-| `AccuracyTierDrop` | `int` | 档 | 0 | 5 | 03（精度降档） |
+| `EwExtraOffsetM` | `double` | m | 0 | 5 | 03（落点额外偏移唯一来源，A-2-07） |
+| `AccuracyTierDrop` | `int` | 档 | 0 | 5 | 03（国家级欺骗精度降档，A-2-07 / B-T3-08） |
 | `EwPull` | `EwRollState` | — | `None` | 5 | 5 |
-| `EwDivertPos` | `Vec2?` | m | `null` | 5 | **01（改航至此点）**、03（落点） |
+| `EwDivertPos` | `Vec2?` | m | `null` | 5 | 03 / 复盘记录（移动由 5 调用 `ThreatRouting.Retarget` 完成，A-2-27） |
 | `NationalSpoof` | `EwRollState` | — | `None` | 5 | 5 |
-| `LinkCutState` | `LinkCutState { None = 0, Resisted = 1, Hover = 2, Return = 3 }`（坠落直接移除，无状态） | — | `None` | 5 | **01（悬停 / 返航）** |
+| `LinkCutState` | `LinkCutState { None = 0, Resisted = 1, Hover = 2, Return = 3 }`（坠落直接移除，无状态） | — | `None` | 5 | 5（移动由 5 调用 `ThreatRouting.Hover / BeginEgress` 完成，A-2-27） |
 | `LinkCutAtTick` | `int` | 步 | −1 | 5 | 5 |
 | `ArmInitialDistM` | `double` | m | 0（= 未设置） | 6 | 6 |
-| `ArmHitProbMult` | `double?` | — | `null`（= 不修正） | 6 | **03（反辐射导弹命中判定）** |
+| `ArmHitProbMult` | `double?` | — | `null`（= 不修正，03 按 `ArmHitProbMult ?? 1.0` 读取） | 6 | 03（反辐射导弹对单位伤害修正，A-2-07） |
+| `EwEverCovered` | `bool` | — | `false` | 5 | 03（突防原因 `EwCovered` 与 `ScoringState.ThreatsEverEwCovered`）、05（`PlayStats.ThreatsEverEwCovered`；A-2-07、R-02-1） |
 
-由其他规格写、本文件读：`TargetUnitId`（`int`，目标是我方单位时为其实体 ID，否则 0；见 8.2）。
+由 01 拥有、与本文件交互的 `Threat` 字段：
+- `TargetUnitId`（`int`，01 2.2 #13）：**由 01 唯一写入**（生成时取钩子返回值，`ApplyHoming` 时改写；A-2-04），本文件在第 3、6、11 步只读。
+- `HomingUnitId`（`int`，01 2.2 #14）：**由本文件第 6 步写入**（3.5.5 第 0 步：若 `TargetUnitId` 指向的存活辐射源当前 `Emitter.On == true` 则写其 `Id`，否则写 `0`；A-2-06），01 在下一步第 2 步 `ApplyHoming` 读取。
 
 ### 2.7 单例组件 `SensingState`（00 的 3.7.2 第 2 项）
 
@@ -353,6 +376,7 @@
 | `WarnedKeys` | `SortedSet<string>`（序数比较；元素 `"<WaveId>|<EntryId>"`） | 空 | 3 | 3 | 哈希（按序写） |
 | `EmissionEventCursor` | `long` | 0 | 6 | 6 | 哈希 |
 | `ExposureEventCursor` | `long` | 0 | 11 | 11 | 哈希 |
+| `HorizonProfiles` | `Dictionary<int, HorizonProfile>` | 空 | I（3.2.1）、11（转移完成时重算，3.6.3） | 3（3.2.4、3.2.5） | **不哈希**（由地形与单位位置派生的只读缓存，C-T2-01 / B-T2-31） |
 
 ```csharp
 public readonly record struct Detection(
@@ -375,7 +399,7 @@ public readonly record struct ScheduledWarning(int Tick, string WaveId, string E
 
 | 字段 | C# 类型 | 初值 | 写 | 读 |
 |---|---|---|---|---|
-| `UrbanNavJamSec` | `double` | 0 | 5 | 03 / 05（结算时判断城市韧性 −1） |
+| `UrbanNavJamSec` | `double` | 0 | 5 | 03 / 05（结算时判断 `UrbanNavJamSec >= Rules.Ew.UrbanNavJamMinSec` → 城市资源 −1，每夜最多触发一次；B-T2-36） |
 
 ### 2.9 快照字段（00 的 2.7）
 
