@@ -1156,3 +1156,634 @@ flowchart TD
    ```bash
    dotnet test sim.tests --filter "FullyQualifiedName~NightResultAndCarryOutTests"
    ```
+## §4 阶段 C：敌方 AI、最小战役经济与 CLI 工具链（`M1-T23` – `M1-T29`）
+
+### `M1-T23`（WS01-013a）：阶段 0 命令处理、战前部署校验（`DeploymentValidator`）与二选一弹窗队列（`ChoiceStage`）
+
+1. **目标文件**
+   - 创建：`sim/Commands/DeploymentValidator.cs`
+   - 创建：`sim/Commands/CommandStage.cs`
+   - 创建：`sim/Commands/ChoiceStage.cs`
+   - 创建：`sim.tests/Commands/CommandAndDeploymentStageTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/04_enemy_ai_commands.md`](../spec/04_enemy_ai_commands.md) §2.1–2.3、§3.1（`DeploymentValidator.Validate` 8 条 `D_*` 规则 + `DeploymentStage.ApplyInitial`）、§3.2（`CommandStage.Step` 6 类命令校验与转移窗口）、§3.5（`ChoiceStage.TriggerOrQueue` / `StepAutoFallback` / `ResolveChoice`）、§7.1–7.3（`T-04-01` – `T-04-37`）；[`docs/spec/calc/04_enemy_ai_commands.py`](../../tools/spec_calc/04_enemy_ai_commands.py)（`test_deployment_validation`、`test_commands_and_choices`）。
+   - Python 黄金参考：[`tools/papersim/world.py`](../../tools/papersim/world.py) 第 `182–360` 行（`_apply_initial_deployment`、`_step_commands`、`_resolve_choice`）。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Commands;
+
+   public static class DeploymentValidator
+   {
+       public static DeployValidationResult Validate(
+           InitialDeploymentPlan plan, LevelDef level,
+           UnitRoster roster, GameDataCatalog catalog);
+   }
+
+   public static class DeploymentStage
+   {
+       public static void ApplyInitial(SimWorld world, InitialDeploymentPlan plan);
+   }
+
+   public static class CommandStage
+   {
+       public static void Step(SimWorld world);
+       public static double ComputeRelocateWindowSec(UnitEntity unit, UnitDef def, RelocateRulesDef rules);
+   }
+
+   public static class ChoiceStage
+   {
+       public static void TriggerOrQueue(SimWorld world, ChoiceEventDef choiceDef);
+       public static void StepAutoFallback(SimWorld world);
+       public static bool ResolveChoice(SimWorld world, string choiceEventId, string optionKey, bool isAuto);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **战前部署 8 条 `D_*` 错误码**：`D_DUPLICATE_ROSTER_ID`、`D_UNKNOWN_ROSTER_ID`、`D_UNIT_DESTROYED`、`D_OUT_OF_BOUNDS`、`D_WATER_FORBIDDEN`、`D_SITE_OCCUPIED`、`D_UNIT_SPACING_TOO_CLOSE`（`dist2D < minUnitSpacingM = 300m`）、`D_DECOY_TOO_CLOSE_TO_REAL_UNIT`（假目标与真单位 `< decoyMinDistToRealUnitM = 500m`，但两个假目标之间仅受 `300m` 约束！）。
+   - **夜中转移（`StartRelocateCommand`）**：
+     - 校验：`unit != null && Alive`、`def.Mobility.CanRelocateInNight`、非 `Relocating`、目标在地图内且非水域、与其他非 `Destroyed` 单位间距 $\ge 300\text{m}$。
+     - 耗时：$\text{travelSec} = \text{dist2D} / (\text{roadSpeedKmh} \cdot 1000 / 3600)$；$\text{totalSec} = \max(\text{MinTotalWindowSec}, \lceil \text{teardownSec} + \text{travelSec} + \text{setupSec} \rceil)$。若处于 `ShootAndScootWindowUntilTick` 内且有 `"fast_scoot"` 词条，乘以 `FastScootMultiplier`（`0.65`）后再向上取整。
+     - 立即将 `Pos` 置为目标坐标、`RadarState = Off`、`Moving = true`、`State = Relocating`、`RelocateUntilTick = tick + totalSec`。
+   - **二选一弹窗队列与超时回退（`ChoiceStage`）**：
+     - 同一时刻最多一个 `ActiveChoice`，新触发事件按 `EventId` 进 `PendingChoiceQueue` FIFO 排队；
+     - 世界秒超时条件为 `world.CurrentTick >= active.TimeoutTick`（`TimeoutWorldSec = 480`），客户端真实时间 8.0 秒倒计时到点后由客户端下发 `ChooseOptionCommand(OptionKey: DefaultOption)`；
+     - `AssignOrder` 将选中分支目标压入 `PriorityTargets` 列表首部（去重），未选中分支压入尾部，不丢失已有目标。
+5. **必写单元测试与精确断言值**
+   - `T-04-01` – `T-04-12`：战前部署 8 类 `D_*` 拒绝码、两个假目标间距 350m 合法（`T-04-09`）、`ApplyInitial` 稳定升序分配 ID（`T-04-10`）、预设结构与关联防空单位初始化（`T-04-11`、`T-04-12`）。
+   - `T-04-13` – `T-04-37`：雷达开关与冷却、交战授权切换、夜中转移窗口计算（普通 `557s` vs 快撤 `362s` vs 最小窗口 `60s`）与到点恢复、`EmergencySupport` 减扣与防空走廊覆写、二选一排队/超时/各种 `ChoiceActionDef` 效果。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~CommandAndDeploymentStageTests"
+   ```
+
+---
+
+### `M1-T24`（WS01-013b）：阶段 4 敌方战术 AI（`EnemyAiSystem`）与绕行威胁区 $A^*$ 寻路
+
+1. **目标文件**
+   - 创建：`sim/Ai/EnemyAiSystem.cs`
+   - 创建：`sim/Ai/BypassPathfinder.cs`
+   - 创建：`sim.tests/Ai/EnemyAiSystemTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/04_enemy_ai_commands.md`](../spec/04_enemy_ai_commands.md) §3.3（阶段 4 `EnemyAiSystem.Step` 5 种战术角色状态机 + Exposure 100 动态重指派 + 饱和攻击集结释放）、§3.4（8 邻域 $A^*$ 绕行寻路、视距拉直与最大航点上限回退）、§7.4–7.5（`T-04-38` – `T-04-70`）；[`docs/spec/calc/04_enemy_ai_commands.py`](../../tools/spec_calc/04_enemy_ai_commands.py)（`test_bypass_astar`、`test_ai_roles_and_exposure`）。
+   - Python 黄金参考：[`tools/papersim/world.py`](../../tools/papersim/world.py) 第 `450–615` 行（`_step_enemy_ai`、`_compute_bypass_waypoints`）。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Ai;
+
+   public static class EnemyAiSystem
+   {
+       public static void Step(SimWorld world);
+   }
+
+   public static class BypassPathfinder
+   {
+       public static List<WaypointDef> ComputeBypassWaypoints(
+           SimWorld world, Vec2 startPos, Vec2 goalPos, double cruiseAltM);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **5 种战术角色（`TacticalRole`）**：
+     - `probe`（试探）：不改航线；当自身处于存活且开机雷达 `DetectRangeM` 内时，令该雷达 `Exposure = min(100, Exposure + ProbeExposureBonusPerSec * 1.0)`（`+0.5/s`），且每架试探机每单位每夜最多触发一次 `ProbeSightingRecorded`。
+     - `suppress`（压制/反辐射）：优先鎖定 `RadarState == On && Exposure >= ArmLockExposureMin (25.0)` 且距离 $\le \text{ArmAcquireRangeM}$ 的最近雷达（距离并列按 `Id` 升序）；若锁定的雷达关机且关机时长 $\ge \text{RadarOffBreakLockAfterSec} (3.0\text{s})$，若 `Exposure >= ArmMemoryStrikeExposureMin (50.0)` 则切换为 `LastKnownTargetPos` 记忆盲打，否则丢失锁定恢复原目标！
+     - `hunt`（猎杀高价值）：按 `KnownExposedUnits` 中 `ValueScore` 最高（并列取距离最近、再并列取 `Id` 升序）重指派目标。
+     - `bypass`（绕行威胁区）：生成首帧或 `KnownThreatZones` 版本号变化且 `ReplanCount < MaxReplansPerEnemy (2)` 时调用 `BypassPathfinder.ComputeBypassWaypoints`。
+     - `saturate`（饱和齐射）：波次设置了 `SaturateHoldingPoint` 与 `SaturateReleaseTick` 时，在 `tick < SaturateReleaseTick` 且距集结点 $\le 600\text{m}$ 时盘旋等待（将速度置 0 或保持在集结点），到点同帧释放并发出 `SaturateReleased`。
+   - **Exposure 100 动态重指派**：当某单位刚跨过 `Exposure == 100` 且 `WasEverFullyExposed` 首次置真时，将其实体 ID 加入 `KnownExposedUnits` 并将圆形威胁区 `(Pos, maxEngageRangeM)` 加入 `KnownThreatZones`（递增版本号），同时从当前存活、允许重指派的巡飞弹/巡航导弹中最多挑选 `RetargetMaxCountPerExpose (2)` 架改道猎杀该单位。
+   - **8 邻域 $A^*$ 寻路确定性**：网格步长 `GridCellM = 1000m`，威胁区安全余量 `SafetyMarginM = 1000m`，威胁区内部格点代价乘以 `ThreatCostPenalty = 8.0`；优先队列平局决胜严格按 `(fScore, hScore, gx, gy)` 字典序，严禁依赖引用哈希！路径生成后执行 Bresenham 视距拉直，若航点数仍 $> \text{MaxBypassWaypoints} (12)$ 则回退为直线 `[goal]`。
+5. **必写单元测试与精确断言值**
+   - `T-04-38` – `T-04-59`：5 种战术角色状态机、反辐射锁定/关机 3s 脱锁/50 暴露度记忆盲打、假目标 `DecoyLureWeight` 诱骗、饱和集结同帧释放、暴露满 100 最多改道 2 架。
+   - `T-04-60` – `T-04-70`：$A^*$ 无威胁直线、单圆威胁区绕行、重叠双圆绕行、视距拉直、超过 12 航点回退直线、`MaxReplansPerEnemy = 2` 上限。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~EnemyAiSystemTests"
+   ```
+
+---
+
+### `M1-T25`（WS01-013c）：阶段 12 剧情脚本评估器（`StoryStage`）与 `04_enemy_ai_commands` 确定性测试
+
+1. **目标文件**
+   - 创建：`sim/Story/StoryStage.cs`
+   - 创建：`sim.tests/Story/StoryStageTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/04_enemy_ai_commands.md`](../spec/04_enemy_ai_commands.md) §2.4（`LevelEventsDef`、`StoryTriggerDef`、`StoryActionDef`）、§3.6（阶段 12 `StoryStage.Step` 6 种触发条件与 6 种动作执行）、§7.6–7.7（`T-04-71` – `T-04-81`）。
+   - Python 黄金参考：[`tools/papersim/world.py`](../../tools/papersim/world.py) 第 `725–768` 行（`_step_story`）。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Story;
+
+   public static class StoryStage
+   {
+       public static void Step(SimWorld world);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **固定顺序遍历**：严格按 `LevelEvents.Triggers` 数组下标顺序检查未触发过（`!State.FiredTriggerIds.Contains(trigger.TriggerId)`）的触发器。
+   - **6 类触发条件**：`at_tick`（`CurrentTick >= Tick`）、`wave_spawned`、`first_track_of_family`、`structure_hit`、`unit_exposure_ge`、`custom_flag`。
+   - **6 类执行动作**：
+     - `play_comms`：发出 `CommsPlayedEvent(LineKey, SpeakerKey, Priority)`；
+     - `spawn_story_wave`：将剧情波次注入 `State.DynamicWaves`（若 `SpawnTick <= CurrentTick` 则设为 `CurrentTick + 1` 在下一帧阶段 1 生成）；
+     - `trigger_choice`：调用 `ChoiceStage.TriggerOrQueue`；
+     - `grant_emergency_corridor`：添加临时防空走廊；
+     - `reveal_intel_hint`：发出 `IntelHintRevealedEvent`；
+     - `set_custom_flag`：写入 `State.CustomFlags` 与 `CarryOut.CustomMetrics`。
+   - **零 RNG 消耗不变量**：`CommandStage`、`EnemyAiSystem`、`ChoiceStage`、`StoryStage` 严禁推进任何 `SimRandom` 子流。
+5. **必写单元测试与精确断言值**
+   - `T-04-71` – `T-04-77`：6 类触发条件与动作单次触发幂等性、剧情波次在 `t+1` 生成验证、触发器激发顺序验证。
+   - `T-04-80` – `T-04-81`：包含移动转移、二选一与全角色 AI 的 600 步双世界 `ComputeStateHash()` 完全一致，且阶段 0/4/12 的 RNG 调用次数为 `0`。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~StoryStageTests"
+   ```
+
+---
+
+### `M1-T26`（WS02-001 最小子集）：跨夜战役状态（`CampaignState`）与两夜白昼整备结算
+
+1. **目标文件**
+   - 创建：`sim/Campaign/CampaignState.cs`
+   - 创建：`sim/Campaign/CampaignRules.cs`
+   - 创建：`sim/Campaign/SaveCodec.cs`
+   - 创建：`sim.tests/Campaign/CampaignEconomyTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/05_campaign_economy.md`](../spec/05_campaign_economy.md) §2–§3（`TrustRules`、`CampaignState`、国家库存 `NationalStock` 保底释放、城市资源 `CityResource` 与导航致盲惩罚、战前申请与紧急支援、时间结构 B/C/D/E 昼间动作预算、补给/抢修/转移/勘察、王牌车组 `campaign:crew:*`、自动托管 `AutoResolveNight` / `WatchAutoNight`、三选一奖励卡、跨关影响、存档编码 `SaveCodec`）、§7（`T-05-01` – `T-05-46`）；[`docs/spec/calc/05_campaign_economy.py`](../../tools/spec_calc/05_campaign_economy.py)。
+   - Python 黄金参考：[`tools/papersim/campaign.py`](../../tools/papersim/campaign.py) 全文。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Campaign;
+
+   public static class TrustRules
+   {
+       public static int ComputeDeltaTrust(string rating, bool keyTargetLost, bool zeroCasualties, TrustRulesDef rules);
+       public static (int NewTrust, bool ReliefTriggered, bool IsGameOver) ApplyNightTrust(
+           int currentTrust, int deltaTrust, bool reliefUsed, TrustRulesDef rules);
+   }
+
+   public sealed class CampaignManager
+   {
+       public void StartLevel(CampaignState state, string levelId, GameDataCatalog catalog);
+       public void ApplyNightCarryOut(CampaignState state, NightResult nightResult, GameDataCatalog catalog);
+       public CommandResult Resupply(CampaignState state, string poolId, int boxes, GameDataCatalog catalog);
+       public CommandResult RepairUnit(CampaignState state, string rosterId, bool toFull, GameDataCatalog catalog);
+       public CommandResult RelocateUnit(CampaignState state, string rosterId, Vec2 newPos, GameDataCatalog catalog);
+       public CommandResult SurveyPosition(CampaignState state, Vec2 pos, GameDataCatalog catalog);
+       public NightResult AutoResolveNight(CampaignState state, int nightIndex, GameDataCatalog catalog);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **信任值与破釜沉舟救济（`TrustRules`）**：`S:+8, A:+4, B:0, C:-8, D:-18`，关键目标失守额外 `-10`，零伤亡 `+2`；首次跌破 `20` 且未用过救济时触发 `ReliefTriggered = true`，信任值拉回 `30` 并标记 `ReliefUsed = true`；再次跌破 `20` 则 `IsGameOver = true`。
+   - **昼间整备预算（B 类时间结构，服务 `test_01` 第 1 夜→第 2 夜）**：
+     - 白昼基础 `dayHoursAvailable = 6.0h`；若上一夜 `CarryOut.CustomMetrics["urban_nav_jam_triggered"] >= 1.0`，白昼可用工时扣减 `1.0h`（或城市抢修点 `-20`）；
+     - 弹药补给按箱（`boxSize`）从国家可用库存划拨并消耗工时与补给点；
+     - 轻伤修复（`Damaged -> Ok`）耗 `2.0h` + `25` 补给点，重伤最低可用修复（`HeavyDamaged -> Damaged`）耗 `3.5h` + `45` 补给点，阵地转移耗 `1.5h`。
+   - **王牌车组与自动托管 RNG 隔离**：车组晋升抽签使用独立 `SimRandom` 子流 `"campaign:crew:{levelId}:{nightIndex}:{rosterId}"`，绝不污染夜间战斗 RNG；`WatchAutoNight(true)` 与 `AutoResolveNight(false)` 产出完全一致的 `NightResult`。
+5. **必写单元测试与精确断言值**
+   - `T-05-01` – `T-05-46`：覆盖信任值奖惩与救济（`T-05-01` – `T-05-05`）、国家库存保底释放（`T-05-06` – `T-05-10`）、城市产出与导航致盲惩罚（`T-05-11` – `T-05-15`）、战前申请与紧急支援（`T-05-16` – `T-05-21`）、时间结构 B/C/D/E 与昼间四大动作（`T-05-22` – `T-05-33`）、王牌车组晋升与负词条（`T-05-34` – `T-05-37`）、自动托管与观看模式等价性（`T-05-38` – `T-05-40`）、奖励卡与跨关影响及 `SaveCodec` 往返一致性（`T-05-41` – `T-05-46`）。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~CampaignEconomyTests"
+   ```
+
+---
+
+### `M1-T27`（WS06-004）：数据校验命令行工具 `tools/validate`
+
+1. **目标文件**
+   - 创建：`tools/validate/Nightwatch.Tools.Validate.csproj`
+   - 创建：`tools/validate/Program.cs`
+   - 创建：`tools/validate/ValidateRunner.cs`
+   - 创建：`sim.tests/Tools/ValidateRunnerTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/07_tools.md`](../spec/07_tools.md) §2（CLI 退出码契约 `0/1/2`）、§3（`tools/validate` 四级流水线：JSON 语法与 Schema → 跨文件外键与本地化 → 规则不变量 → 关卡时间轴与静态可达性警告 `W_*`）、§7.1（`T-07-01` – `T-07-09`）；[`docs/spec/calc/07_tools.py`](../../tools/spec_calc/07_tools.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Tools.Validate;
+
+   public sealed record ValidationIssue(
+       string Severity, string Code, string FilePath, string JsonPath, string Message);
+
+   public sealed record ValidationReport(
+       bool Ok, int FilesChecked, int SchemasChecked, int CrossRefsChecked,
+       IReadOnlyList<ValidationIssue> Errors, IReadOnlyList<ValidationIssue> Warnings);
+
+   public static class ValidateRunner
+   {
+       public static ValidationReport Run(string dataRoot, string? levelFilter = null);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **复用 `CatalogLoader`**：第一~三级校验直接复用 `M1-T06` 的 `CatalogLoader` 并在其之上补充 `loc/zh-CN.json` 键完整性检查与关卡时间轴静态检查。
+   - **8 类关卡静态警告码（`W_*`）与 `--strict` 模式**：
+     - `W_IGNORED_WAYPOINTS`、`W_HUNT_NO_KNOWN_TARGETS_GROUP`、`W_SUPPRESS_NO_ARM_GROUP`、`W_ARM_STATIC_TARGET`、`W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`、`W_E_NO_SUPPLY_WINDOWS`、`W_EXPOSURE_MULT_DRIFT`、`W_BALLISTIC_WINDOW_TOO_SHORT`。
+     - 默认情况下只有 `Errors.Count == 0` 时返回退出码 `0`；开启 `--strict` 时若 `Warnings.Count > 0` 也返回退出码 `1`。
+   - **确定性排序**：`Errors` 与 `Warnings` 严格按 `(FilePath, JsonPath, Code)` 字典序排列。
+5. **必写单元测试与精确断言值**
+   - `T-07-01` – `T-07-09`：正式 `data/` 零错误零警告通过（`T-07-01`）、断链外键 `E_REF_NOT_FOUND`（`T-07-02`）、缺失本地化键 `E_LOC_KEY_MISSING`（`T-07-03`）、坐标越界 `E_POS_OUT_OF_BOUNDS`（`T-07-04`）、落入水域 `E_POS_IN_WATER`（`T-07-05`）、单位过近 `E_UNIT_SPACING_VIOLATION`（`T-07-06`）、弹道预警窗口过短 `W_BALLISTIC_WINDOW_TOO_SHORT` 与 `--strict` 退出码 `1`（`T-07-07`）、`exposureMultiplier` 漂移 `W_EXPOSURE_MULT_DRIFT`（`T-07-08`）、`story_only` 混入常规波次 `W_STORY_ONLY_ENEMY_IN_NORMAL_WAVE`（`T-07-09`）。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~ValidateRunnerTests"
+   dotnet run --project tools/validate
+   ```
+
+---
+
+### `M1-T28`（WS06-006）：无头模拟运行器 `tools/simrun`（单局 / 批量 Type-7 分位数 / 回放校验 / 性能基准）
+
+1. **目标文件**
+   - 创建：`tools/simrun/Nightwatch.Tools.SimRun.csproj`
+   - 创建：`tools/simrun/Program.cs`
+   - 创建：`tools/simrun/SimRunner.cs`
+   - 创建：`tools/simrun/TacticalBot.cs`
+   - 创建：`sim.tests/Tools/SimRunTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/07_tools.md`](../spec/07_tools.md) §4（`tools/simrun` 四种运行模式：单局 `--seed`、批量 `--runs` + Type-7 线性插值分位数 `StatsCalculator`、确定性策略机器人 `TacticalBot` `idle/standard/Doctrines`、回放录制与逐帧状态哈希校验 `--record-replay`/`--verify-replay`、性能基准 `--bench`）、§7.2（`T-07-10` – `T-07-18`）；[`docs/spec/calc/07_tools.py`](../../tools/spec_calc/07_tools.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Tools.SimRun;
+
+   public static class StatsCalculator
+   {
+       public static MetricSummary Compute(IReadOnlyList<double> values);
+       public static double QuantileType7(double[] sorted, double p);
+   }
+
+   public sealed class TacticalBot
+   {
+       public TacticalBot(string mode);
+       public InitialDeploymentPlan BuildDeploymentPlan(LevelDef level, int nightIndex, GameDataCatalog catalog);
+       public IReadOnlyList<SimCommand> DecideTickCommands(SimWorld world);
+   }
+
+   public static class SimRunner
+   {
+       public static SingleRunOutput RunSingle(SimRunOptions opts, GameDataCatalog catalog);
+       public static BatchRunOutput RunBatch(SimRunOptions opts, GameDataCatalog catalog);
+       public static int VerifyReplay(string replayPath, GameDataCatalog catalog);
+       public static BenchOutput RunBench(SimRunOptions opts, GameDataCatalog catalog);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **Type-7 分位数公式（与 NumPy / R 默认完全一致）**：已排序数组 $x_0 \le \dots \le x_{N-1}$，$h = (N - 1) p$，$lo = \lfloor h \rfloor$，$hi = \lceil h \rceil$，返回 $x_{lo} + (h - lo)(x_{hi} - x_{lo})$。
+   - **批量模式确定性多线程调度**：第 $i$ 局固定使用种子 `seedStart + i`；无论 `--threads` 取 1 或 8，汇总前必须按 `runIndex` 升序归并后再送入 `StatsCalculator`！
+   - **性能红线（`--bench`）**：单步平均耗时 $< 2.0\text{ ms}$、P99 $< 4.0\text{ ms}$、交战分配阶段 $\le 0.3\text{ ms}$。
+5. **必写单元测试与精确断言值**
+   - `T-07-10` – `T-07-18`：Type-7 分位数奇偶样本精确验算（`T-07-10`、`T-07-11`）、相同种子双次单局 `finalStateHash` 一致（`T-07-12`）、`--threads 1` 与 `--threads 4` 批量 JSON 逐字节一致（`T-07-13`）、回放录制与校验通过（`T-07-14`）、篡改回放 `expectedFinalStateHash` 返回退出码 `1` 与 `HASH_MISMATCH_FINAL`（`T-07-15`）、`TacticalBot` 零 RNG 消耗验证（`T-07-16`）、`--fail-below-rating` 门禁（`T-07-17`）、`--bench` 耗时红线断言（`T-07-18`）。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~SimRunTests"
+   dotnet run --project tools/simrun -- --level test_01 --night 1 --seed 20261015
+   ```
+
+---
+
+### `M1-T29`（WS01-015）：`test_01` 两夜端到端模拟与 Python `papersim` 黄金结果逐项对拍测试
+
+1. **目标文件**
+   - 创建：`sim.tests/Integration/Test01GoldenParityTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/00_core.md`](../spec/00_core.md) §8、[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §3.8、[`docs/spec/05_campaign_economy.md`](../spec/05_campaign_economy.md) §3.6、[`docs/spec/07_tools.md`](../spec/07_tools.md) §4。
+   - Python 黄金参考：[`tools/papersim/cli.py`](../../tools/papersim/cli.py) 与 [`tools/papersim/tests/test_papersim.py`](../../tools/papersim/tests/test_papersim.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Tests.Integration;
+
+   public sealed class Test01GoldenParityTests
+   {
+       [Fact] public void Test01_Night1_And_Night2_Match_Papersim_Golden_Output();
+       [Fact] public void Test01_FiveDoctrines_Hold_Balance_Invariants();
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **跨语言逐项对拍**：使用正式 `data/` 目录加载 `test_01` 第 1 夜（1260s）与第 2 夜（1380s），以固定种子 `20261015` 和默认部署运行 C# `SimWorld`，逐项比对：
+     1. 每一波生成的敌机数量、ID 与初始坐标；
+     2. 阶段 2/3/5/6/7 的探测航迹数、开火数、击杀数、漏防数与耗弹量；
+     3. `NightResult` 的 `TotalScore`、`Rating`、`GridIntegrityEndPct`、`KeyTargetDestroyed`、`CarryOut` 结转弹药与单位状态；
+     4. 第 1 夜 → 白昼整备 → 第 2 夜全链路闭环无异常。
+   - 若发现 C# 与 Python `papersim` 存在任何微差，必须定位到具体阶段（检查 RNG 子流键名、浮点截断顺序或实体遍历顺序）并修复至 100% 吻合。
+5. **必写单元测试与精确断言值**
+   - `Test01_Night1_And_Night2_Match_Papersim_Golden_Output`：断言第 1 夜与第 2 夜的 `NightResult` 各项核心指标与 Python `papersim` 黄金快照完全一致，双跑 `ComputeStateHash()` 100% 相等。
+   - `Test01_FiveDoctrines_Hold_Balance_Invariants`：在 C# `SimWorld` 上运行 D4-① 的 5 套标准条令（`D1_Balanced`、`D2_NoGun_AllMissile`、`D3_RadarAlwaysOn`、`D4_NoDecoy_Static`、`D5_PassiveFirst_ShootScoot`），验证 `D1/D5` 显著优于 `D2/D3/D4`（重现 D4-① 平衡不变量）。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~Test01GoldenParityTests"
+   ```
+
+---
+
+## §5 阶段 D：Godot 4 .NET 2D 灰盒客户端与验收（`M1-T30` – `M1-T36`）
+
+> [!IMPORTANT]
+> **架构分层铁律（[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §1.3）**：
+> 客户端所有可计算的纯逻辑（坐标投影、相机数学、帧步进累加器、时间倍速状态机、快照插值、航迹样式规则、战前部署计划构建器、扇形覆盖几何、事件路由分级）**全部写在 `Nightwatch.Client.Core` 命名空间下，不引用 `Godot` 命名空间**，并在 `sim.tests`（或 `game.tests`）中通过纯 C# 单元测试 `T-06-01` – `T-06-40`；Godot `Node2D` / `Control` 节点仅做极薄的绘制转发与输入绑定。
+
+---
+
+### `M1-T30`（WS05-001a）：Godot 4 .NET 工程骨架、`Nightwatch.Client.Core` 与 `SimDriver` / `TimeController` / `StepAccumulator`
+
+1. **目标文件**
+   - 创建：`game/project.godot`、`game/Nightwatch.Client.csproj`（引用 `../sim/Nightwatch.Sim.csproj`）
+   - 创建：`game/Core/StepAccumulator.cs`、`game/Core/TimeController.cs`、`game/Core/SimDriver.cs`、`game/Core/EventRouter.cs`
+   - 创建：`sim.tests/ClientCore/TimeAndDriverTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §2.3（`StepAccumulator`、`TimeMode`、`TimeController` 自适应弹道慢放公式与二选一硬暂停 8.0s 真实倒计时）、§2.4（`SimDriver` 只读快照发布与命令队列转发）、§3.8（`EventRouter` 4 级告警与闪烁控制）、§7.3–7.4 & §7.9（`T-06-12` – `T-06-22`、`T-06-39` – `T-06-40`）；[`docs/spec/calc/06_client_graybox.py`](../../tools/spec_calc/06_client_graybox.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Core;
+
+   public sealed class StepAccumulator
+   {
+       public (int StepsToRun, double Alpha) Advance(
+           double realDeltaSec, double worldStepsPerRealSec, bool paused, int maxStepsPerFrame = 10);
+       public void Reset();
+   }
+
+   public sealed class TimeController
+   {
+       public TimeMode Mode { get; }
+       public double EffectiveWorldStepsPerRealSec { get; }
+       public bool IsPaused { get; }
+       public double ChoiceRemainingRealSec { get; }
+       public void SetManualSpeed(int speedMultiplier); // 1, 2, 4
+       public void ToggleManualPause();
+       public string? UpdateFrame(double realDeltaSec, bool hasActiveBallistic, double minBallisticRemainingSec, string? activeChoiceId, string? activeChoiceDefaultOption);
+   }
+
+   public sealed class SimDriver
+   {
+       public RenderSnapshot PrevSnapshot { get; }
+       public RenderSnapshot CurrSnapshot { get; }
+       public double Alpha { get; }
+       public void EnqueueCommand(SimCommand cmd);
+       public int UpdateFrame(double realDeltaSec);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **弹道威胁自适应慢放率（`B-T2-38`）**：当场上存在存活弹道导弹且未触发二选一弹窗或手动暂停时，自动进入 `BallisticSlow`：
+     $$\text{BallisticSlowRate} = \operatorname{ clamp }\left(\frac{\text{minBallisticRemainingSec}}{360.0},\; \frac{1.0}{60.0},\; 0.5\right)$$
+     保证剩余飞行时间 $\ge 3.0$ 秒的弹道导弹给玩家留出至少 $6.0$ 真实秒的操作窗口！弹道威胁解除后自动恢复进入慢放前的 `ManualSpeed`（`1/2/4`）。
+   - **二选一弹窗硬暂停與 8.0 真实秒超时（`C-T3-01`）**：存在 `activeChoiceId` 时强制进入 `ChoiceSlow`（`IsPaused = true`，世界秒完全冻结），每帧按 `realDeltaSec` 递减 `ChoiceRemainingRealSec`（初值 `8.0s`）；归零时自动返回 `activeChoiceDefaultOption` 并由 `SimDriver` 压入 `ChooseOptionCommand`。
+   - **零 RNG / 零直接写权限**：`SimDriver` 只能通过 `EnqueueCommand` 向 `SimWorld` 投递命令，UI 层只读 `RenderSnapshot`。
+5. **必写单元测试与精确断言值**
+   - `T-06-12` – `T-06-22`：`StepAccumulator` 常规帧/螺旋死锁保护 `maxStepsPerFrame=10`/暂停冻结（`T-06-12` – `T-06-15`）、`TimeController` 1x/2x/4x 切换、自适应弹道慢放率计算（如 `remSec=12s -> rate=1/30`）、威胁解除自动恢复原倍速、二选一 8.0 真实秒倒计时自动触发默认项（`T-06-16` – `T-06-20`）、`SimDriver` 与裸跑 `SimWorld` 600 步 `ComputeStateHash()` 完全相等（`T-06-21`、`T-06-22`）。
+   - `T-06-39` – `T-06-40`：`EventRouter` 告警分级（`Critical/Warning/Info`）与交战线 2.0 真实秒持久化淡出。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~TimeAndDriverTests"
+   ```
+
+---
+
+### `M1-T31`（WS05-001b）：2D 战术地图坐标投影（`MapProjection`）、相机控制（`MapCamera`）与底图绘制层（`MapLayer`）
+
+1. **目标文件**
+   - 创建：`game/Core/MapProjection.cs`、`game/Core/MapCamera.cs`
+   - 创建：`game/Nodes/MapLayerNode.cs`、`game/Nodes/StructureLayerNode.cs`
+   - 创建：`sim.tests/ClientCore/MapProjectionAndCameraTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §2.1（`MapProjection` 世界米 $(x,y)$ 左下角原点 $\leftrightarrow$ 屏幕像素 $(px,py)$ 左上角原点 Y 轴翻转）、§2.2（`MapCamera` 缩放以光标锚点保持世界坐标不变 + 视口边界夹紧）、§3.1–3.2（5000m 主网格/1000m 次网格、地形多边形与高地虚线、保护目标图标与血条）、§7.1–7.2（`T-06-01` – `T-06-11`）；[`docs/spec/calc/06_client_graybox.py`](../../tools/spec_calc/06_client_graybox.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Core;
+
+   public sealed class MapProjection
+   {
+       public Vec2 WorldToCanvas(Vec2 worldPosM, double mapHeightM);
+       public Vec2 CanvasToWorld(Vec2 canvasPosM, double mapHeightM);
+       public Vec2 WorldToScreen(Vec2 worldPosM, MapCamera cam, double mapHeightM);
+       public Vec2 ScreenToWorld(Vec2 screenPx, MapCamera cam, double mapHeightM);
+       public float WorldRadiusToScreenPx(double radiusM, MapCamera cam);
+   }
+
+   public sealed class MapCamera
+   {
+       public Vec2 CenterWorldM { get; private set; }
+       public double ZoomPxPerMeter { get; private set; }
+       public void FitMap(double mapWidthM, double mapHeightM, double viewportW, double viewportH, double marginRatio = 0.05);
+       public void ZoomAtScreenPoint(double zoomFactor, Vec2 cursorScreenPx, double mapWidthM, double mapHeightM, double viewportW, double viewportH);
+       public void PanByScreenDelta(Vec2 screenDeltaPx, double mapWidthM, double mapHeightM, double viewportW, double viewportH);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **Y 轴方向翻转**：世界坐标西南角 `(0, 0)`、$+y$ 向北；屏幕坐标左上角 `(0, 0)`、$+py$ 向下：
+     $$px = \frac{vw}{2} + (x - cx) \cdot z,\qquad py = \frac{vh}{2} + (cy - y) \cdot z$$
+   - **光标锚点缩放（`ZoomAtScreenPoint`）**：缩放前后光标下的世界坐标 $w_{\text{anchor}} = \text{ScreenToWorld}(\text{cursorPx})$ 保持不变（先算旧锚点，更新并夹紧 `ZoomPxPerMeter` $\in [0.008, 0.25]$，再反推新 `CenterWorldM` 并执行边界夹紧）。
+5. **必写单元测试与精确断言值**
+   - `T-06-01` – `T-06-11`：世界中心/四角坐标正逆投影往返误差 $< 10^{-6}\text{m}$（`T-06-01` – `T-06-05`）、`FitMap` 自适应全图（`T-06-06`）、光标锚点缩放前后世界坐标偏差 $< 10^{-4}\text{m}$（`T-06-07`、`T-06-08`）、平移边界夹紧与 `WorldRadiusToScreenPx`（`T-06-09` – `T-06-11`）。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~MapProjectionAndCameraTests"
+   ```
+
+---
+
+### `M1-T32`（WS05-002）：战前部署计划构建器（`DeployPlanBuilder`）、扇形覆盖预览（`CoverageService`）与战前部署 UI
+
+1. **目标文件**
+   - 创建：`game/Core/DeployPlanBuilder.cs`、`game/Core/CoverageService.cs`
+   - 创建：`game/Nodes/CoverageLayerNode.cs`、`game/Nodes/DeploySidebarNode.cs`
+   - 创建：`sim.tests/ClientCore/DeployAndCoverageTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §3.3（`CoverageService` 360° 圆环与有限扇区多边形生成、城市遮挡缩减 `0.70`、高地探测加成 `1.15`、盲区高亮）、§3.6（`DeployPlanBuilder` 放置/拖移/朝向拖拽/撤回/实时调用 `DeploymentValidator.Validate` 并映射 `D_*` 到 `loc.ui.deploy_err.*`）、§7.7–7.8（`T-06-31` – `T-06-38`）；[`docs/spec/calc/06_client_graybox.py`](../../tools/spec_calc/06_client_graybox.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Core;
+
+   public sealed class DeployPlanBuilder
+   {
+       public DeployValidationResult CurrentValidation { get; }
+       public void PlaceOrMoveUnit(string rosterId, Vec2 posM, double headingDeg, string initialRadarState = "on", string initialEngagementPolicy = "free");
+       public void UpdateHeadingFromDrag(string rosterId, Vec2 dragWorldPosM);
+       public void RemoveUnit(string rosterId);
+       public InitialDeploymentPlan BuildPlan();
+   }
+
+   public static class CoverageService
+   {
+       public static CoveragePolygon BuildSensorOrWeaponRing(
+           Vec2 posM, double headingDeg, double fovDeg, double baseRangeM,
+           string terrainAtUnit, TerrainRulesDef terrainRules, bool isRadarOrEo, int arcSegments = 48);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **朝向拖拽角度换算（`UpdateHeadingFromDrag`）**：北向 0°、顺时针为正：
+     $$\text{headingDeg} = \operatorname{ atan2 }(dx, dy) \cdot \frac{180}{\pi} \bmod 360$$
+     当拖拽距离 $\sqrt{dx^2+dy^2} < 50\text{m}$ 时保持原朝向不变（防抖）。
+   - **地形修正实时反映到预览环**：单位位于 `"hill"` 时雷达/光电探测半径乘以 `HillRadarRangeMultiplier`（`1.15`）；位于 `"urban"` 时低空探测半径乘以 `UrbanLowAltDetectMultiplier`（`0.70`）。
+   - **开始战斗按钮门禁**：仅当 `CurrentValidation.Ok && PlacedCount > 0` 时激活"开始今夜"按钮。
+5. **必写单元测试与精确断言值**
+   - `T-06-31` – `T-06-38`：放置/移动/移除单位、实时校验触发全部 8 类 `D_*` 错误码并阻止开战、拖拽旋转在北(0°)/东(90°)/南(180°)/西(270°)与 `<50m` 防抖验证、`CoverageService` 360° 圆与 120° 扇区顶点坐标及山丘 `1.15x` / 城市 `0.70x` 半径缩放验证。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~DeployAndCoverageTests"
+   ```
+
+---
+
+### `M1-T33`（WS05-003a）：快照插值器（`SnapshotInterpolator`）、航迹四档样式（`TrackStyleRules`）与友方/特效渲染层
+
+1. **目标文件**
+   - 创建：`game/Core/SnapshotInterpolator.cs`、`game/Core/TrackStyleRules.cs`
+   - 创建：`game/Nodes/UnitLayerNode.cs`、`game/Nodes/TrackLayerNode.cs`、`game/Nodes/FxLayerNode.cs`
+   - 创建：`sim.tests/ClientCore/InterpolationAndTrackStyleTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §2.5（`SnapshotInterpolator` 位置线性插值与航向角最短弧插值 `LerpAngleDeg`）、§3.4（我方 4 类单位几何符号：枪=实心方块、眼=实心圆+旋转扫描线、盾=正六边形、假=虚线空心三角；暴露度 4 档颜色 `<25/25..50/50..85/>=85`；转移中虚线与倒计时）、§3.5（`TrackStyleRules` 四档航迹质量 `none/coarse/medium/high` 渲染规则 + 速度矢量线 + 威胁家族颜色）、§7.5–7.6（`T-06-23` – `T-06-30`）；[`docs/spec/calc/06_client_graybox.py`](../../tools/spec_calc/06_client_graybox.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Core;
+
+   public static class SnapshotInterpolator
+   {
+       public static Vec2 LerpPos(Vec2 prev, Vec2 curr, double alpha);
+       public static double LerpAngleDeg(double prevDeg, double currDeg, double alpha);
+       public static InterpolatedTrack InterpolateTrack(TrackSnapshot? prev, TrackSnapshot curr, double alpha);
+   }
+
+   public static class TrackStyleRules
+   {
+       public static TrackRenderStyle Resolve(TrackSnapshot track, bool godViewEnabled = false);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **最短弧角度插值（`LerpAngleDeg`）**：跨 $350^\circ \to 10^\circ$ 时 $\Delta = ((curr - prev + 540) \bmod 360) - 180 = +20^\circ$，$\alpha = 0.5$ 时输出 $0^\circ$（绝不能算出 $180^\circ$！）。
+   - **战争迷雾铁律（`TrackStyleRules`）**：
+     - 非调试模式下（`godViewEnabled == false`），客户端**只渲染 `CurrSnapshot.Tracks` 中的航迹**，绝不读取 `SimWorld.State.Enemies` 真值表！
+     - `coarse`：只画闪烁问号圆斑（半径 $= \max(\text{PositionErrorM}, 800\text{m})$），不画速度矢量线，标签显示 `"?"`；
+     - `medium`：画小误差圈 + 菱形 + 速度矢量线 $(x,y) \to (x + vx \cdot 15, y + vy \cdot 15)$，标签显示大类与粗略高度；
+     - `high`：无误差圈、清晰图标 + 15s 速度矢量线 + 精确型号/高度/速度标签。
+5. **必写单元测试与精确断言值**
+   - `T-06-23` – `T-06-30`：位置插值、跨 0° 边界最短弧角度插值（`350° -> 10°` 在 `alpha=0.5` 时为 `0°`）、新出现航迹无前帧快照时直接使用当前位置、四档航迹质量视觉属性断言（`coarse` 无速度线且隐藏型号、`medium/high` 15s 速度线终点精确坐标、弹道导弹品红闪烁告警）。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~InterpolationAndTrackStyleTests"
+   ```
+
+---
+
+### `M1-T34`（WS05-003b）：夜战顶栏 HUD、单位选中详情卡、夜中微操指令与战报日志流
+
+1. **目标文件**
+   - 创建：`game/Nodes/TopBarHudNode.cs`、`game/Nodes/UnitInspectorNode.cs`
+   - 创建：`game/Nodes/EventLogFeedNode.cs`、`game/Nodes/CommsBannerNode.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §3.7（顶栏状态条、右侧单位详情与微操面板、左下战报滚动流、顶中无线电横幅）、§4（鼠标与快捷键绑定表：`Space` 暂停、`1/2/3` 倍速、`R` 开关雷达、`E` 循环交战策略、`M` 夜中转移选点、`Tab` 切换覆盖环、`F1/F2/F3` 调试键）。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Nodes;
+
+   public partial class UnitInspectorNode : Control
+   {
+       public void BindSelectedUnit(UnitSnapshot? unit, SimDriver driver);
+       public void RequestToggleRadar();
+       public void RequestCycleEngagementPolicy();
+       public void BeginRelocateTargetingMode();
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **所有玩家操作均通过 `SimDriver.EnqueueCommand` 下发**：
+     - 点击或按 `R`：发送 `SetRadarStateCommand(UnitId, TargetState)`（当 `RadarCooldownUntilTick > CurrentTick` 时按钮置灰并显示剩余冷却秒数）；
+     - 点击或按 `E`：在 `free -> hold_cruise -> conserve -> hold` 间切换并发送 `SetEngagementPolicyCommand`；
+     - 点击或按 `M`：进入地图转移选点模式，左键点击合法陆地坐标（实时检查 $\ge 300\text{m}$ 间距与非水域）后发送 `StartRelocateCommand`。
+   - **发射后快撤窗口高亮**：当 `ShootAndScootWindowUntilTick > CurrentTick` 时，在单位详情卡高亮显示快撤倒计时与 `0.65x` 转移加速提示。
+5. **必写单元测试与精确断言值**
+   - 与 `M1-T30`/`M1-T36` 联合验证：快捷键与按钮操作正确生成对应 `SimCommand` 并入队，冷却期内禁用雷达开关。
+6. **验收命令**
+   ```bash
+   dotnet build game/Nightwatch.Client.csproj
+   ```
+
+---
+
+### `M1-T35`（WS05-004 & WS05-005）：二选一弹窗（`ChoiceDialogNode`）、夜终战报（`ReportModalNode`）、两夜跨夜衔接与调试热键
+
+1. **目标文件**
+   - 创建：`game/Nodes/ChoiceDialogNode.cs`、`game/Nodes/ReportModalNode.cs`
+   - 创建：`game/Nodes/InterNightPanelNode.cs`、`game/Nodes/MainGameScene.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §2.3.3（二选一弹窗 8.0 真实秒倒计时进度条）、§3.9（二选一模态弹窗）、§3.10（夜终战报四栏面板：评级/防空网/耗弹与费效比/暴露与伤亡，以及"进入白昼整备 / 下一夜"按钮）、§5（`F1` 真值透视、`F2` 导出回放、`F3` 快进到夜终）。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Nodes;
+
+   public partial class MainGameScene : Node2D
+   {
+       public void StartLevel(string levelId, int seed);
+       public void TransitionToDeployPhase(int nightIndex);
+       public void StartNightCombat();
+       public void OnNightFinished(NightResult result);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **两夜完整闭环**：`test_01` 第 1 夜战前部署 → 第 1 夜战斗（含 `t=420s` 雷达疑似被锁与 `t=900s` 弹药见底两次二选一弹窗）→ 第 1 夜战报 → 白昼整备（调用 `CampaignManager` 补给弹药/抢修/调整阵地）→ 第 2 夜战斗（含 Kh-31P 反辐射猎杀与 Iskander-M 弹道突防自适应慢放）→ 第 2 夜战报。
+   - **调试键安全门禁**：`F1`（切换真值透视 `godViewEnabled`）、`F2`（导出当前局回放 JSON）、`F3`（同步快进至夜终）仅在 `DebugBuild` 或命令行带 `--debug-keys` 时生效。
+5. **必写单元测试与精确断言值**
+   - 在 `M1-T36` 无头冒烟测试套件中全链路验证。
+6. **验收命令**
+   ```bash
+   dotnet build game/Nightwatch.Client.csproj
+   ```
+
+---
+
+### `M1-T36`（WS05-006）：Godot `--headless` 自动化冒烟测试套件（`T-06-41` – `T-06-48`）与人工试玩清点
+
+1. **目标文件**
+   - 创建：`game/Smoke/SmokeTestRunner.cs`
+   - 创建：`sim.tests/ClientCore/HeadlessSmokeTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/06_client_graybox.md`](../spec/06_client_graybox.md) §7.10（`T-06-41` – `T-06-48` 无头冒烟测试套件与 `--smoke-test <mode>` CLI 入口）、§6（客户端 8 条运行时不变量）。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Client.Smoke;
+
+   public static class SmokeTestRunner
+   {
+       public static int Run(string mode, string levelId, int nightIndex, int seed);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **8 项无头冒烟测试模式（`--smoke-test <mode>`）**：
+     - `boot`（`T-06-41`）：加载 `test_01` 进入部署阶段，验证初始可用单位数、保护目标数、地图尺寸与相机参数，3 秒内退出码 `0`；
+     - `parity`（`T-06-42`）：客户端 `SimDriver` 跑完 `test_01` 第 1 夜（1260 步），最终 `ComputeStateHash()` 与 `tools/simrun` 同种子哈希 100% 相等；
+     - `pause`（`T-06-43`）：第 100 步触发暂停并维持 120 渲染帧，`CurrentTick` 恒为 `100` 且 RNG 调用次数不变；
+     - `night_end`（`T-06-44`）：跑完一夜后自动弹出 `ReportModalNode`，战报文本包含评级、总分、电网完整度、费效比且无未解析 `loc.*` 键；
+     - `debug`（`T-06-45`）：验证 `F1` 真值开关切换后 `SimWorld.ComputeStateHash()` 完全不受影响；
+     - `camera`（`T-06-46`）：自动化执行 10 次滚轮缩放与拖拽，视口四角世界坐标始终在合法范围内且无 `NaN`；
+     - `coverage`（`T-06-47`）：战前部署拖动单位经过山丘与城市，覆盖环顶点实时更新且无异常；
+     - `perf`（`T-06-48`）：4× 倍速运行 `test_01` 峰值波次 300 步，单帧 `SimDriver + 渲染层数据构建` 平均耗时 $< 4.0\text{ ms}$。
+5. **必写单元测试与精确断言值**
+   - `T-06-41` – `T-06-48`：全部返回退出码 `0`。
+   - **🟡 人工试玩确认清单（完成后向用户报告并等待确认）**：
+     1. 战前部署拖拽、朝向旋转与探测/射界扇形环是否直观？
+     2. 夜战中粗/中/精三档航迹与 15 秒速度矢量线是否清晰可读？
+     3. 雷达暴露条涨红、按 `R` 关机或按 `M` 转移规避反辐射导弹的操作节奏是否顺畅？
+     4. Iskander-M 弹道导弹来袭时的自适应慢放（至少 6 真实秒窗口）与二选一弹窗（8 真实秒倒计时）体验是否合适？
+     5. 夜终战报的费效比、耗弹量与暴露伤亡复盘信息是否清楚？
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests
+   godot --headless --path game -- --smoke-test all --level test_01 --night 1 --seed 20261015
+   ```
+
+---
+
+## §6 M1 总验收标准（Definition of Done）
+
+当 `M1-T01` 至 `M1-T36` 全部完成时，必须同时满足以下 **8 条硬性出口标准**，方可宣告 **M1（核心模拟与单夜灰盒原型）** 里程碑达成：
+
+1. **模拟层零 Godot 依赖与全量单测全绿**：
+   - `sim/` 下不包含任何 `using Godot;` 或 Godot 程序集引用；
+   - 运行 `dotnet test sim.tests` **100% 通过**，覆盖规格书 `00`–`07` 定义的全部 **342+ 条精确数值单元测试**（`T-00-*` 至 `T-07-*`）。
+2. **数据校验器零错误零警告**：
+   - 运行 `dotnet run --project tools/validate -- --strict` 返回退出码 `0`（正式 `data/` 全部 JSON 文件通过 Schema、外键、本地化键、规则不变量与关卡时间轴静态检查）。
+3. **跨运行、跨平台、跨线程 100% 确定性**：
+   - 相同关卡、相同种子、相同命令序列下，`SimWorld.ComputeStateHash()`（FNV-1a 64-bit）在单局重跑、回放校验（`--verify-replay`）、多线程批量运行（`--threads 1` vs `--threads 8`）以及客户端 `SimDriver`（`T-06-42`）下 **逐帧 100% 一致**。
+4. **C# 模拟核心与 Python `papersim` 黄金参考一致**：
+   - `M1-T29`（`Test01GoldenParityTests`）通过，`test_01` 第 1 夜与第 2 夜的波次生成、探测航迹、交战拦截、暴露反辐射、跨夜结转与评分和 `tools/papersim` 对拍一致，且 D4-① 的 5 套条令平衡不变量在 C# 上完整复现。
+5. **性能基准达标**：
+   - `dotnet run --project tools/simrun -- --level test_01 --night 2 --bench` 单步平均耗时 $< 2.0\text{ ms}$、P99 $< 4.0\text{ ms}$、交战分配阶段 $\le 0.3\text{ ms}$。
+6. **客户端纯逻辑层与无头冒烟测试全绿**：
+   - `Nightwatch.Client.Core` 40 条纯 C# 单元测试（`T-06-01` – `T-06-40`）与 Godot `--headless` 8 项冒烟测试（`T-06-41` – `T-06-48`）全部通过。
+7. **`test_01` 两夜灰盒可玩闭环**：
+   - 在 Godot 4 .NET 客户端中可完整游玩 `test_01` 第 1 夜（战前部署 → 夜战指挥与二选一 → 夜终战报）→ 白昼整备（弹药补给/抢修/阵地调整）→ 第 2 夜（反辐射压制与弹道突防自适应慢放 → 夜终战报）。
+8. **人工试玩验收通过（🟡）**：
+   - 人工完成 `M1-T36` 试玩确认清单并签字确认。
