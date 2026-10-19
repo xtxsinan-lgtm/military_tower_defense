@@ -114,7 +114,10 @@
     rBox.innerHTML = units.map((u) => {
       const key = u.id || u.rosterId, sel = key === state.selectedUnitKey ? "selected" : "";
       const expFlag = u.isExposed || u.isKnownTarget || (u.exposure || 0) >= 70 ? "exposed" : "";
-      const em = u.emitter ? (u.emitter.on ? "📡开机" : "静默") : (u.emissionPolicy || "");
+      const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
+      const em = isArmSilenced
+        ? '<span style="color:#fbbf24;font-weight:bold;">🔇 规避静默中</span>'
+        : (u.emitter ? (u.emitter.on ? "📡开机" : "静默") : (u.emissionPolicy || ""));
       const w0 = (u.weapons && u.weapons[0]) ? (u.weapons[0].rounds >= 0 ? `弹${u.weapons[0].rounds}` : "机枪") : "";
       return `<div class="roster-item ${sel} ${expFlag}" data-ukey="${key}">
         <div><strong>#${u.rosterId} ${u.name}</strong> <span style="color:#94a3b8;">${u.deployState || "就绪"}</span></div>
@@ -134,15 +137,22 @@
     }
     $("insp-unit-title").textContent = `#${u.rosterId} ${u.name}`;
     $("insp-unit-state").textContent = u.deployState || "PRE-NIGHT";
-    const exp = Math.round(u.exposure || 0);
+    const exp = Math.round(u.exposure !== undefined ? u.exposure : (u.carryExposure || 0));
     const alts = ((state.meta && state.meta.deploy && state.meta.deploy.alternatePositions) || []);
     const altOpts = alts.map((a) => `<option value="${a.id}">${a.id} (${Math.round(a.pos[0])},${Math.round(a.pos[1])})</option>`).join("");
     const curPol = u.emitter ? u.emitter.policyId : (u.emissionPolicy || "blink");
+    const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
 
     let html = `
       <div class="insp-row"><span>坐标: (${Math.round(u.pos[0])}m, ${Math.round(u.pos[1])}m)</span><span>击落: <strong>${u.killsTonight || 0}</strong></span></div>
       <div class="insp-row"><span>暴露度: <strong style="color:${exp >= 70 ? "#ef4444" : "#2dd4bf"}">${exp}%</strong> (≥70% 跨夜标定)</span></div>
       <div class="exp-bar-wrap"><div class="exp-bar-fill" style="width:${Math.min(100, exp)}%"></div></div>`;
+
+    if (isArmSilenced) {
+      html += `<div class="insp-row" style="margin-top:4px;color:#fbbf24;font-weight:bold;">
+        <span>状态告警: 🔇 规避静默中（危机解除后请手动切回闪烁/常开）</span>
+      </div>`;
+    }
 
     if ((u.emitter && u.emitter.hasEmitter) || u.hasRadar || u.unitDefId === "soviet_mid_range_radar" || u.unitDefId === "nasams") {
       html += `<div class="insp-row" style="margin-top:4px;">
@@ -163,12 +173,24 @@
       </div>`;
     }
 
+    const carryUsedMap = (state.meta && state.meta.carryIn && state.meta.carryIn.perLevelUsed) || {};
     (u.weapons || []).forEach((w) => {
       const wid = w.weaponId || w.id;
       const wl = w.whitelist || ["UAV", "CM", "BM", "AC_LOW"];
       const rds = w.rounds !== undefined ? (w.rounds < 0 ? "充足" : `${w.rounds}/${w.maxRounds}`) : (w.magazine || "充足");
+      const plLim = w.perLevelLimit !== undefined && w.perLevelLimit !== null ? Number(w.perLevelLimit) : null;
+      let quotaHtml = "";
+      if (plLim !== null) {
+        const remQ = w.remainingQuota !== undefined && w.remainingQuota !== null
+          ? Number(w.remainingQuota)
+          : Math.max(0, plLim - Number(carryUsedMap[wid] || 0));
+        quotaHtml = `<div class="insp-row" style="font-size:11px;color:${remQ <= 0 ? "#ef4444" : "#93c5fd"};">
+          <span>本关剩余配额: <strong>${remQ}/${plLim}</strong> ${remQ <= 0 ? "[配额已尽]" : ""}</span>
+        </div>`;
+      }
       html += `<div class="weapon-box">
         <div class="insp-row"><strong>${w.name}</strong><span style="font-family:monospace;color:#f59e0b;">弹: ${rds} ${w.reloadRemSec > 0 ? `(${w.reloadRemSec}s)` : ""}</span></div>
+        ${quotaHtml}
         <div class="insp-row"><span>射击规则:</span>
           <select class="select-sm insp-w-rule" data-wid="${wid}">
             <option value="any" ${w.rule === "any" ? "selected" : ""}>自由迎击 (Any)</option>
@@ -209,6 +231,7 @@
         if (state.phase === "deploy") {
           u.pos = [ap.pos[0], ap.pos[1]];
           u.isExposed = false;
+          u.carryExposure = 0;
           await refreshCoverage();
           renderRosterAndInspector();
         } else await sendCommand({ type: "Relocate", unitId: u.id, alternatePositionId: altId });
@@ -279,7 +302,8 @@
     if (!modal.classList.contains("hidden")) return;
     modal.classList.remove("hidden");
     $("choice-title").textContent = ch.title;
-    $("choice-unit-subtitle").textContent = `受威胁火控雷达阵地：${ch.subjectUnitName}`;
+    const posStr = ch.subjectUnitPos ? ` (坐标: ${Math.round(ch.subjectUnitPos[0])}m, ${Math.round(ch.subjectUnitPos[1])}m)` : "";
+    $("choice-unit-subtitle").textContent = `被锁定雷达名称与坐标：${ch.subjectUnitName}${posStr}`;
     $("choice-opt-a-text").textContent = ch.optionA;
     $("choice-opt-b-text").textContent = ch.optionB;
     const durMs = (ch.timeoutRealSec || 8.0) * 1000;
@@ -370,7 +394,7 @@
     });
     $("btn-national-spoof").addEventListener("click", () => sendCommand({ type: "TriggerNationalSpoof" }));
     $("btn-trigger-choice-demo").addEventListener("click", async () => {
-      if (state.phase === "deploy") await startNightBattle();
+      if (state.phase === "deploy") await startNightBattle(true);
       await sendCommand({ type: "TriggerArmChoiceDemo" });
     });
     $("btn-reset-game").addEventListener("click", () => initGame(1, true));
@@ -387,13 +411,13 @@
       const alts = (state.meta.deploy && state.meta.deploy.alternatePositions) || [];
       let idx = 0;
       state.placements.forEach((u) => {
-        if (u.isExposed && alts[idx]) { u.pos = [alts[idx].pos[0], alts[idx].pos[1]]; u.isExposed = false; idx = (idx + 1) % alts.length; }
+        if (u.isExposed && alts[idx]) { u.pos = [alts[idx].pos[0], alts[idx].pos[1]]; u.isExposed = false; u.carryExposure = 0; idx = (idx + 1) % alts.length; }
       });
       $("exposed-warning-box").classList.add("hidden");
       await refreshCoverage(); renderRosterAndInspector();
     });
 
-    $("btn-start-night").addEventListener("click", startNightBattle);
+    $("btn-start-night").addEventListener("click", () => startNightBattle(false));
     $("btn-replay-night").addEventListener("click", () => initGame(state.meta.nightIndex, false));
     $("btn-next-night").addEventListener("click", async () => {
       applyLevelMeta(await apiPost("/api/next_night", {})); await refreshCoverage();
@@ -420,7 +444,18 @@
       if (state.draggingUnit && state.phase === "deploy") state.draggingUnit.pos = [Math.round(pt[0]), Math.round(pt[1])];
     });
     window.addEventListener("mouseup", async () => {
-      if (state.draggingUnit) { state.draggingUnit = null; await refreshCoverage(); renderRosterAndInspector(); }
+      if (state.draggingUnit) {
+        const u = state.draggingUnit;
+        state.draggingUnit = null;
+        const kts = (state.meta && state.meta.carryIn && state.meta.carryIn.knownTargets) || [];
+        const kt = kts.find((k) => Number(k.rosterId) === Number(u.rosterId));
+        if (kt && kt.pos && Math.hypot(u.pos[0] - kt.pos[0], u.pos[1] - kt.pos[1]) > 600.0) {
+          u.isExposed = false;
+          u.carryExposure = 0;
+        }
+        await refreshCoverage();
+        renderRosterAndInspector();
+      }
     });
     window.addEventListener("keydown", (e) => {
       if (e.code === "Space" && state.phase === "battle") { e.preventDefault(); setSpeed(state.speed > 0 ? 0 : 1); }
@@ -442,7 +477,21 @@
     $("btn-view-mode").textContent = state.viewMode === "live25d" ? "视图：实况 2.5D 斜视角 [Tab]" : "视图：指挥台平面图 [Tab]";
   }
 
-  async function startNightBattle() {
+  async function startNightBattle(skipConfirm = false) {
+    const kts = (state.meta && state.meta.carryIn && state.meta.carryIn.knownTargets) || [];
+    if (!skipConfirm && state.meta && state.meta.nightIndex > 1 && kts.length > 0) {
+      const unmoved = kts.filter((kt) => {
+        const pu = state.placements.find((p) => Number(p.rosterId) === Number(kt.rosterId));
+        if (!pu || !pu.pos || !kt.pos) return false;
+        return Math.hypot(pu.pos[0] - kt.pos[0], pu.pos[1] - kt.pos[1]) <= 600.0;
+      });
+      if (unmoved.length > 0 && typeof window.confirm === "function") {
+        const names = unmoved.map((k) => `${k.name}#${k.rosterId}`).join("、");
+        if (!window.confirm(`⚠️ 警告：${names} 在首夜已被敌军标定坐标（未移位超过 600m），今夜将遭敌方专门猎杀！是否仍直接开始第 2 夜？`)) {
+          return;
+        }
+      }
+    }
     const snap = await apiPost("/api/start_night", { placements: state.placements, bot: $("sel-bot-mode").value });
     state.phase = "battle";
     $("phase-badge").textContent = "夜间防空实战";

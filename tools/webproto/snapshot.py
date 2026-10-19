@@ -50,6 +50,7 @@ def serialize_level_meta(session: Any, presets: Dict[str, Any]) -> Dict[str, Any
                 "rangeM": float(wdef.get("rangeM", 0.0)),
                 "ceilingM": float(wdef.get("ceilingM", 0.0)),
                 "magazine": wdef.get("magazine"),
+                "perLevelLimit": int(wdef["perLevelLimit"]) if wdef.get("perLevelLimit") is not None else None,
                 "shotCostMusd": float(wdef.get("shotCostMusd", 0.0) or 0.0),
                 "targets": wdef.get("targets", []),
             })
@@ -155,6 +156,7 @@ def serialize_level_meta(session: Any, presets: Dict[str, Any]) -> Dict[str, Any
             "hasCarryIn": session.night_index > 1 and bool(session.carry_in.units or kts),
             "knownTargets": kts,
             "ammoPool": session.carry_in.ammo_pool or {},
+            "perLevelUsed": dict(session.carry_in.per_level_used or {}),
             "structures": session.carry_in.structures or [],
             "alertResponsiveness": session.carry_in.alert_responsiveness or 1.0,
             "trustScore": round(session.trust_score, 1),
@@ -210,6 +212,9 @@ def serialize_world_snapshot(
                         max((ln.reload_until_sec - now_sec for ln in ws.launchers if ln.reload_until_sec > now_sec), default=0.0),
                     )
                     wl_set = getattr(ws, "whitelist", None)
+                    pl_lim = wdef.get("perLevelLimit")
+                    pl_used = int(st.engagement.per_level_used.get(ws.weapon_id, 0))
+                    rem_quota = max(0, int(pl_lim) - pl_used) if pl_lim is not None else None
                     weapons_out.append({
                         "weaponId": ws.weapon_id,
                         "name": tr(wdef.get("nameKey", f"weapon.{ws.weapon_id}.name"), ws.weapon_id),
@@ -221,6 +226,9 @@ def serialize_world_snapshot(
                         "shootLookShoot": bool(getattr(ws, "shoot_look_shoot", True)),
                         "rounds": rounds if rounds < 900000 else -1,
                         "maxRounds": max_rounds if max_rounds < 900000 else -1,
+                        "perLevelLimit": int(pl_lim) if pl_lim is not None else None,
+                        "perLevelUsed": pl_used,
+                        "remainingQuota": rem_quota,
                         "reloadRemSec": round(reload_rem, 1),
                     })
             fcr = udef.get("fireControlRadar")
@@ -246,6 +254,7 @@ def serialize_world_snapshot(
                     "hasEmitter": u.emitter is not None,
                     "on": bool(u.emitter.on) if u.emitter else False,
                     "policyId": u.emitter.policy_id if u.emitter else "none",
+                    "armSilenced": bool(getattr(u.emitter, "arm_silenced", False)) if u.emitter else False,
                 },
                 "weapons": weapons_out,
                 "relocation": {
@@ -316,19 +325,23 @@ def serialize_world_snapshot(
         ch = st.choices.alive_list()[0]
         subj = CommandStage._find_unit(w.ctx, ch.subject_unit_id)
         subj_name = f"雷达阵地 #{ch.subject_unit_id}"
+        subj_pos = None
         if subj is not None:
             udef = cat.get_player_unit_def(subj.def_id or "")
             subj_name = f"{tr(udef.get('nameKey', subj.def_id or ''), subj.def_id)} #{subj.roster_id or subj.id}"
+            if subj.pos is not None:
+                subj_pos = [round(subj.pos.x, 1), round(subj.pos.y, 1)]
         active_choice = {
             "choiceId": ch.id,
             "choiceKey": ch.choice_key,
             "title": tr(ch.choice_key, "反辐射导弹与巡航导弹同时逼近，是否立即关机规避？"),
-            "optionA": tr(f"{ch.choice_key}.opt_a", "立即关机规避反辐射导弹（保住雷达，巡航导弹可能突防）"),
+            "optionA": tr(f"{ch.choice_key}.opt_a", "立即关机规避反辐射导弹（将目标雷达切为静默保命，危机后可手动恢复开机）"),
             "optionB": tr(f"{ch.choice_key}.opt_b", "坚持开机引导拦截（拦截巡航导弹，雷达承担被毁风险）"),
             "defaultOption": ch.default_option,
             "timeoutRealSec": 8.0,
             "subjectUnitId": ch.subject_unit_id,
             "subjectUnitName": subj_name,
+            "subjectUnitPos": subj_pos,
         }
 
     battle_report = None

@@ -1407,11 +1407,12 @@ class ExposureSystem:
 
                 new_exp = min(100.0, max(0.0, prev_exp + rate * ctx.step_sec + n_launch * per_missile))
                 u.exposure = new_exp
+                prev_peak = u.exposure_peak
                 if new_exp > u.exposure_peak:
                     u.exposure_peak = new_exp
 
                 for th_val in thresholds:
-                    if prev_exp < th_val <= new_exp:
+                    if prev_exp < th_val <= new_exp and prev_peak < th_val:
                         ctx.events.emit(
                             SimEventType.ExposureThresholdCrossed,
                             fields=(u.id, int(th_val), new_exp),

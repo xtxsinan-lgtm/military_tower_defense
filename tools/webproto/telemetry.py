@@ -126,6 +126,29 @@ def format_sim_event(world: SimWorld, ev: SimEvent) -> Optional[Dict[str, Any]]:
     if et == SimEventType.MunitionReleased:
         cdef = str(ev.fields[2] if len(ev.fields) > 2 else "kh59")
         return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"✈️ 敌空中平台防区外投射【{enemy_name(cdef)}】！"}
+    if et == SimEventType.AmmoDepleted:
+        uid = int(ev.data.get("unit_id", ev.fields[0] if ev.fields else 0))
+        wid = str(ev.data.get("weapon_id", ev.fields[1] if len(ev.fields) > 1 else ""))
+        wname = tr(f"weapon.{wid}.name", wid)
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"⚠️ 弹药告罄：{unit_name(uid)} 的【{wname}】已打空！"}
+    if et == SimEventType.PlayerUnitDamaged:
+        uid = int(ev.data.get("unit_id", ev.fields[0] if ev.fields else 0))
+        dmg_kind = str(ev.fields[2] if len(ev.fields) > 2 else ev.data.get("damage_kind", "damaged"))
+        dmg_desc = {
+            "light_damage": "轻伤（作战效能降至 80%）",
+            "heavy_damage": "重创（暂停作战 30 分钟抢修）",
+            "radar_destroyed": "火控雷达被毁（丧失自主照射能力）",
+            "launcher_destroyed": "发射架损毁（减少 1 部发射架）",
+        }.get(dmg_kind, "受损")
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"💥 阵地受损：{unit_name(uid)} 遭敌方火力打击——{dmg_desc}！"}
+    if et == SimEventType.PlayerUnitDestroyed:
+        uid = int(ev.data.get("unit_id", ev.fields[0] if ev.fields else 0))
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"💀 阵地全毁：{unit_name(uid)} 被敌方火力彻底摧毁！", "radio": f"报告指挥所，{unit_name(uid)} 失去联络！"}
+    if et == SimEventType.DebrisFell:
+        p_raw = ev.data.get("pos") or (ev.fields[2] if len(ev.fields) > 2 else None)
+        pos = [round(p_raw.x), round(p_raw.y)] if hasattr(p_raw, "x") else [0, 0]
+        fx_pos = [p_raw.x, p_raw.y] if hasattr(p_raw, "x") else None
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"🧱 拦截残骸坠入城区（[{pos[0]}, {pos[1]}]），造成附带损伤！", "fx": {"kind": "miss", "pos": fx_pos}}
     return None
 
 
@@ -208,12 +231,8 @@ def compute_battle_report(world: SimWorld, res: Any) -> Dict[str, Any]:
     d_inq = -3.0 if inquiry else 0.0
 
     high_leaks = sum(cnt for eid, cnt in leaks_by_e.items() if eid in ("kh101", "kh59", "kh22", "iskander_m", "kinzhal"))
-    exp_left = 0
-    for fu in st.fire_units.alive_list():
-        for ws in fu.weapons:
-            wdef = cat.weapons.get(ws.weapon_id, {})
-            if float(wdef.get("shotCostMusd", 0.0) or 0.0) >= 0.35:
-                exp_left += sum(ln.rounds for ln in ws.launchers if not ln.destroyed)
+    from tools.papersim.engagement import ScoringSystem
+    exp_left = ScoringSystem.compute_expensive_rounds_left(world.ctx)
     hoard_leaks = high_leaks if exp_left > 0 else 0
     d_hoard = -min(hoard_leaks * 2.0, 6.0)
     applied_trust = max(-12.0, min(8.0, d_ex + d_waste + d_inq + d_hoard))

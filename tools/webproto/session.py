@@ -51,6 +51,7 @@ class GameSession:
         self.night_index: int = 1
         self.seed: int = 42
         self.trust_score: float = 50.0
+        self.trust_applied_for_night: bool = False
         self.carry_in: CarryIn = CarryIn()
         self.last_carry_out: Optional[Dict[str, Any]] = None
         self.last_battle_report: Optional[Dict[str, Any]] = None
@@ -79,6 +80,7 @@ class GameSession:
             self.last_carry_out = None
             self.last_battle_report = None
             self.trust_score = 50.0
+            self.trust_applied_for_night = False
         else:
             self.night_index = int(night_index)
 
@@ -118,6 +120,7 @@ class GameSession:
         self.bot_name = str(payload.get("bot", "manual"))
         self.bot = create_bot(self.bot_name) if self.bot_name in BOT_REGISTRY else None
         self.arm_choice_fired_tonight = False
+        self.trust_applied_for_night = False
         self.extra_logs.clear()
 
         pos_rules = self.level.catalog.rules.get("positions", {})
@@ -153,17 +156,28 @@ class GameSession:
             )
 
         # If player moved an exposed unit away from its Night 1 KnownTarget position (>600m), remove stale KnownTarget
+        # and reset its carry_in initial exposure to 0.0
         ci_copy = copy.deepcopy(self.carry_in)
+        pos_by_rid = {pu.roster_id: pu.pos for pu in placed_units}
+        relocated_rids: set[int] = set()
         if ci_copy.known_targets:
-            pos_by_rid = {pu.roster_id: pu.pos for pu in placed_units}
             kept_kts = []
             for kt in ci_copy.known_targets:
                 rid = int(kt.get("rosterId", 0))
                 kp = kt.get("pos", [0.0, 0.0])
                 if rid in pos_by_rid and math.hypot(pos_by_rid[rid].x - kp[0], pos_by_rid[rid].y - kp[1]) > 600.0:
+                    relocated_rids.add(rid)
                     continue
                 kept_kts.append(kt)
             ci_copy.known_targets = kept_kts
+        if ci_copy.units:
+            for cu in ci_copy.units:
+                rid = int(cu.get("rosterId", cu.get("roster_id", 0)))
+                upos = cu.get("pos", [0.0, 0.0])
+                if rid in relocated_rids or (
+                    rid in pos_by_rid and math.hypot(pos_by_rid[rid].x - float(upos[0]), pos_by_rid[rid].y - float(upos[1])) > 600.0
+                ):
+                    cu["exposure"] = 0.0
 
         cfg = SimConfig(
             night_index=self.night_index,
@@ -408,11 +422,14 @@ class GameSession:
         return {"ok": False, "error": f"Unknown command type: {ctype_str}"}
 
     def advance_to_next_night(self, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        if self.world is not None and self.last_carry_out is None:
-            res = self.world.build_result()
-            self.last_carry_out = res.carry_out
-            self.last_battle_report = compute_battle_report(self.world, res)
-            self.trust_score = max(0.0, min(100.0, self.trust_score + float(self.last_battle_report["trust"]["applied"])))
+        if self.world is not None:
+            if self.last_carry_out is None or self.last_battle_report is None:
+                res = self.world.build_result()
+                self.last_carry_out = res.carry_out
+                self.last_battle_report = compute_battle_report(self.world, res)
+            if not self.trust_applied_for_night and self.last_battle_report is not None:
+                self.trust_score = max(0.0, min(100.0, self.trust_score + float(self.last_battle_report["trust"]["applied"])))
+                self.trust_applied_for_night = True
 
         co = self.last_carry_out or {}
         self.carry_in = CarryIn(

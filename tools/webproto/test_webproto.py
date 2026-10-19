@@ -101,6 +101,8 @@ class WebProtoApiTests(unittest.TestCase):
         _, snap = dispatch_api("POST", "/api/command", {"type": "TriggerArmChoiceDemo"}, session=sess)
         self.assertTrue(snap["hardPause"])
         self.assertIsNotNone(snap["activeChoice"])
+        self.assertIsNotNone(snap["activeChoice"]["subjectUnitPos"])
+        subj_id = snap["activeChoice"]["subjectUnitId"]
         cid = snap["activeChoice"]["choiceId"]
         _, snap = dispatch_api(
             "POST",
@@ -109,6 +111,8 @@ class WebProtoApiTests(unittest.TestCase):
             session=sess,
         )
         self.assertIsNone(snap["activeChoice"])
+        subj_unit = next(u for u in snap["units"] if u["id"] == subj_id)
+        self.assertTrue(subj_unit["emitter"]["armSilenced"])
 
     def test_night1_to_night2_carryover_and_pre_night_relocation(self) -> None:
         sess = GameSession()
@@ -126,10 +130,12 @@ class WebProtoApiTests(unittest.TestCase):
         self.assertIsNotNone(snap_end["battleReport"])
         self.assertIn(snap_end["battleReport"]["rating"], ("S", "A", "B", "C", "D", "F"))
         self.assertGreater(len(snap_end["carryOut"]["knownTargets"]), 0)
+        expected_trust = max(0.0, min(100.0, 50.0 + float(snap_end["battleReport"]["trust"]["applied"])))
 
-        # Advance to Night 2
+        # Advance to Night 2 and verify trustScore accumulated Night 1 trust delta
         _, meta2 = dispatch_api("POST", "/api/next_night", {}, session=sess)
         self.assertEqual(meta2["nightIndex"], 2)
+        self.assertAlmostEqual(meta2["trustScore"], round(expected_trust, 1), places=1)
         self.assertTrue(meta2["carryIn"]["hasCarryIn"])
         kts = meta2["carryIn"]["knownTargets"]
         self.assertGreater(len(kts), 0)
@@ -137,20 +143,41 @@ class WebProtoApiTests(unittest.TestCase):
         # Relocate all exposed units in Night 2 pre-night deployment to alternate positions >600m away
         alts = meta2["deploy"]["alternatePositions"]
         new_placements = meta2["currentPlacements"]
+        relocated_roster_ids = set()
         for idx, u in enumerate(new_placements):
             if u.get("isExposed"):
                 ap = alts[idx % len(alts)]
                 u["pos"] = [ap["pos"][0], ap["pos"][1]]
+                relocated_roster_ids.add(u["rosterId"])
 
-        _, snap_n2 = dispatch_api(
-            "POST",
-            "/api/start_night",
-            {"placements": new_placements, "bot": "smart_blink"},
-            session=sess,
-        )
-        # Verify that relocated units are no longer marked as knownTargets!
-        still_marked = [u for u in snap_n2["units"] if u["isKnownTarget"]]
-        self.assertEqual(len(still_marked), 0)
+        wdef_nasams = sess.level.catalog.weapons["nasams_missile"]
+        orig_limit = wdef_nasams.get("perLevelLimit")
+        try:
+            wdef_nasams["perLevelLimit"] = 24
+            _, snap_n2 = dispatch_api(
+                "POST",
+                "/api/start_night",
+                {"placements": new_placements, "bot": "smart_blink"},
+                session=sess,
+            )
+            # Verify that relocated units are no longer marked as knownTargets and their initial exposure is reset to 0.0!
+            still_marked = [u for u in snap_n2["units"] if u["isKnownTarget"]]
+            self.assertEqual(len(still_marked), 0)
+            for u in snap_n2["units"]:
+                if u["rosterId"] in relocated_roster_ids:
+                    self.assertEqual(u["exposure"], 0.0)
+            nasams_n2 = next(u for u in snap_n2["units"] if u["unitDefId"] == "nasams")
+            self.assertEqual(nasams_n2["weapons"][0]["perLevelLimit"], 24)
+            self.assertGreater(nasams_n2["weapons"][0]["perLevelUsed"], 0)
+            self.assertEqual(
+                nasams_n2["weapons"][0]["remainingQuota"],
+                24 - nasams_n2["weapons"][0]["perLevelUsed"],
+            )
+        finally:
+            if orig_limit is None:
+                wdef_nasams.pop("perLevelLimit", None)
+            else:
+                wdef_nasams["perLevelLimit"] = orig_limit
 
     def test_http_server_endpoints(self) -> None:
         srv = WebProtoServer(("127.0.0.1", 0))

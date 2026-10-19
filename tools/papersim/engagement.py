@@ -1073,6 +1073,27 @@ class ScoringSystem:
             ctx.state.request_end(NightOutcome.Survived, NightEndReason.DurationElapsed, "duration_elapsed")
 
     @staticmethod
+    def compute_expensive_rounds_left(ctx: Any) -> int:
+        cat = ctx.level.catalog
+        st = ctx.state
+        rounds_by_wid: Dict[str, int] = {}
+        for fu in st.fire_units.alive_list():
+            for ws in fu.weapons:
+                wdef = cat.weapons.get(ws.weapon_id, {})
+                if float(wdef.get("shotCostMusd", 0.0) or 0.0) >= 0.35:
+                    ln_rounds = sum(ln.rounds for ln in ws.launchers if not ln.destroyed)
+                    rounds_by_wid[ws.weapon_id] = rounds_by_wid.get(ws.weapon_id, 0) + ln_rounds
+        exp_left = 0
+        for wid, tot_rounds in rounds_by_wid.items():
+            wdef = cat.weapons.get(wid, {})
+            pl_limit = wdef.get("perLevelLimit")
+            if pl_limit is not None:
+                rem_quota = max(0, int(pl_limit) - int(st.engagement.per_level_used.get(wid, 0)))
+                tot_rounds = min(tot_rounds, rem_quota)
+            exp_left += tot_rounds
+        return exp_left
+
+    @staticmethod
     def build_result(ctx: Any, seed_str: str) -> NightResult:
         st = ctx.state
         end_req = st.end_request or EndRequest(NightOutcome.Survived, NightEndReason.DurationElapsed)
@@ -1104,6 +1125,7 @@ class ScoringSystem:
                 "shotsFiredByWeapon": dict(sorted(st.scoring.shots_fired_by_weapon.items())),
                 "hitsByWeapon": dict(sorted(st.scoring.hits_by_weapon.items())),
                 "defenseCostMusd": st.scoring.defense_cost_musd,
+                "expensiveRoundsLeft": ScoringSystem.compute_expensive_rounds_left(ctx),
             },
             exchange={
                 "enemyDestroyedValueMusd": st.scoring.enemy_destroyed_value_musd,
