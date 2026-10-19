@@ -680,3 +680,479 @@ flowchart TD
    ```bash
    dotnet test sim.tests --filter "FullyQualifiedName~EnemyMovementTests|FullyQualifiedName~ThreatKinematicsTests"
    ```
+
+---
+
+## 3. 阶段 B：探测、航迹融合、电子战、辐射暴露、交战拦截、落地电网与结算（`M1-T11` – `M1-T22`）
+
+### `M1-T11`（WS01-007a）：环境修正 `EnvironmentResolver` 与 `SensorSystem`（系统 3：雷达/光学/声学探测与国家预警）
+
+1. **目标文件**
+   - 创建：`sim/Sensing/EnvironmentResolver.cs`、`sim/Sensing/SensorSystem.cs`
+   - 创建：`sim.tests/Sensing/SensorDetectionTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/02_sensing_tracks_ew_emission.md`](../spec/02_sensing_tracks_ew_emission.md) §1.1–1.3、§3.1.1–3.1.9（自动覆盖型传感器创建、雷达/光学/声学/无线电有效距离计算、地平线包络视线、民众上报延迟与 B 线转发延迟、声学误报、国家预警 `EarlyWarning`）、§7.1（`T-02-01` – `T-02-15`）。
+   - Python 黄金参考：[`tools/papersim/sensing.py`](../../tools/papersim/sensing.py) 第 `35–305` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Sensing;
+
+   public static class EnvironmentResolver
+   {
+       public static double SensorRangeMult(LevelData level, int nightIndex, SensorUnit sensor, SensorDef def);
+       public static double FireControlRangeMult(LevelData level, int nightIndex, FireUnit unit, AirDefenseUnitDef def);
+       public static double EwEffectMult(LevelData level, int nightIndex, EwUnit unit);
+   }
+
+   public sealed class SensorSystem : ISimSystem
+   {
+       public int Order => 3;
+       public string Name => "SensorSystem";
+       public string StreamName => "sensor";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **自动覆盖型传感器创建（`Initialize`）**：扫描 `Catalog.Sensors` 中 `Coverage != null` 的条目（如民众上报 `civilian_report`、国家空情网 `national_warning`），若满足 `firstAvailable.level` 闸门（`level.Meta.Number == null || level.Meta.Number >= minLevel`），按目录顺序创建 `Automatic = true` 的 `SensorUnit`（位置设在地图中心，不进入 `CarryOut`，见 `T-02-08`、`T-02-15`）。
+   - **有效探测距离链式修正**：
+     - 雷达/被动传感器：若目标 `AltM < rules.LowAltitudeThresholdM`（默认 100 m），乘 `lowAltitudeRangeMult[def.LowAltitude]`；若 `lowAltitudeBlindSpotLarge == true` 再乘 `blindSpotExtraMult`（`0.5`）。
+     - 光学传感器（`s_obs` 或 `selfAcquisition: "optical"`）：夜晚（`TimeOfDay != "day"`）先查 `nightAids` 是否抵消天气（如 `thermal`），否则乘 `nightRangeMult` 与天气倍率（`moonlit` / `fog` / `rain`）。
+     - 断电、新阵地首夜、冬季修正：依次检查 `!u.Powered`（乘 `radarRangeMultWhenUnpowered = 0.5`）、`u.NewPositionPenalty`（乘 `0.7`）、`season == "winter"`（乘 `0.9`）（`T-02-13`）。
+   - **视线与延迟队列**：`lineOfSight == true` 的传感器调用缓存的 `HorizonProfile.HasLineOfSightAgl(target.Pos, target.AltM)`（单位完成转移 `CompletedRelocation` 时重建 `HorizonProfile`）。民众上报延迟 `reportDelaySec`（6s）与 B 线非本地传感器转发延迟 `relayDelaySec`（3s）推入 `Sensing.Delayed` 队列，到期步送达 `TrackFusionSystem`（`T-02-09`、`T-02-11`）。
+5. **必写单元测试与精确断言值**
+   - `T-02-01` – `T-02-07`：距离边界 `10000 -> true` / `10000.001 -> false`、低空倍率与盲区、`HorizonProfile` 雙山脊遮挡一致率 `< 1%`、光学昼夜天气 6 种情形、无线电链路型号升级、观察哨近距离升级。
+   - `T-02-08` – `T-02-15`：自动单位民众 6s 延迟、声学误报 `PhantomKey == 1` 与 3s 超时、B 线 3s 空情转发、国家预警 `EarlyWarning` 方位角与弹道标记、断电/新阵地/冬季、火控雷达与自主光学捕获。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~SensorDetectionTests"
+   ```
+
+---
+
+### `M1-T12`（WS01-007b）：`TrackFusionSystem`（系统 4）：航迹融合、火控指示 `Cueing`、诱饵甄别与 `CoverageQuery`
+
+1. **目标文件**
+   - 创建：`sim/Sensing/TrackFusionSystem.cs`、`sim/Sensing/CoverageQuery.cs`
+   - 创建：`sim.tests/Sensing/TrackFusionTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/02_sensing_tracks_ew_emission.md`](../spec/02_sensing_tracks_ew_emission.md) §1.3、§3.2.1–3.2.8（多传感器融合、本地多源交叉升级 `Vague -> Approximate`、外推与超时丢失、`Precise` 外推降级、诱饵两阶段条件概率甄别）、§3.5（`CoverageQuery` 覆盖查询接口）、§7.2（`T-02-20` – `T-02-27`）。
+   - Python 黄金参考：[`tools/papersim/sensing.py`](../../tools/papersim/sensing.py) 第 `308–520` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Sensing;
+
+   public sealed class TrackFusionSystem : ISimSystem
+   {
+       public int Order => 4;
+       public string Name => "TrackFusionSystem";
+       public string StreamName => "fusion";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+
+   public static class CoverageQuery
+   {
+       public static TrackQuality BestQualityAt(SimWorld world, Vec2 pos, double altM);
+       public static TrackQuality PreviewBestQualityAt(LevelData level, TerrainModel terrain, IReadOnlyList<PlacedUnit> placements, Vec2 pos, double altM);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **本地交叉升级（`T-02-20`）**：当同一目标在当步收到 `>= 2` 个**本地**（非国家层自动单位、非 B 线延迟转发）`Vague` 探测时，航迹质量升级为 `Approximate`，`ErrorRadiusM` 取 `rules.Tracks.ErrorRadiusM[Approximate]`（500 m）。
+   - **精确持有者 `PreciseHolderIds` 与网络质量 `NetworkQuality`**：火控雷达或光电自主捕获产生的 `Precise` 探测写入 `track.PreciseHolderIds`（仅限该火力单元自身可用）；非火控传感器（加上火控指示网络）最高质量记为 `track.NetworkQuality`（只要 `NetworkQuality >= Approximate`，即可为同网火力单元提供火控指示 `Cued = true`）。
+   - **外推与降级（`T-02-21`、`T-02-23`）**：当步无新探测但目标仍存活时，航迹位置按 `Pos += VelMps * StepSec` 线性外推；若原为 `Precise`，无火控探测的下一步立即降级为 `Approximate` 并清空 `PreciseHolderIds`；当 `TimeSec - LastObservedAtSec > TrackLostSec`（默认 3s）时发出 `TrackLost(Timeout)` 并移除航迹。
+   - **诱饵两阶段条件概率甄别（`T-02-24`）**：对真实标签为 `DECOY` 的目标，首次达到 `Approximate` 时以概率 $p_{\text{approx}} = \min(1, p_0 + \Delta_{\text{dossier}})$ 掷骰；若未识破，后续首次升级到 `Precise` 时以**条件概率** $p_{\text{cond}} = \frac{p_{\text{precise}} - p_{\text{approx}}}{1 - p_{\text{approx}}}$ 补掷一次（保证两阶段总识破率恰好等于 $p_{\text{precise}}$！`Vague` 航迹绝不掷骰）。
+5. **必写单元测试与精确断言值**
+   - `T-02-20` – `T-02-23`：双声学哨交叉升级 `Approximate`、外推第 6 步 `Timeout`、目标移除当步 `ThreatGone`、`Precise` 关机次步降级 `Approximate`。
+   - `T-02-24` – `T-02-27`：诱饵两次掷骰与 `Dossier` 加成条件概率 `0.75`、`Vague` 零消耗、同质量最小误差半径选择、`Precise + NetworkQuality` 并存。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~TrackFusionTests"
+   ```
+
+---
+
+### `M1-T13`（WS01-016）：`ElectronicWarfareSystem`（系统 5）：导航欺骗、反无人机致盲、雷达压制与友好误伤区
+
+1. **目标文件**
+   - 创建：`sim/Sensing/ElectronicWarfareSystem.cs`、`sim/Sensing/EwQueries.cs`
+   - 创建：`sim.tests/Sensing/ElectronicWarfareTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/02_sensing_tracks_ew_emission.md`](../spec/02_sensing_tracks_ew_emission.md) §1.4、§3.3.1–3.3.7（导航干扰偏移、导航欺骗 `LurePoint` 改航、反无人机 `Crash / Hover / Return` 三态抽签与悬停坠毁、国家级导航欺骗不叠加裁决、城区导航干扰计时、`EwQueries` 友军误伤查询）、§7.3（`T-02-30` – `T-02-40`）。
+   - Python 黄金参考：[`tools/papersim/sensing.py`](../../tools/papersim/sensing.py) 第 `523–695` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Sensing;
+
+   public static class EwQueries
+   {
+       public static bool IsInFriendlyEwZone(SimState state, GameCatalog catalog, Vec2 pos, double timeSec);
+       public static double ShieldHitProbMult(SimState state, GameCatalog catalog, int unitId, string munitionDefId);
+   }
+
+   public sealed class ElectronicWarfareSystem : ISimSystem
+   {
+       public int Order => 5;
+       public string Name => "ElectronicWarfareSystem";
+       public string StreamName => "ew";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **每个目标每类效果只掷一次并锁存（`T-02-31`）**：目标进入有效 EW 半径时（排除 `ewImmune: true` 及 2025 年后 `aiVisionActive` 对纯导航干扰的免疫），`EwNav` 从 `None` 掷骰变为 `Applied` 或 `Resisted` 后终生锁存，后续步不再重复消耗 `ew` 子流随机数。
+   - **导航欺骗诱导（`NavSpoofPull` / `T-02-33`）**：若单位配置了 `LurePoint` 且导航干扰成功，再掷一次诱导骰；成功则调用 `ThreatRouting.Retarget(ctx, th, lurePoint)` 将目标改航引向空地诱饵点，并发出 `EwDiverted(NavSpoofPull)`。
+   - **反无人机链路中断（`CounterUas` / `T-02-35`、`T-02-36`）**：命中后按权重 `[crash: 1, hover: 1, return: 2]` 抽签：`Crash` 当步发 `EwLinkCut(Crash)` 并 `Remove`；`Return` 调 `ThreatRouting.BeginEgress`；`Hover` 调 `ThreatRouting.Hover` 并记录 `LinkCutAtTick`，悬停满 `HoverBeforeCrashSec`（3s）后自动坠毁（发 `EwLinkCut(SourceId: 0, Crash)` 并 `Remove`）。
+   - **国家级欺骗与地面导航干扰不叠加（`A-2-21` / `T-02-38`）**：当 `NationalSpoof`（降 2 档精度）与地面 `NavJam`（加 `EwExtraOffsetM`）同时对同一目标生效时，比较两者期望偏移半径，只保留较大者（满足不变量 `!(AccuracyTierDrop > 0 && EwExtraOffsetM > 0)`）。
+5. **必写单元测试与精确断言值**
+   - `T-02-30` – `T-02-34`：导航干扰偏移 `1500m`、失败锁存零重掷、`ewImmune` 与 `aiVision` 免疫、欺骗诱导 `Retarget(6000,1000)`。
+   - `T-02-35` – `T-02-40`：反无人机 `Return/Crash/Hover` 与 3s 后坠落、时期弱化/断电/冬季、国家级欺骗不叠加、城区干扰计时 `UrbanNavJamSec`、`IsInFriendlyEwZone` 与 `ShieldHitProbMult == 0.6`。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~ElectronicWarfareTests"
+   ```
+
+---
+
+### `M1-T14`（WS01-008）：`EmissionSystem`（系统 6）：4 种辐射策略、反辐射锁定归航与 `ExposureSystem`（系统 11）
+
+1. **目标文件**
+   - 创建：`sim/Sensing/EmissionSystem.cs`、`sim/Sensing/ExposureSystem.cs`、`sim/Sensing/FireControlQueries.cs`
+   - 创建：`sim.tests/Sensing/EmissionAndExposureTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/02_sensing_tracks_ew_emission.md`](../spec/02_sensing_tracks_ew_emission.md) §1.5、§3.4.1–3.4.8（4 种辐射策略 `always_on / on_warning / intermittent / silent_standby`、`decoy_coordinated`、反辐射导弹锁定与 3 种关机触发规则、主雷达被毁邻近接替、开火后自动转移标记）、§3.6.1–3.6.5（暴露度速率、发射增量、侦察机目击、阈值跨越事件）、§7.4–7.5（`T-02-50` – `T-02-75`）。
+   - Python 黄金参考：[`tools/papersim/sensing.py`](../../tools/papersim/sensing.py) 第 `698–915` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Sensing;
+
+   public sealed class EmissionSystem : ISimSystem
+   {
+       public int Order => 6;
+       public string Name => "EmissionSystem";
+       public string StreamName => "emission";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+
+   public sealed class ExposureSystem : ISimSystem
+   {
+       public int Order => 11;
+       public string Name => "ExposureSystem";
+       public string StreamName => "exposure";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **`silent_standby` 火控指示窗口（`T-02-53`）**：平时火控雷达关机（`On = false, FcMode = Off`）；当同网存在 `NetworkQuality >= Approximate` 的航迹，且目标进入或将在 $\tau \le \text{CueLeadSec}$（6s）内进入本单位任一可用武器的有效射程时，自动开机（`On = true, FcMode = Cued`）。
+   - **反辐射导弹归航与关机剩余距离分档（`T-02-56` – `T-02-58`）**：
+     - 对 `tracksEmittingRadarOnly == true` 的弹药（Kh-31P），首次生成时记录初始距离 `ArmInitialDistM`；只要目标雷达 `On == true`，设 `th.HomingUnitId = unit.Id`。
+     - 当该导弹首次被我方探测生成航迹时，发出 `ArmThreatDetected`；若触发规则为 `ShutdownImmediately`（或 `ShutdownAfterCurrentIntercept` 且当前无在飞本单位拦截弹，或玩家在二选一中选择关机规避），雷达立即关机（`EmitterSwitched(ArmShutdown)`），清空 `HomingUnitId = 0`，并按关机瞬间剩余距离比 $f = d_{\text{rem}} / d_{\text{init}}$ 锁存 `ArmHitProbMult`（$f > 0.5 \Rightarrow 0.2$；$0.2 < f \le 0.5 \Rightarrow 0.5$；$f \le 0.2 \Rightarrow 0.8$）。
+   - **暴露度累积与阈值事件（`T-02-55`、`T-02-70` – `T-02-74`）**：
+     - 开机辐射源每步增加速率 `rate`（火控雷达处于 `Cued` 状态时乘 `Cueing.Cued.ExposureMult = 0.3`；处于 `SelfSearch` 时按 `2.0/s`）；关机且当步未开火时每秒衰减 `SilentDecayPerSec`（`-0.5/s`）。
+     - 导弹发射每枚增加 `+5.0`（`GunFired` 身管射击根据武器暴露等级增加，`0` 级不加）；在侦察平台 `p_recon` 半径内每秒 `+0.5`（多架不叠加）。
+     - 跨越 `40 / 70 / 100` 阈值时按升序（下降时按降序）发出 `ExposureThresholdCrossed`。完成转移 `CompletedRelocation` 时：若目标备用阵地未被敌侦察（`!DestinationScouted`）则 `Exposure` 归 `0.0`；若已被侦察则减半 `Exposure *= 0.5`。
+5. **必写单元测试与精确断言值**
+   - `T-02-50` – `T-02-65`：4 种策略初始与切换、`silent_standby` 第 9 步开机、火控指示暴露比 `0.3`、反辐射关机时机与 `ArmHitProbMult`（`0.2 / 0.5 / 0.8`）、扇区静默/强开命令、主雷达被毁邻近接替、开火后自动设置 `PendingRelocationAltId`。
+   - `T-02-70` – `T-02-75`：累积与静默衰减、发射增量 `+5/枚`、侦察机不叠加、阈值 `40/70/100` 升序与转移清零/减半。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~EmissionAndExposureTests"
+   ```
+
+---
+
+### `M1-T15`（WS01-010a）：`InterceptSolver`（3D 步进包围 + 32 步二分）与 `WeaponParams` 命中率修正链
+
+1. **目标文件**
+   - 创建：`sim/Engagement/InterceptSolver.cs`、`sim/Engagement/WeaponParams.cs`
+   - 创建：`sim.tests/Engagement/InterceptSolverTests.cs`、`sim.tests/Engagement/HitProbabilityTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §1.1–1.2、§3.1.1–3.1.3（3D 距离追赶方程、$k_0$ 下界采样起点裁剪、落地时刻前包络抢救、32 步固定二分迭代）、§3.3.2（9 项命中率修正链 `m1..m9` 与反应时间倍率）、§7.1–7.2（`T-03-01` – `T-03-10`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `47–260` 行；[`tools/spec_calc/03/calc_03.py`](../../tools/spec_calc/03/calc_03.py)。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public readonly record struct InterceptSolution(double DtSec, Vec2 Pos, double AltM);
+
+   public static class InterceptSolver
+   {
+       public const int BisectionIterations = 32;
+       public static InterceptSolution? Solve(
+           Vec2 origin, double speedMps, double rangeM, double ceilingM,
+           Func<double, (Vec2 Pos, double AltM, bool Arrived)> predictFn,
+           double sampleSec = 1.0, int iters = BisectionIterations, double? maxSpeed3DMps = null);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **可达判据**：在 $\Delta t > 0$ 时，预测目标位置 $(P(\Delta t), z(\Delta t))$ 到发射点 $(O, 0)$ 的 3D 距离 $d_{3\text{D}}(\Delta t) = \sqrt{(P_x - O_x)^2 + (P_y - O_y)^2 + z^2}$；若 $v_{\text{ic}} \cdot \Delta t + 10^{-9} \ge d_{3\text{D}}(\Delta t)$ 则可达。
+   - **$k_0$ 采样下界裁剪与落地前抢救**：
+     - 最大探索步数 $k_{\max} = \max(1, \lceil \sqrt{R^2 + H^2} / (v_{\text{ic}} \cdot \Delta t_{\text{sample}}) - 10^{-9} \rceil)$；若已知目标 3D 最大速度上界 $v_{\max}$，则起始步 $k_0 = \max(1, \lfloor d_{3\text{D}}(0) / ((v_{\text{ic}} + v_{\max}) \cdot \Delta t_{\text{sample}}) \rfloor)$。
+     - 步进扫描 $k = k_0 \dots k_{\max}$：若第 $k$ 步目标已 `Arrived`，在 $((k-1)\Delta t, k\Delta t)$ 内用 16 步二分定位精确到达前一瞬 $t_{\text{arr}}^{-}$，检查 `reach(t_arr^-)` 是否成立；若成立则以 $[lo, t_{\text{arr}}^{-}]$ 作为二分搜索区间（避免漏掉贴近目标点前的最后拦截机会）。
+     - 找到 $[lo, hi]$ 后固定执行 **32 次二分迭代**；最后校验水平距离 $\le R + 10^{-9}$ 且 $0 \le z \le H + 10^{-9}$（`T-03-04`）。
+   - **命中率 9 项修正链（从左到右严格顺序连乘）**：基础矩阵值（诱饵查 `decoyUsesColumn = UAV`） $\times m_1$（目标 `interceptProbMult`） $\times m_2$（航迹质量：身管对 `Vague` 乘 `0.5`） $\times m_3$（`newPositionFirstNight = 0.7`） $\times m_4$（疲劳 `crewFatigue = 0.85`） $\times m_5$（王牌 `aceCrew = 1.15`） $\times m_6$（拦截无人机在友军 EW 区内 `0.6`） $\times m_7$（2025-09 起规避型目标对拦截无人机 `0.6`） $\times m_8$（`CarryIn.AutoResolve`） $\times m_9$（单位战损 `DamageEfficiencyMult`），最终 `Math.Clamp(p, 0.0, 1.0)`（`T-03-08`）。
+5. **必写单元测试与精确断言值**
+   - `T-03-01` – `T-03-06`：迎头 `TimeSec = 10.055419054813683`、横穿 `8.613035562681034`、追不上 `null`、包络外 `null` / 进入包络 `5.600198804168031`、先落地/超射高 `null`、慢速拦截无人机 `33.582866332959384`。
+   - `T-03-07` – `T-03-10`：基础概率与诱饵列、9 项修正链连乘 `0.1182384`（`==`）、截断 `1.0` 与弹道 `0.35`、反应时间连乘 `7.3125`。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~InterceptSolverTests|FullyQualifiedName~HitProbabilityTests"
+   ```
+
+---
+
+### `M1-T16`（WS01-009）：`EngagementSystem`（系统 7）：交战规则过滤、弹药保留、期望成本选优与装填冷却
+
+1. **目标文件**
+   - 创建：`sim/Engagement/EngagementSystem.cs`
+   - 创建：`sim.tests/Engagement/EngagementSystemTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §3.2.1–3.2.6（发射架初始化、16 种 `HoldReason` 掩码记录、粘滞目标与反应计时、多火力单元按期望单发成本分配与反应期礼让、身管点射耗弹与换枪管冷却、禁止/限制交战区与战斗机专区）、§7.3–7.4（`T-03-11` – `T-03-27`、`T-03-56`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `262–572` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public sealed class EngagementSystem : ISimSystem
+   {
+       public int Order => 7;
+       public string Name => "EngagementSystem";
+       public string StreamName => "engagement"; // 全夜 0 随机数消耗
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **粘滞目标（Sticky Target / `T-03-23`）**：若武器通道已锁定 `TargetTrackId != 0` 且该航迹在本步依然满足所有可交战条件與包络，保持锁定该航迹且**不重置** `ReadyAtSec`（即使本步出现了优先级更高的新目标也不切换）。
+   - **多火力单元期望单发成本排序与反应期礼让（`B-T3-02`、`C-T1-14` / `T-03-20`）**：
+     - 各武器通道按期望单发成本 $\text{expectedCost} = \text{shotCostMusd} / \max(p_{\text{hit}}, 0.05)$ 升序（并列按 `FireUnit.Id`、武器下标升序）处理。
+     - 当昂贵武器已到 `ReadyAtSec` 准备对某目标开火时，若已有**更低期望单发成本**的武器通道正锁定同一目标处于反应计时中（`ReadyAtSec > TimeSec`），预测该便宜武器在 `ReadyAtSec` 发射后的拦截时刻 $t_{\text{cheap}}$：若 $t_{\text{cheap}} + \text{cheap.ShotIntervalSec} \le t_{\text{arrive}} - 10^{-9}$（即便宜武器万一未命中仍留有补射时间），则昂贵武器本步**礼让不开火**；否则昂贵武器立即开火。
+   - **`HoldReason` 掩码与去重事件**：当目标在武器射程内但因 `HoldFire / TagNotAllowedByRule / AmmoReserve / PerLevelLimitReached / TrackQualityTooLow / EmissionSilent / FireControlOff / NoEngagementZone / FighterExclusiveZone` 等原因未能交战时，将对应位写入 `threat.HeldMask |= (1 << (int)reason)`，且每个 `(FireUnitId, WeaponId, TrackId, Reason)` 组合全夜只发一次 `EngagementHeld` 事件（`T-03-13`）。
+5. **必写单元测试与精确断言值**
+   - `T-03-11` – `T-03-19`：反应 3s 后第 4 步发射、射击间隔 15s、标签白名单与 `EngagementHeld`、`Vague` 航迹身管射击、弹药保留 `AmmoReserve`、`perLevelLimit`、`restrictToEnemies`。
+   - `T-03-20` – `T-03-27` & `T-03-56`：同成本按 ID 升序 / 异成本按期望成本优先 / 反应期礼让与来不及补射保护、齐射 `SalvoSize = 2`、目标排序与粘滞锁定、身管耗弹与换枪管 30s 冷却、行进间射击、禁射区与战斗机专区、下界优先队列加速与朴素遍历 100% 逐位一致。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~EngagementSystemTests"
+   ```
+
+---
+
+### `M1-T17`（WS01-010b）：`InterceptorSystem`（系统 8）：拦截弹飞行、半主动失锁、命中掷骰与杀伤结算
+
+1. **目标文件**
+   - 创建：`sim/Engagement/InterceptorSystem.cs`
+   - 创建：`sim.tests/Engagement/InterceptorSystemTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §3.3.1–3.3.3（目标机动 `TargetManeuvered` 失效、到点拦截弹按 `(InterceptAtSec, Id)` 排序结算、与同一步落地 `ThreatArrived` 的时间比较、身管当步结算、位置线性插值）、§7.5（`T-03-28` – `T-03-30`、`T-03-57`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `573–710` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public sealed class InterceptorSystem : ISimSystem
+   {
+       public int Order => 8;
+       public string Name => "InterceptorSystem";
+       public string StreamName => "intercept";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **目标改道失效（`A-2-09` / `T-03-57`）**：若在途拦截弹记录的 `TargetPathVersion != threat.PathVersion`（或本步收到该目标的 `ThreatManeuvered` 事件），按拦截弹 `Id` 升序发出 `InterceptorExpired(TargetManeuvered)` 并移除，**不消耗** `intercept` 子流随机数。
+   - **同一步拦截与落地竞态（`A-4-02` / `T-03-57`）**：若目标在本步系统 2 已到达（`Phase == Arrived`），比较 `ic.InterceptAtSec` 与 `threat.ArrivedAtSec`：
+     - 若 `ic.InterceptAtSec <= threat.ArrivedAtSec + 1e-9`，拦截弹先到，正常掷骰结算（若命中则 `Remove(threat.Id)`，系统 10 将因 `!threat.Alive` 跳过落地伤害！）；
+     - 若 `ic.InterceptAtSec > threat.ArrivedAtSec + 1e-9`，目标已先落地，发出 `InterceptorExpired(TargetArrived)` 并移除拦截弹。
+   - **结算顺序铁律（`T-03-28`、`T-03-29`）**：先结算所有本步到期（`InterceptAtSec <= TimeSec + 1e-9`）的飞行拦截弹，严格按 `(InterceptAtSec, Id)` 升序；随后再按 `GunFired` 事件顺序结算本步的身管射击。若目标已被前一枚拦截弹击落，后续指向同一目标的到期拦截弹发出 `InterceptorExpired(TargetGone)`（身管则直接跳过），均**不消耗**随机数。
+5. **必写单元测试与精确断言值**
+   - `T-03-28` – `T-03-30`：拦截弹先于身管结算、多枚拦截弹按 `InterceptAtSec` 升序掷骰、飞行途中线性位置插值 `(4500, 0), AltM = 500`。
+   - `T-03-57`：目标机动触发 `TargetManeuvered` 失效并允许下一拍重锁；同一步 `10.1 <= 10.2` 拦截成功阻止落地 vs `10.6 > 10.2` `TargetArrived` 失效。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~InterceptorSystemTests"
+   ```
+
+---
+
+### `M1-T18`（WS01-018）：`ExternalSupportSystem`（系统 9）：战斗机巡逻区、防空净空限制、国级干扰与邻州借调
+
+1. **目标文件**
+   - 创建：`sim/Engagement/ExternalSupportSystem.cs`
+   - 创建：`sim.tests/Support/ExternalSupportTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §1.3、§3.4.1–3.4.4（`CallSupport` 9 项校验、大空袭夜 `bigRaid` 拒绝掷骰与退还、到位延迟与持续时长、战斗机巡逻自动索敌交战与 `killsPerSortie` 上限返航）、§7.6（`T-03-31` – `T-03-34`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `712–835` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public sealed class ExternalSupportSystem : ISimSystem
+   {
+       public int Order => 9;
+       public string Name => "ExternalSupportSystem";
+       public string StreamName => "support";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **呼叫校验与大空袭拒绝（`T-03-31`、`T-03-32`）**：阶段 0 校验支援是否存在、关卡闸门、`fighterMode`、本场跑道 `airbase_runway` 存活、目标点不在 `frontline_risk` 区、架次额度 `SortiesRemaining >= 1` 及指挥点。系统 9 执行时，若本夜 `bigRaid == true` 且支援含 `refusalChanceOnBigRaid`（`0.45`），用 `support` 子流掷骰；若被拒绝，发出 `SupportRefused(BigRaidDiverted)` 并**退还已扣的架次额度与指挥点**。
+   - **战斗机巡逻交战（`T-03-34`）**：`State == Active` 的战斗机支援实体每步按 `fighterRule` 在其巡逻圆内索敌（航迹质量只需 `>= Approximate`），经历反应时间后发射 `SupportAssetId = asset.Id, FireUnitId = 0` 的 `Interceptor`；当累计击落数达到 `killsPerSortie` 或弹药打光或时间到期时，当步发出 `SupportEnded(KillsReached / AmmoOut / Duration)` 并移除。
+5. **必写单元测试与精确断言值**
+   - `T-03-31` – `T-03-34`：9 种 `CallSupport` 校验结果、`bigRaid: true` 拒绝退还架次与指挥点、场外 480s vs 本场跑道 180s 到位、猎杀无人机满 2 架当步 `SupportEnded(KillsReached)`。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~ExternalSupportTests"
+   ```
+
+---
+
+### `M1-T19`（WS01-012）：`ImpactSystem`（系统 10）：精度档偏移、设施伤害、我方单位战损与城区拦截残骸 `Debris`
+
+1. **目标文件**
+   - 创建：`sim/Engagement/ImpactSystem.cs`、`sim/Engagement/LeakAnalyzer.cs`
+   - 创建：`sim.tests/Impact/ImpactAndDebrisTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §1.4、§3.5.1–3.5.8（精度档升/降档与极坐标偏移抽样、溅射线性衰减与 `AwayFromZero` 取整、保护目标 HP 扣减、我方单位战损与车载自卫干扰 `ShieldHitProbMult`、反辐射失锁坠毁、多子弹头 `submunitions`、城区拦截残骸 `Debris` 同格判定）、§7.7（`T-03-35` – `T-03-43`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `838–1035` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public sealed class ImpactSystem : ISimSystem
+   {
+       public int Order => 10;
+       public string Name => "ImpactSystem";
+       public string StreamName => "impact";
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+       public static int RoundDamageLevel(double rawLevel);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **有效精度档与落点偏移（`T-03-35`、`T-03-40`）**：基准档 `A/B/C/D` 若场上有存活 `spotter` 平台（如 Orlan-10）则升 1 档（向 `A`），再减去 `AccuracyTierDrop`（向 `D`，截断在 `[A, D]`）。用 `impact` 子流连续取两个 `NextDouble()`：$u_1$ 在 `[minOffsetM, maxOffsetM]`（若 `EwNav == Applied` 且未降档则加上 `EwExtraOffsetM`）线性插值距离 $d$，$u_2$ 算方位角 $\theta = 2\pi u_2$（注意：哪怕 A 档偏移区间为 `[0, 0]`，也必须固定消耗 2 次 `NextDouble()`！）。
+   - **溅射衰减与 `MidpointRounding.AwayFromZero`（`T-03-36`）**：距离目标边缘 $r = \max(0, \text{dist} - \text{radiusM})$；若 $r > R_{\text{splash}}$ 则等级为 `0`；否则 $\text{raw} = L_0 \cdot (1 - (1 - \text{edgeRatio}) \cdot (r / R_{\text{splash}}))$，用 `(int)Math.Round(raw, MidpointRounding.AwayFromZero)` 四舍五入（如 `1.5 -> 2`）。
+   - **城区拦截残骸 `Debris`（`C-T2-05` / `T-03-43`）**：扫描本步系统 8 发出的 `InterceptResolved(Hit == true)`，若拦截点在城区多边形内（`OverUrban == true`）且被击落目标为弹药，残骸伤害等级 $L_{\text{debris}} = \text{RoundDamageLevel}(L_0 \times 0.3)$；当 `urbanInterceptRadiusCells == 0` 时按 **1 km 网格同格**（`(int)Math.Floor(x / 1000.0)` 與 `(int)Math.Floor(y / 1000.0)` 相同）判定受影响的保护目标与我方单位，并发出 `DebrisFell`。
+5. **必写单元测试与精确断言值**
+   - `T-03-35` – `T-03-39`：落点极坐标偏移、溅射衰减表、民用建筑 `NextInt` 掷骰与电厂百分比扣血、我方单位轻伤/重伤离线/毁雷达或发射架/自卫干扰偏转、柳叶刀对车辆 `3×` 加成。
+   - `T-03-40` – `T-03-43`：Orlan 升档与 EW 降档、反辐射 `ArmMissed` 零伤害、Oreshnik 多子弹头 6 次随机数、城区拦截残骸同 1km 格判定。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~ImpactAndDebrisTests"
+   ```
+
+---
+
+### `M1-T20`（WS01-013）：电网连通性传播（BFS 供电判定）与 `CivilDefense` 空袭警报响应度演进
+
+1. **目标文件**
+   - 创建：`sim/Engagement/GridPowerPropagator.cs`、`sim/Engagement/CivilDefenseRules.cs`
+   - 创建：`sim.tests/Civil/GridAndAlertTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §1.5、§3.6.1–3.6.4（电网节点与保护目标绑定、单位 1km 就近接入、无向图 BFS 供电传播、`GridPowerChanged` 事件与 `Collapsed` 判定）、§3.7.1–3.7.4（`SetAirRaidAlert` 疲劳扣减、避难进度 `ShelteredFrac` 演进、避难所断电折减与住宅 `LossHp` 保护）、§7.8–7.9（`T-03-44` – `T-03-48`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `1036–1110` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public static class GridPowerPropagator
+   {
+       public static void ConnectUnitsAtStart(SimContext ctx);
+       public static void RecomputeIfDirty(SimContext ctx);
+   }
+
+   public static class CivilDefenseRules
+   {
+       public static void ApplyAlertCommand(SimContext ctx, bool on, AlertCause cause);
+       public static void StepCivilDefense(SimContext ctx);
+       public static double ComputeResidentialLossHp(SimContext ctx, int hpLost);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **电网无向图 BFS 传播（`T-03-44`、`T-03-45`）**：节点 `Operational` 当且仅当其绑定的全部保护目标 `Hp > 0`。以所有 `Operational && (Kind == Source || OffMapSupply == true)` 的节点为多源起点，沿无向连线 `links` 在 `Operational` 节点间做 BFS；所有可达节点 `Powered = true`，不可达节点 `Powered = false`。状态变化的节点按实体 `Id` 升序发出 `GridPowerChanged`，并同步更新接入该节点的传感器/电子战单位的 `u.Powered`。
+   - **空袭警报疲劳与避难折减（`T-03-47`、`T-03-48`）**：每夜前 `freeRaisesPerNight`（2）次拉响不扣响应度；第 3 次起每次拉响令 `Responsiveness = Math.Max(MinResponsiveness, Responsiveness - 0.1)`。警报开启期间每步 `ShelteredFrac = Math.Min(Responsiveness, ShelteredFrac + Responsiveness / ShelterSec)`；解除警报瞬间 `ShelteredFrac = 0.0`。住宅受击损失 `hpLost` 时，计入加权损失的 `LossHp += hpLost * (1.0 - ShelteredFrac * ProtectionFrac * ShelterQuality)`。
+5. **必写单元测试与精确断言值**
+   - `T-03-44` – `T-03-46`：`sub` 被毁导致下游 4 节点断电并触发 `Collapsed = true`、无向连线与场外供电、探测单位 1km 内就近接入电网（火力单元不接入）。
+   - `T-03-47` – `T-03-48`：连续 10 次拉响响应度递减至 `0.3`、第 60 步避难折减后 `LossHp += 1.1999999999999988`、断电避难所 `ShelterQuality == 0.75`。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~GridAndAlertTests"
+   ```
+
+---
+
+### `M1-T21`（WS01-014）：`ScoringSystem`（系统 13）：交换比、挥霍质询、囤弹漏防、信任值奖惩与胜负评级
+
+1. **目标文件**
+   - 创建：`sim/Engagement/ScoringSystem.cs`
+   - 创建：`sim.tests/Scoring/ScoringSystemTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §1.6、§3.8.1–3.8.5（事件消费与威胁守恒统计、加权设施损失 `WeightedLossFrac`、混合潜在损失公式与单武器纯造价交换比 `RawCostRatio`、11 种突防原因 `LeakReason` 优先级、失败条件实时判定）、§7.10（`T-03-49` – `T-03-53`、`T-03-58`）。
+   - Python 黄金参考：[`tools/papersim/engagement.py`](../../tools/papersim/engagement.py) 第 `1112–1244` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public sealed class ScoringSystem : ISimSystem
+   {
+       public int Order => 13;
+       public string Name => "ScoringSystem";
+       public string StreamName => "scoring"; // 全夜 0 随机数消耗
+       public void Initialize(SimContext ctx);
+       public void Execute(SimContext ctx);
+       public static double ComputeWeightedLossFrac(SimState state);
+       public static double ComputePotentialLossMusd(SimContext ctx, Threat threat);
+       public static NightResult BuildResult(SimContext ctx, NightOutcome outcome, NightEndReason reason, string? detail = null);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **潜在损失混合公式 vs 单武器挥霍判定（`B-T3-01`、`T-04` / `T-03-51`）**：
+     - 宏观被拦截目标潜在损失：`DECOY` 为 `0.0`；`Platform` 为 `10.0 M$`；普通弹药为 $\max(\text{enemyCost}, 0.1 \times 2^{\text{damageLevel}-1} \times w_{\text{struct}})$（子母弹乘子弹头数）。
+     - 单武器“好弹打烂靶”追责（`WastefulShots`）：仅看纯造价之比 `RawEnemyCostMusd / ShotCostMusd`；当单发造价 $\ge 0.80\text{ M\$}$ 且纯造价交换比 $< 0.20$（如用 `$0.85M` 的 AIM-120 打 `$0.05M` 的 Shahed）时计入 `WastefulShots`。
+   - **囤弹漏防（`HighThreatLeaksWithReserve`）與全关配额上限修正**：当 `damageLevel >= 7` 的高威胁弹药突防且其 `LeakMask` 含 `HeldByRule`（或场上仍有昂贵防空弹可用）时计入囤弹漏防；计算场上剩余昂贵导弹数时，若某武器设有 `perLevelLimit`，该武器的有效可用余弹必须对剩余配额 `max(0, perLevelLimit - perLevelUsed)` 取 `min`（消除发射架上因配额耗尽而无法发射的“幽灵余弹”误判！）。
+5. **必写单元测试与精确断言值**
+   - `T-03-49` – `T-03-53`：`WeightedLossFrac = 0.55` 当步触发 `Defeated`、多失败条件按数据顺序取首个、`PotentialLoss = 2.0` 与 `ExchangeRatio = 2.4906600249066`、11 种 `LeakReason` 优先级掩码表、`UrbanInterceptRatio = 0.75`。
+   - `T-03-58`：邻国越界 3 种类型记录、警报关卡闸门与每步威胁守恒不变量。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~ScoringSystemTests"
+   ```
+
+---
+
+### `M1-T22`（WS01-014b）：`CarryOut` 跨夜结转打包、`NightResult` JSON 序列化与 02+03 联合集成测试
+
+1. **目标文件**
+   - 创建：`sim/Engagement/NightResultSerializer.cs`
+   - 更新：`sim/Engagement/ScoringSystem.cs`（完善 `BuildResult` 与 `CarryOut` 全部字段组装）
+   - 创建：`sim.tests/Scoring/NightResultAndCarryOutTests.cs`
+2. **规格书与参考实现对照**
+   - 规格书：[`docs/spec/03_engagement_impact_scoring.md`](../spec/03_engagement_impact_scoring.md) §3.8.6（`NightResult` 8 大汇总块与 `CarryOut` 组装顺序、CamelCase 无缩进确定性 JSON 序列化规范）、§6（11 条运行时不变量）、§7.10（`T-03-54`、`T-03-55`）；[`docs/spec/02_sensing_tracks_ew_emission.md`](../spec/02_sensing_tracks_ew_emission.md) §7.6（`T-02-80` – `T-02-83`）。
+   - Python 黄金参考：[`tools/papersim/world.py`](../../tools/papersim/world.py) 第 `770–855` 行。
+3. **核心 C# 类型与方法签名**
+   ```csharp
+   namespace Nightwatch.Sim.Engagement;
+
+   public static class NightResultSerializer
+   {
+       public static string ToJson(NightResult result);
+       public static NightResult FromJson(string json);
+   }
+   ```
+4. **核心算法步骤与易错点**
+   - **排序铁律（决定 JSON 逐字节可复现）**：
+     - `CarryOut.Units`：合并存活非虚拟单位与 `DestroyedUnitSnapshots`，严格按 `RosterId` 升序；
+     - `CarryOut.Structures`：按结构实体 `Id` 升序；
+     - `Ammo.Weapons`、`Ammo.PoolRemaining`、`Exchange.ByWeapon`、`CarryOut.KillsByEnemy`、`CarryOut.CustomMetrics`：全部按字符串键 `StringComparer.Ordinal` 升序！
+   - **`urban_nav_jam_triggered` 指标（`B-T2-36`）**：当 `State.Ew.UrbanNavJamSec >= Rules.Ew.UrbanNavJamMinSec`（60s）时写入 `CarryOut.CustomMetrics["urban_nav_jam_triggered"] = 1.0`。
+   - **JSON 序列化无 `NaN / Infinity`**：所有无定义的比值（如零开火时的 `ExchangeRatio`、零拦截时的 `UrbanInterceptRatio`）必须输出为 JSON `null`。
+5. **必写单元测试与精确断言值**
+   - `T-03-54` – `T-03-55`：`NightResult` 8 大字段非空、`ToJson -> FromJson -> ToJson` 两次 JSON 字符串逐字节相等、双世界 30 步 `ComputeStateHash()` 逐步相等且 `engagement`/`scoring` 子流 0 消耗。
+   - `T-02-80` – `T-02-83`：02 规则文件加载校验與 `Mini02` 全系统跑满 600 步确定性哈希校验。
+6. **验收命令**
+   ```bash
+   dotnet test sim.tests --filter "FullyQualifiedName~NightResultAndCarryOutTests"
+   ```
