@@ -7,8 +7,8 @@
   };
   const canvas = document.getElementById("tactical-canvas");
   const $ = (id) => document.getElementById(id);
-  const apiGet = async (url) => (await fetch(url)).json();
-  const apiPost = async (url, data) => (await fetch(url, {
+  const apiGet = async (url) => window.nightwatchApi ? window.nightwatchApi("GET", url) : (await fetch(url)).json();
+  const apiPost = async (url, data) => window.nightwatchApi ? window.nightwatchApi("POST", url, data) : (await fetch(url, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data || {}),
   })).json();
 
