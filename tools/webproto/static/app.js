@@ -122,7 +122,7 @@
       <div class="intel-item ${it.accurate ? "" : "inaccurate"}">
         <div class="intel-meta">
           <span>${esc(it.relatedWave || "全夜")}</span>
-          <span class="${it.confidence === "confirmed" ? "intel-conf-ok" : "intel-conf-rumor"}">${it.confidence === "confirmed" ? "✓ 高可信通报" : "⚠ 研判估计"}</span>
+          <span class="${it.confidence === "confirmed" ? "intel-conf-ok" : "intel-conf-rumor"}">${it.confidence === "confirmed" ? "高可信通报" : "研判估计"}</span>
         </div><div>${esc(it.text)}</div>
       </div>`).join("");
   }
@@ -185,8 +185,8 @@
       const expV = u.exposure !== undefined ? u.exposure : (u.carryExposure || 0);
       const expFlag = u.isExposed || u.isKnownTarget || expV >= 70 ? "exposed" : "";
       const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
-      const em = isArmSilenced ? '<span class="em-arm">🔇 静默规避</span>'
-        : (u.emitter ? (u.emitter.on ? '<span class="em-on">◉ 开机</span>' : '<span>○ 静默</span>') : "");
+      const em = isArmSilenced ? '<span class="em-arm">规避静默</span>'
+        : (u.emitter ? (u.emitter.on ? '<span class="em-on">开机</span>' : '<span>静默</span>') : "");
       const w0 = (u.weapons && u.weapons[0] && u.weapons[0].rounds !== undefined) ? (u.weapons[0].rounds >= 0 ? `弹${u.weapons[0].rounds}` : "") : "";
       const expTxt = expV > 0 ? `<span class="${expV >= 70 ? "exp-hi" : (expV >= 35 ? "exp-mid" : "")}">暴${Math.round(expV)}%</span>` : "";
       const st = u.deployState ? (STATE_NAMES[u.deployState] || u.deployState) : "";
@@ -224,7 +224,7 @@
     const altOpts = alts.map((a) => `<option value="${esc(a.id)}">${esc(a.id)} (${Math.round(a.pos[0])}, ${Math.round(a.pos[1])})</option>`).join("");
     const curPol = u.emitter ? u.emitter.policyId : (u.emissionPolicy || "blink");
     const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
-    const expCol = exp >= 70 ? "#f87171" : (exp >= 35 ? "#fcd38a" : "#5eead4");
+    const expCol = exp >= 70 ? "var(--danger)" : (exp >= 35 ? "var(--accent)" : "var(--text)");
 
     let html = `
       <div class="insp-stats">
@@ -234,7 +234,7 @@
       </div>
       <div class="exp-bar-wrap" title="≥70% 将被敌方跨夜标定"><div class="exp-bar-fill" style="width:${Math.min(100, exp)}%"></div></div>`;
 
-    if (isArmSilenced) html += `<div class="insp-alert">🔇 规避静默中 — 危机解除后请手动切回闪烁 / 常开</div>`;
+    if (isArmSilenced) html += `<div class="insp-alert">规避静默中。危机解除后请手动切回闪烁或常开。</div>`;
 
     if ((u.emitter && u.emitter.hasEmitter) || u.hasRadar || u.unitDefId === "soviet_mid_range_radar" || u.unitDefId === "nasams") {
       html += `<div class="insp-row">
@@ -268,7 +268,7 @@
         const remQ = w.remainingQuota !== undefined && w.remainingQuota !== null
           ? Number(w.remainingQuota)
           : Math.max(0, plLim - Number(carryUsedMap[wid] || 0));
-        quotaHtml = `<div class="insp-row" style="font-size:11px;color:${remQ <= 0 ? "#f87171" : "#93c5fd"};">
+        quotaHtml = `<div class="insp-row" style="font-size:11px;color:${remQ <= 0 ? "var(--danger)" : "var(--text-2)"};">
           <span>本关剩余配额 <strong>${remQ}/${plLim}</strong> ${remQ <= 0 ? "· 配额已尽" : ""}</span>
         </div>`;
       }
@@ -283,7 +283,7 @@
             <option value="hold_fire" ${w.rule === "hold_fire" ? "selected" : ""}>停火</option>
           </select>
         </div>
-        <div class="insp-row"><span class="insp-label">保留弹数 <strong id="lbl-res-${esc(wid)}" style="color:#e2e8f0;font-family:var(--font-mono)">${w.ammoReserve || 0}</strong></span>
+        <div class="insp-row"><span class="insp-label">保留弹数 <strong id="lbl-res-${esc(wid)}" style="color:var(--text);font-family:var(--font-mono);font-weight:400">${w.ammoReserve || 0}</strong></span>
           <input type="range" min="0" max="4" value="${w.ammoReserve || 0}" class="insp-w-res" data-wid="${esc(wid)}" />
         </div>
         <div class="tag-checks">
@@ -436,7 +436,7 @@
     const isLast = rep.nightIndex >= ((state.meta && state.meta.totalNights) || 2);
     $("btn-next-night").classList.toggle("hidden", isLast);
     const rows = (rep.byEnemyType || []).map((r) =>
-      `<tr><td>${esc(r.name)}</td><td>${r.spawned}</td><td>${r.intercepted} <span style="color:var(--text-muted)">(${r.interceptRate}%)</span><span class="rate-bar"><i style="width:${Math.min(100, r.interceptRate)}%"></i></span></td><td style="color:${r.penetrated > 0 ? "#fca5a5" : "inherit"}">${r.penetrated}</td></tr>`).join("");
+      `<tr><td>${esc(r.name)}</td><td>${r.spawned}</td><td>${r.intercepted} <span style="color:var(--text-muted)">(${r.interceptRate}%)</span><span class="rate-bar"><i style="width:${Math.min(100, r.interceptRate)}%"></i></span></td><td style="color:${r.penetrated > 0 ? "var(--danger)" : "inherit"}">${r.penetrated}</td></tr>`).join("");
     const exposed = rep.exposedPositions || [];
     const kts = exposed.map((k) => `${esc(k.name)}(#${k.rosterId}, 暴露 ${k.exposure}%)`).join("、") || "无（全员隐蔽良好）";
     $("report-body").innerHTML = `
@@ -444,7 +444,7 @@
         <div class="stat-card"><div class="lbl">保卫加权损失率</div><div class="val">${rep.weightedLossPercent}%</div></div>
         <div class="stat-card"><div class="lbl">总拦截率</div><div class="val">${rep.summary.interceptRatePercent}% <span style="font-size:11px;color:var(--text-muted)">${rep.summary.totalIntercepted}/${rep.summary.totalSpawned}</span></div></div>
         <div class="stat-card"><div class="lbl">弹药效费比 (耗弹 / 毁伤)</div><div class="val">$${rep.exchange.ammoCostMusd}M / $${rep.exchange.interceptedValueMusd}M</div></div>
-        <div class="stat-card"><div class="lbl">公信力变动 (浪费 ${rep.accountability.wastefulShots} 发)</div><div class="val" style="color:${rep.trust.applied >= 0 ? "#6ee7b7" : "#fca5a5"}">${rep.trust.applied >= 0 ? "+" : ""}${rep.trust.applied}</div></div>
+        <div class="stat-card"><div class="lbl">公信力变动 (浪费 ${rep.accountability.wastefulShots} 发)</div><div class="val" style="color:${rep.trust.applied >= 0 ? "var(--ok)" : "var(--danger)"}">${rep.trust.applied >= 0 ? "+" : ""}${rep.trust.applied}</div></div>
       </div>
       <table class="report-table">
         <thead><tr><th>来袭威胁型号</th><th>来袭总数</th><th>成功拦截</th><th>突防命中</th></tr></thead>
@@ -618,7 +618,7 @@
       });
       if (unmoved.length > 0 && typeof window.confirm === "function") {
         const names = unmoved.map((k) => `${k.name}#${k.rosterId}`).join("、");
-        if (!window.confirm(`⚠️ 警告：${names} 在首夜已被敌军标定坐标（未移位超过 600m），今夜将遭敌方专门猎杀！是否仍直接开始第 2 夜？`)) {
+        if (!window.confirm(`警告：${names} 在首夜已被敌军标定坐标（未移位超过 600m），今夜将遭敌方专门猎杀！是否仍直接开始第 2 夜？`)) {
           return;
         }
       }

@@ -50,87 +50,87 @@ def format_sim_event(world: SimWorld, ev: SimEvent) -> Optional[Dict[str, Any]]:
     if et == SimEventType.DialogueShown:
         key = ev.data.get("key") or (ev.fields[1] if len(ev.fields) > 1 else "")
         line = tr(str(key), "各单位注意，空袭警报！按预案进入战斗位置。")
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "radio", "text": f"📻 指挥所：{line}", "radio": line}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "radio", "text": f"指挥所：{line}", "radio": line}
     if et == SimEventType.EarlyWarning:
         eid = str(ev.data.get("entry_id", ev.fields[1] if len(ev.fields) > 1 else ""))
         brg = round(math.degrees(float(ev.data.get("bearing_rad", 0.0)))) % 360
         is_bm = bool(ev.data.get("ballistic", False))
         ename = tr(f"map.{world.level.id}.{eid}", eid)
-        prefix = "🚨 弹道导弹预警" if is_bm else "📡 国家预警网"
+        prefix = "弹道导弹预警" if is_bm else "国家预警网"
         msg = f"{prefix}：{ename}（方位 {brg}°）发现空袭编队接近！"
         return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger" if is_bm else "warn", "text": msg, "radio": msg}
     if et == SimEventType.WaveStarted:
         wid = str(ev.data.get("wave_id", ev.fields[0] if ev.fields else ""))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"⚡ 敌方波次 [{wid}] 进入战区边界"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"敌方波次 [{wid}] 进入战区边界"}
     if et == SimEventType.TrackCreated:
         tid = int(ev.data.get("track_id", ev.fields[0] if ev.fields else 0))
         q = ev.data.get("quality", TrackQuality.Vague)
         q_str = {0: "模糊扇区", 1: "近似航迹", 2: "精确火控"}.get(int(q), "航迹")
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"🎯 建立新航迹 T-{tid}（质量：{q_str}）"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"建立新航迹 T-{tid}（质量：{q_str}）"}
     if et == SimEventType.DecoyIdentified:
         tid = int(ev.data.get("track_id", ev.fields[0] if ev.fields else 0))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "success", "text": f"🔍 雷达特征比对：航迹 T-{tid} 识破为【Gerbera 廉价诱饵】，全网自动停火省弹！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "success", "text": f"雷达特征比对：航迹 T-{tid} 识破为【Gerbera 廉价诱饵】，全网自动停火省弹！"}
     if et == SimEventType.InterceptorLaunched:
         fuid = int(ev.data.get("fire_unit_id", ev.fields[1] if len(ev.fields) > 1 else 0))
         wid = str(ev.data.get("weapon_id", ev.fields[2] if len(ev.fields) > 2 else ""))
         wname = tr(f"weapon.{wid}.name", wid)
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"🚀 {unit_name(fuid)} 发射 {wname} 迎击目标"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"{unit_name(fuid)} 发射 {wname} 迎击目标"}
     if et == SimEventType.GunFired:
         fuid = int(ev.data.get("fire_unit_id", ev.fields[0] if ev.fields else 0))
         fu = world.state.fire_units.try_get_including_removed(fuid)
         pos = [fu.pos.x, fu.pos.y] if fu and fu.pos else None
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"💥 {unit_name(fuid)} 高炮/机枪点射拦截", "fx": {"kind": "gun", "pos": pos}}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"{unit_name(fuid)} 高炮/机枪点射拦截", "fx": {"kind": "gun", "pos": pos}}
     if et == SimEventType.InterceptResolved:
         hit = bool(ev.data.get("hit", ev.fields[4] if len(ev.fields) > 4 else False))
         p_raw = ev.data.get("pos") or (ev.fields[5] if len(ev.fields) > 5 else None)
         pos = [p_raw.x, p_raw.y] if hasattr(p_raw, "x") else None
         if hit:
-            return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "success", "text": "✅ 拦截命中！敌空中目标在空中解体", "fx": {"kind": "hit", "pos": pos}}
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": "⚠️ 拦截弹脱靶，正在重新解算诸元", "fx": {"kind": "miss", "pos": pos}}
+            return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "success", "text": "拦截命中！敌空中目标在空中解体", "fx": {"kind": "hit", "pos": pos}}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": "拦截弹脱靶，正在重新解算诸元", "fx": {"kind": "miss", "pos": pos}}
     if et == SimEventType.ThreatImpacted:
         def_id = str(ev.data.get("def_id", ev.fields[1] if len(ev.fields) > 1 else ""))
         hit = bool(ev.data.get("hit", False))
         p_raw = ev.data.get("pos") or (ev.fields[3] if len(ev.fields) > 3 else None)
         pos = [p_raw.x, p_raw.y] if hasattr(p_raw, "x") else None
         if hit:
-            return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"🔥 {enemy_name(def_id)} 突防命中地面目标！", "fx": {"kind": "impact_hit", "pos": pos}}
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"💨 {enemy_name(def_id)} 偏离目标落入空地", "fx": {"kind": "impact_miss", "pos": pos}}
+            return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"{enemy_name(def_id)} 突防命中地面目标！", "fx": {"kind": "impact_hit", "pos": pos}}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"{enemy_name(def_id)} 偏离目标落入空地", "fx": {"kind": "impact_miss", "pos": pos}}
     if et == SimEventType.StructureDamaged:
         sdef = ev.fields[1] if len(ev.fields) > 1 else ""
         hp = ev.data.get("hp", 0)
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"🚨 保护目标【{struct_name(sdef)}】受损（剩余 HP: {hp}）！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"保护目标【{struct_name(sdef)}】受损（剩余 HP: {hp}）！"}
     if et == SimEventType.StructureDestroyed:
         sdef = ev.fields[1] if len(ev.fields) > 1 else ""
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"💀 保护目标【{struct_name(sdef)}】被彻底摧毁！", "radio": f"报告指挥所，{struct_name(sdef)}失去功能！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"保护目标【{struct_name(sdef)}】被彻底摧毁！", "radio": f"报告指挥所，{struct_name(sdef)}失去功能！"}
     if et == SimEventType.GridPowerChanged:
         powered = bool(ev.data.get("powered", False))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn" if powered else "danger", "text": "🔌 电网节点恢复供电" if powered else "⚡ 警告：变电节点断电，下游防空阵地转入备用电池！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn" if powered else "danger", "text": "电网节点恢复供电" if powered else "警告：变电节点断电，下游防空阵地转入备用电池！"}
     if et == SimEventType.ExposureThresholdCrossed:
         uid = int(ev.data.get("unit_id", 0))
         th_v = int(ev.data.get("threshold", 70))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger" if th_v >= 70 else "warn", "text": f"📡 电子侦察告警：{unit_name(uid)} 暴露度突破 {th_v}%！建议立即关机或转移阵地"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger" if th_v >= 70 else "warn", "text": f"电子侦察告警：{unit_name(uid)} 暴露度突破 {th_v}%！建议立即关机或转移阵地"}
     if et == SimEventType.KnownTargetAdded:
         uid = int(ev.data.get("unit_id", 0))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"🎯 敌军侦察已标定 {unit_name(uid)} 坐标并写入猎杀清单！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"敌军侦察已标定 {unit_name(uid)} 坐标并写入猎杀清单！"}
     if et == SimEventType.ArmThreatDetected:
         uid = int(ev.data.get("unit_id", 0))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"🚨 反辐射告警！敌导弹导引头已锁定 {unit_name(uid)}！", "radio": f"告警！反辐射导弹锁定 {unit_name(uid)}！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"反辐射告警！敌导弹导引头已锁定 {unit_name(uid)}！", "radio": f"告警！反辐射导弹锁定 {unit_name(uid)}！"}
     if et == SimEventType.ChoiceRequested:
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": "⏸️ 紧急战术抉择触发！请在 8.0 秒内下达指令"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": "紧急战术抉择触发！请在 8.0 秒内下达指令"}
     if et == SimEventType.ChoiceResolved:
         opt = int(ev.data.get("option", 0))
         opt_txt = "立即关机规避" if opt == 0 else "坚持开机拦截"
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"✔️ 紧急抉择已执行：【{opt_txt}】"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "info", "text": f"紧急抉择已执行：【{opt_txt}】"}
     if et == SimEventType.EwLinkCut or et == SimEventType.EwDiverted:
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "success", "text": "🟣 电子战压制生效：敌机导航/链路受干扰偏航！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "success", "text": "电子战压制生效：敌机导航/链路受干扰偏航！"}
     if et == SimEventType.MunitionReleased:
         cdef = str(ev.fields[2] if len(ev.fields) > 2 else "kh59")
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"✈️ 敌空中平台防区外投射【{enemy_name(cdef)}】！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"敌空中平台防区外投射【{enemy_name(cdef)}】！"}
     if et == SimEventType.AmmoDepleted:
         uid = int(ev.data.get("unit_id", ev.fields[0] if ev.fields else 0))
         wid = str(ev.data.get("weapon_id", ev.fields[1] if len(ev.fields) > 1 else ""))
         wname = tr(f"weapon.{wid}.name", wid)
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"⚠️ 弹药告罄：{unit_name(uid)} 的【{wname}】已打空！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"弹药告罄：{unit_name(uid)} 的【{wname}】已打空！"}
     if et == SimEventType.PlayerUnitDamaged:
         uid = int(ev.data.get("unit_id", ev.fields[0] if ev.fields else 0))
         dmg_kind = str(ev.fields[2] if len(ev.fields) > 2 else ev.data.get("damage_kind", "damaged"))
@@ -140,15 +140,15 @@ def format_sim_event(world: SimWorld, ev: SimEvent) -> Optional[Dict[str, Any]]:
             "radar_destroyed": "火控雷达被毁（丧失自主照射能力）",
             "launcher_destroyed": "发射架损毁（减少 1 部发射架）",
         }.get(dmg_kind, "受损")
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"💥 阵地受损：{unit_name(uid)} 遭敌方火力打击——{dmg_desc}！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"阵地受损：{unit_name(uid)} 遭敌方火力打击——{dmg_desc}！"}
     if et == SimEventType.PlayerUnitDestroyed:
         uid = int(ev.data.get("unit_id", ev.fields[0] if ev.fields else 0))
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"💀 阵地全毁：{unit_name(uid)} 被敌方火力彻底摧毁！", "radio": f"报告指挥所，{unit_name(uid)} 失去联络！"}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "danger", "text": f"阵地全毁：{unit_name(uid)} 被敌方火力彻底摧毁！", "radio": f"报告指挥所，{unit_name(uid)} 失去联络！"}
     if et == SimEventType.DebrisFell:
         p_raw = ev.data.get("pos") or (ev.fields[2] if len(ev.fields) > 2 else None)
         pos = [round(p_raw.x), round(p_raw.y)] if hasattr(p_raw, "x") else [0, 0]
         fx_pos = [p_raw.x, p_raw.y] if hasattr(p_raw, "x") else None
-        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"🧱 拦截残骸坠入城区（[{pos[0]}, {pos[1]}]），造成附带损伤！", "fx": {"kind": "miss", "pos": fx_pos}}
+        return {"tick": ev.tick, "clock": clk, "type": et.name, "level": "warn", "text": f"拦截残骸坠入城区（[{pos[0]}, {pos[1]}]），造成附带损伤！", "fx": {"kind": "miss", "pos": fx_pos}}
     return None
 
 

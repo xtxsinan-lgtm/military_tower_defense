@@ -316,7 +316,7 @@ class GameSession:
             if ok and u and u.emitter:
                 u.emitter.on = pol in ("continuous", "always_on", "blink")
                 setattr(u.emitter, "arm_silenced", pol == "silent")
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "Command", "level": "command", "text": f"📡 指令下达：单位 #{uid} 切换辐射策略为【{pol}】"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "Command", "level": "command", "text": f"指令下达：单位 #{uid} 切换辐射策略为【{pol}】"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=ok)
 
         if ctype_str == "BurstScan":
@@ -329,7 +329,7 @@ class GameSession:
                 u.emitter.fc_window_until_sec = self.world.ctx.time_sec + 180.0
                 setattr(u.emitter, "arm_silenced", False)
                 u.exposure = min(100.0, u.exposure + 8.0)
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "BurstScan", "level": "alert", "text": f"⚡ 脉冲开机扫描：单位 #{uid} 强制全功率开机刷新高精度航迹（暴露度 +8%）"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "BurstScan", "level": "alert", "text": f"脉冲开机扫描：单位 #{uid} 强制全功率开机刷新高精度航迹（暴露度 +8%）"})
                 return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
             return {"ok": False, "error": "Unit has no active radar emitter"}
 
@@ -349,7 +349,7 @@ class GameSession:
                     radius_m=30000.0,
                 )
                 st.support_assets.add(sa)
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "NationalSpoof", "level": "command", "text": "🟣 国家级 GNSS 导航欺骗网已激活（消耗 1 CP）！全图卫星制导武器精度大幅降级"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "NationalSpoof", "level": "command", "text": "国家级 GNSS 导航欺骗网已激活（消耗 1 CP）！全图卫星制导武器精度大幅降级"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
 
         if ctype_str in ("RelocateUnit", "Relocate"):
@@ -364,7 +364,7 @@ class GameSession:
             cmd = SimCommand(type=SimCommandType.RelocateUnit, effective_tick=st.tick + 1, params=params)
             ok = CommandStage.apply_command(self.world.ctx, cmd)
             if ok:
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "RelocateUnit", "level": "command", "text": f"🚚 阵地转移：单位 #{uid} 开始撤收并机动前往备用阵地 {alt_id or ''}（消耗 1 CP）"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "RelocateUnit", "level": "command", "text": f"阵地转移：单位 #{uid} 开始撤收并机动前往备用阵地 {alt_id or ''}（消耗 1 CP）"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=ok)
 
         if ctype_str in ("SetAirRaidAlert", "ToggleCivilAlert"):
@@ -372,7 +372,7 @@ class GameSession:
             cmd = SimCommand(type=SimCommandType.SetAirRaidAlert, effective_tick=st.tick + 1, params={"on": on})
             ok = CommandStage.apply_command(self.world.ctx, cmd)
             if ok:
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "AirRaidAlert", "level": "alert" if on else "info", "text": "🚨 全城防空警报拉响，市民进入掩体！" if on else "🔔 全城防空警报解除"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "AirRaidAlert", "level": "alert" if on else "info", "text": "全城防空警报拉响，市民进入掩体！" if on else "全城防空警报解除"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=ok)
 
         if ctype_str in ("SetEngagementRule", "SetAmmoReserve", "SetTargetWhitelist", "SetShootLookShoot"):
@@ -397,7 +397,7 @@ class GameSession:
                     setattr(ws, "whitelist", {parse_target_tag(t) for t in wl_raw if parse_target_tag(t) is not None})
                 if sls is not None:
                     setattr(ws, "shoot_look_shoot", bool(sls))
-            self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "EngagementRule", "level": "command", "text": f"🎯 射击学说更新：单位 #{uid} ({ctype_str})"})
+            self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "EngagementRule", "level": "command", "text": f"射击学说更新：单位 #{uid} ({ctype_str})"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
 
         if ctype_str == "AnswerChoice":
@@ -408,7 +408,7 @@ class GameSession:
                 ChoiceStage.resolve(self.world.ctx, ch, opt, timed_out=False)
                 st.choices.compact()
                 opt_txt = "选项A：立即关机规避反辐射导弹" if opt == 0 else "选项B：坚持开机引导拦截巡航导弹"
-                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "ChoiceResolved", "level": "choice", "text": f"⚡ 紧急抉择已下达：【{opt_txt}】"})
+                self.extra_logs.append({"tick": st.tick, "clock": clk, "type": "ChoiceResolved", "level": "choice", "text": f"紧急抉择已下达：【{opt_txt}】"})
             return self.build_snapshot([], hard_pause=False, pause_reason=None, command_ok=True)
 
         if ctype_str in ("TriggerChoice", "TriggerArmChoiceDemo"):

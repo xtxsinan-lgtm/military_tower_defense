@@ -35,7 +35,7 @@
       const ctype = (res.headers.get("content-type") || "").toLowerCase();
       if (res.ok && ctype.includes("application/json")) {
         backendMode = "server";
-        setEngineBadge("本地 Python 引擎", "#34d399");
+        setEngineBadge("本地 Python 引擎");
         return backendMode;
       }
     } catch (_) {
@@ -66,7 +66,7 @@
   function ensurePyodideLoaded() {
     if (pyodideReadyPromise) return pyodideReadyPromise;
     pyodideReadyPromise = (async () => {
-      setEngineBadge("⏳ 正在加载 WASM 模拟核心...", "#fbbf24");
+      setEngineBadge("正在加载 WASM 模拟核心…");
       const [bundle] = await Promise.all([
         fetch("py_bundle.json").then((r) => r.json()),
         typeof window.loadPyodide === "function"
@@ -104,11 +104,11 @@ def __nw_dispatch(method_str, url_str, body_json_str):
     status, resp = dispatch_api(method_str, url_str, body, SESSION_STORE)
     return json.dumps(resp, ensure_ascii=False)
 `);
-      setEngineBadge("✓ WASM 离线引擎就绪", "#34d399");
+      setEngineBadge("WASM 离线引擎");
       return pyodideInstance;
     })().catch((err) => {
       console.error("Pyodide init error:", err);
-      setEngineBadge("⚠ 引擎加载失败", "#f87171");
+      setEngineBadge("引擎加载失败", "#d4664f");
       throw err;
     });
     return pyodideReadyPromise;
