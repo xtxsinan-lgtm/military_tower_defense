@@ -997,7 +997,8 @@
       ctx.strokeStyle = "rgba(9, 9, 8, 0.9)"; ctx.lineWidth = 0.8; ctx.stroke();
       ctx.restore();
 
-      const tagStr = trk.identifiedAsDecoy ? "诱饵" : (trk.quality >= 3 ? trk.tag : `T${trk.quality}`);
+      const TAGS = { UAV: "无人机", CM: "巡航弹", BM: "弹道弹", AC_LOW: "飞机", ARM: "反辐射", DECOY: "诱饵", UNKNOWN: "?" };
+      const tagStr = trk.identifiedAsDecoy ? "诱饵" : (trk.quality >= 3 || trk.classified ? (TAGS[trk.tag] || trk.tag) : "?");
       haloText(ctx, tagStr, p.x + 10, p.y + 3.5, col, "600 9.5px 'IBM Plex Mono', 'SF Mono', Menlo, monospace", "left");
     });
 
@@ -1020,29 +1021,43 @@
       ctx.restore();
     });
 
-    // 瞬态爆炸与拦截光环
+    // 瞬态特效：hit=空中拦截成功；impact_hit=突防落地命中；其余为脱靶/点射
     const DUR = 1500;
     state.fxList = (state.fxList || []).filter((fx) => nowMs - fx.t0 < DUR);
     state.fxList.forEach((fx) => {
       const age = (nowMs - fx.t0) / DUR;
-      const isHit = fx.kind === "hit";
-      const p = worldToScreen(fx.pos[0], fx.pos[1], isHit ? 0 : 100, view, mode, sampleElevation(meta, fx.pos[0], fx.pos[1]));
-      if (age < 0.35) {
+      const kind = fx.kind;
+      const isKill = kind === "hit";
+      const isImpact = kind === "impact_hit";
+      const minor = !isKill && !isImpact;
+      const p = worldToScreen(fx.pos[0], fx.pos[1], isImpact ? 0 : 100, view, mode, sampleElevation(meta, fx.pos[0], fx.pos[1]));
+      const R = isImpact ? 30 : (isKill ? 20 : 8);
+      if (age < 0.35 && !minor) {
         const fa = 1 - age / 0.35;
-        const rg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, isHit ? 26 : 16);
-        rg.addColorStop(0, isHit ? `rgba(242, 214, 170, ${fa})` : `rgba(236, 232, 223, ${fa})`);
-        rg.addColorStop(0.4, isHit ? `rgba(214, 120, 60, ${fa * 0.7})` : `rgba(163, 177, 138, ${fa * 0.5})`);
+        const rg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R);
+        rg.addColorStop(0, isImpact ? `rgba(242, 214, 170, ${fa})` : `rgba(236, 232, 223, ${fa})`);
+        rg.addColorStop(0.4, isImpact ? `rgba(214, 120, 60, ${fa * 0.75})` : `rgba(163, 177, 138, ${fa * 0.55})`);
         rg.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = rg;
-        ctx.beginPath(); ctx.arc(p.x, p.y, isHit ? 26 : 16, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.strokeStyle = isHit ? `rgba(212, 102, 79, ${1 - age})` : `rgba(163, 177, 138, ${1 - age})`;
-      ctx.lineWidth = isHit ? 2.2 : 1.6;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 4 + age * (isHit ? 34 : 22), 0, Math.PI * 2); ctx.stroke();
-      if (isHit) {
+      ctx.strokeStyle = isImpact ? `rgba(212, 102, 79, ${1 - age})` : (isKill ? `rgba(163, 177, 138, ${1 - age})` : `rgba(177, 171, 158, ${(1 - age) * 0.5})`);
+      ctx.lineWidth = isImpact ? 2.2 : (isKill ? 1.6 : 1);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3 + age * (isImpact ? 38 : (isKill ? 24 : 8)), 0, Math.PI * 2); ctx.stroke();
+      if (isImpact) {
         ctx.strokeStyle = `rgba(227, 160, 67, ${(1 - age) * 0.6})`;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2 + age * 18, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2 + age * 20, 0, Math.PI * 2); ctx.stroke();
       }
+    });
+
+    // 关注脉冲（新手提示用）
+    state.pulses = (state.pulses || []).filter((pl) => nowMs - pl.t0 < 3000);
+    state.pulses.forEach((pl) => {
+      const age = ((nowMs - pl.t0) % 1000) / 1000;
+      const p = worldToScreen(pl.pos[0], pl.pos[1], 0, view, mode, sampleElevation(meta, pl.pos[0], pl.pos[1]));
+      ctx.strokeStyle = `rgba(212, 102, 79, ${1 - age})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 10 + age * 30, 0, Math.PI * 2); ctx.stroke();
     });
   }
 
