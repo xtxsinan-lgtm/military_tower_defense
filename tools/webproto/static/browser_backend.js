@@ -131,7 +131,7 @@ def __nw_dispatch(method_str, url_str, body_json_str):
     if (!pyodideInstance && !initialPrebakedUsed) {
       try {
         const pre = await loadPrebaked();
-        if (method === "GET" && url.startsWith("/api/init") && url.includes("night=1") && !url.includes("reset=1")) {
+        if (method === "GET" && url.startsWith("/api/init") && url.includes("night=1")) {
           return pre.init_n1;
         }
         if (method === "POST" && url === "/api/coverage") {
