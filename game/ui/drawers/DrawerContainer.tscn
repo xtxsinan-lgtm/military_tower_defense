@@ -1,0 +1,117 @@
+[gd_scene load_steps=2 format=3 uid="uid://nw_drawer_container"]
+
+[ext_resource type="Script" path="res://ui/controllers/DrawerContainerController.cs" id="1_drawer"]
+
+[node name="DrawerContainer" type="PanelContainer"]
+visible = false
+offset_left = 12.0
+offset_top = 10.0
+offset_right = 880.0
+offset_bottom = 660.0
+script = ExtResource("1_drawer")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HeaderBar" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="TitleRow" type="HBoxContainer" parent="VBox/HeaderBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="CodeBadge" type="Label" parent="VBox/HeaderBar/TitleRow"]
+layout_mode = 2
+text = "D1"
+
+[node name="TitleLabel" type="Label" parent="VBox/HeaderBar/TitleRow"]
+layout_mode = 2
+text = "战前部署与阵型沙盘"
+
+[node name="HintLabel" type="Label" parent="VBox/HeaderBar/TitleRow"]
+layout_mode = 2
+text = "点击底部指挥台器械或按 F1–F7 切换 · 按 Esc 收起还原本图"
+
+[node name="CloseButton" type="Button" parent="VBox/HeaderBar"]
+layout_mode = 2
+text = "× 收起抽屉"
+
+[node name="BodyScroll" type="ScrollContainer" parent="VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="SlotContainer" type="VBoxContainer" parent="VBox/BodyScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="SlotD1" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD1"]
+layout_mode = 2
+autowrap_mode = 3
+text = "部署原则：皮卡高射机枪（无限弹）前推堵截东路无人机群；IRIS-T 与 NASAMS 导弹护住 ★ 热电厂与变电站；观察哨塞进北山脊背面河谷填平 3.9% 低空盲区。"
+
+[node name="SlotD2" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD2"]
+layout_mode = 2
+autowrap_mode = 3
+text = "防空编制总览：主力防空武器 6 部（#6 NASAMS、#5 IRIS-T、#1–#4 皮卡高射机枪组）、远程警戒雷达 1 座（#7 苏制警戒雷达站）、辅助暗哨 9 处（听音哨×6 / 目视哨×3）。"
+
+[node name="SlotD3" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD3"]
+layout_mode = 2
+autowrap_mode = 3
+text = "火控与电磁条令：全关防空导弹共两夜配额（不可补给），务必把防空导弹设为“省弹：只打导弹”；雷达暴露度达 70% 将招来反辐射导弹。"
+
+[node name="SlotD4" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD4"]
+layout_mode = 2
+autowrap_mode = 3
+text = "空袭情报研判：东向走廊大批自杀式无人机直扑 ★ 热电厂；西北河谷低空走廊巡航导弹借北山脊盲区偷袭 ★ 水厂与 ★ 变电站。"
+
+[node name="SlotD5" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD5"]
+layout_mode = 2
+autowrap_mode = 3
+text = "城市电网与保卫目标：★ 热电厂（供电核心·权重×5）、★ 中心变电站（电网枢纽·权重×3）、★ 水厂（城市供水·权重×2）。"
+
+[node name="SlotD6" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD6"]
+layout_mode = 2
+autowrap_mode = 3
+text = "导弹库存与补给：IRIS-T 导弹 16 枚、NASAMS (AIM-120) 导弹 18 枚、12.7mm 高射机枪弹药无限。两夜共用同一批导弹库存，中间不补给。"
+
+[node name="SlotD7" type="VBoxContainer" parent="VBox/BodyScroll/SlotContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Banner" type="Label" parent="VBox/BodyScroll/SlotContainer/SlotD7"]
+layout_mode = 2
+autowrap_mode = 3
+text = "值班作战室与战况日志：实时记录雷达接触、导弹发射、拦截命中、阵地转移与上级紧急命令。"

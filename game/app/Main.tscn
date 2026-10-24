@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://nw_app_main"]
+
+[ext_resource type="Script" path="res://app/Main.cs" id="1_main"]
+[ext_resource type="PackedScene" path="res://ui/scenes/DeskMain.tscn" id="2_desk"]
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_main")
+
+[node name="DeskMain" parent="." instance=ExtResource("2_desk")]
+layout_mode = 1

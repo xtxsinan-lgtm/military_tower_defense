@@ -1,0 +1,98 @@
+[gd_scene load_steps=2 format=3 uid="uid://nw_unit_inspector_card"]
+
+[ext_resource type="Script" path="res://ui/map/UnitInspectorCard.cs" id="1_insp"]
+
+[node name="UnitInspectorCard" type="PanelContainer"]
+custom_minimum_size = Vector2(284, 340)
+offset_left = 12.0
+offset_top = 56.0
+offset_right = 296.0
+offset_bottom = 460.0
+script = ExtResource("1_insp")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HeaderRow" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "#6 NASAMS 中程防空导弹"
+
+[node name="BtnClose" type="Button" parent="VBox/HeaderRow"]
+layout_mode = 2
+text = "×"
+
+[node name="WeaponBanner" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="SpecLabel" type="Label" parent="VBox/WeaponBanner"]
+layout_mode = 2
+autowrap_mode = 3
+text = "AIM-120 中程防空导弹（25 km）+ 火控雷达"
+
+[node name="DescLabel" type="Label" parent="VBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "全城防空网核心主力，射程覆盖大半个战区。自带火控雷达，开机越久越容易暴露。"
+
+[node name="StatsRow" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="RangeVal" type="Label" parent="VBox/StatsRow"]
+layout_mode = 2
+text = "25.0 km"
+
+[node name="ExposureVal" type="Label" parent="VBox/StatsRow"]
+layout_mode = 2
+text = "0%"
+
+[node name="RadarLbl" type="Label" parent="VBox"]
+layout_mode = 2
+text = "雷达开关（影响探测与暴露度）"
+
+[node name="RadarRow" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BtnContinuous" type="Button" parent="VBox/RadarRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "常开"
+
+[node name="BtnBlink" type="Button" parent="VBox/RadarRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "闪烁"
+
+[node name="BtnSilent" type="Button" parent="VBox/RadarRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "静默"
+
+[node name="DoctrineLbl" type="Label" parent="VBox"]
+layout_mode = 2
+text = "开火纪律（打什么目标）"
+
+[node name="DoctrineRow" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BtnSave" type="Button" parent="VBox/DoctrineRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "只打导弹"
+
+[node name="BtnAll" type="Button" parent="VBox/DoctrineRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "无人机也打"
+
+[node name="BtnHold" type="Button" parent="VBox/DoctrineRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "停火待命"

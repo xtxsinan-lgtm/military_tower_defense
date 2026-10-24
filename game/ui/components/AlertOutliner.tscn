@@ -1,0 +1,129 @@
+[gd_scene load_steps=2 format=3 uid="uid://nw_alert_outliner"]
+
+[ext_resource type="Script" path="res://ui/controllers/AlertOutlinerController.cs" id="1_outliner"]
+
+[node name="AlertOutliner" type="PanelContainer"]
+custom_minimum_size = Vector2(300, 0)
+script = ExtResource("1_outliner")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="DeployCard" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CardTitle" type="Label" parent="VBox/DeployCard"]
+layout_mode = 2
+text = "01 战前快速布防 · 部署合法"
+
+[node name="PresetRow" type="HBoxContainer" parent="VBox/DeployCard"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="BtnLayered" type="Button" parent="VBox/DeployCard/PresetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "推荐 · 雷达前推"
+
+[node name="BtnDefault" type="Button" parent="VBox/DeployCard/PresetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "均衡 · 中规中矩"
+
+[node name="BtnStacked" type="Button" parent="VBox/DeployCard/PresetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "抱团 · 反面教材"
+
+[node name="CovGrid" type="HBoxContainer" parent="VBox/DeployCard"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="VisBox" type="VBoxContainer" parent="VBox/DeployCard/CovGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Lbl" type="Label" parent="VBox/DeployCard/CovGrid/VisBox"]
+layout_mode = 2
+text = "雷达覆盖"
+
+[node name="Val" type="Label" parent="VBox/DeployCard/CovGrid/VisBox"]
+layout_mode = 2
+text = "96.1%"
+
+[node name="BlindBox" type="VBoxContainer" parent="VBox/DeployCard/CovGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Lbl" type="Label" parent="VBox/DeployCard/CovGrid/BlindBox"]
+layout_mode = 2
+text = "低空盲区"
+
+[node name="Val" type="Label" parent="VBox/DeployCard/CovGrid/BlindBox"]
+layout_mode = 2
+text = "3.9%"
+
+[node name="BtnStartNight" type="Button" parent="VBox/DeployCard"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "▶ 开始守夜（开战后武器自动迎击）"
+
+[node name="StructuresCard" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="VBox/StructuresCard"]
+layout_mode = 2
+text = "★ 保卫目标 · 电网正常"
+
+[node name="ItemPlant" type="Label" parent="VBox/StructuresCard"]
+layout_mode = 2
+text = "★ 热电厂 [供电核心]  20/20 正常"
+
+[node name="ItemSubstation" type="Label" parent="VBox/StructuresCard"]
+layout_mode = 2
+text = "★ 中心变电站 [电网枢纽]  15/15 正常"
+
+[node name="ItemWater" type="Label" parent="VBox/StructuresCard"]
+layout_mode = 2
+text = "★ 水厂 [城市供水]  12/12 正常"
+
+[node name="AdvisorCard" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="VBox/AdvisorCard"]
+layout_mode = 2
+text = "! 参谋建议与预警"
+
+[node name="AdvisorText" type="Label" parent="VBox/AdvisorCard"]
+layout_mode = 2
+autowrap_mode = 3
+text = "还有 3.9% 的低空盲区（地图上的红色斜线）。巡航导弹会沿西北河谷低飞，把观察哨拖到山脊北侧可以消除它。"
+
+[node name="QuickMenuRow" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BtnQuickD2" type="Button" parent="VBox/QuickMenuRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "编制表 D2"
+
+[node name="BtnQuickD3" type="Button" parent="VBox/QuickMenuRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "火控条令 D3"
+
+[node name="BtnQuickD6" type="Button" parent="VBox/QuickMenuRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "导弹库存 D6"
+
+[node name="BtnQuickD7" type="Button" parent="VBox/QuickMenuRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "日志 D7"

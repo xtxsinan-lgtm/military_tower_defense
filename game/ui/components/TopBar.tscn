@@ -1,0 +1,191 @@
+[gd_scene load_steps=2 format=3 uid="uid://nw_top_bar"]
+
+[ext_resource type="Script" path="res://ui/controllers/TopBarController.cs" id="1_topbar"]
+
+[node name="TopBar" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 54)
+anchors_preset = 10
+anchor_right = 1.0
+grow_horizontal = 2
+script = ExtResource("1_topbar")
+
+[node name="HBox" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="BrandBox" type="HBoxContainer" parent="HBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LogoTitle" type="Label" parent="HBox/BrandBox"]
+layout_mode = 2
+text = "守夜 NIGHTWATCH"
+
+[node name="MissionMeta" type="Label" parent="HBox/BrandBox"]
+layout_mode = 2
+text = "测试地图 01 · 第 1 夜 / 共 2 夜 · 战前部署"
+
+[node name="KpiStrip" type="HBoxContainer" parent="HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="SlotCoverage" type="Button" parent="HBox/KpiStrip"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+tooltip_text = "点击打开【D1 战前部署与阵型】查看雷达覆盖与山脊盲区"
+
+[node name="VBox" type="VBoxContainer" parent="HBox/KpiStrip/SlotCoverage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="HBox/KpiStrip/SlotCoverage/VBox"]
+layout_mode = 2
+text = "雷达覆盖 / 盲区"
+
+[node name="ValueLabel" type="Label" parent="HBox/KpiStrip/SlotCoverage/VBox"]
+layout_mode = 2
+text = "96.1% / 3.9%"
+
+[node name="SlotRoster" type="Button" parent="HBox/KpiStrip"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+tooltip_text = "点击打开【D2 防空武器与雷达编制】"
+
+[node name="VBox" type="VBoxContainer" parent="HBox/KpiStrip/SlotRoster"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="HBox/KpiStrip/SlotRoster/VBox"]
+layout_mode = 2
+text = "防空战备"
+
+[node name="ValueLabel" type="Label" parent="HBox/KpiStrip/SlotRoster/VBox"]
+layout_mode = 2
+text = "6火力·1雷达"
+
+[node name="SlotCp" type="Button" parent="HBox/KpiStrip"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+tooltip_text = "点击打开【D3 火控与电磁条令】"
+
+[node name="VBox" type="VBoxContainer" parent="HBox/KpiStrip/SlotCp"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="HBox/KpiStrip/SlotCp/VBox"]
+layout_mode = 2
+text = "指挥点 CP"
+
+[node name="ValueLabel" type="Label" parent="HBox/KpiStrip/SlotCp/VBox"]
+layout_mode = 2
+text = "4 / 4"
+
+[node name="SlotTrust" type="Button" parent="HBox/KpiStrip"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+tooltip_text = "点击打开【D6 导弹库存与补给】"
+
+[node name="VBox" type="VBoxContainer" parent="HBox/KpiStrip/SlotTrust"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="HBox/KpiStrip/SlotTrust/VBox"]
+layout_mode = 2
+text = "公信力"
+
+[node name="ValueLabel" type="Label" parent="HBox/KpiStrip/SlotTrust/VBox"]
+layout_mode = 2
+text = "50.0"
+
+[node name="SlotStruct" type="Button" parent="HBox/KpiStrip"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+tooltip_text = "点击打开【D5 城市电网与保卫目标】"
+
+[node name="VBox" type="VBoxContainer" parent="HBox/KpiStrip/SlotStruct"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="HBox/KpiStrip/SlotStruct/VBox"]
+layout_mode = 2
+text = "★ 保卫目标"
+
+[node name="ValueLabel" type="Label" parent="HBox/KpiStrip/SlotStruct/VBox"]
+layout_mode = 2
+text = "3/3 完好"
+
+[node name="ClockBox" type="VBoxContainer" parent="HBox"]
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+
+[node name="ReadoutRow" type="HBoxContainer" parent="HBox/ClockBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="ClockLabel" type="Label" parent="HBox/ClockBox/ReadoutRow"]
+layout_mode = 2
+text = "世界时"
+
+[node name="ClockDigits" type="Label" parent="HBox/ClockBox/ReadoutRow"]
+layout_mode = 2
+text = "22:00:00"
+
+[node name="ClockSub" type="Label" parent="HBox/ClockBox/ReadoutRow"]
+layout_mode = 2
+text = "战前准备"
+
+[node name="ClockProgress" type="ProgressBar" parent="HBox/ClockBox"]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+show_percentage = false
+
+[node name="SpeedControls" type="HBoxContainer" parent="HBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BtnPause" type="Button" parent="HBox/SpeedControls"]
+layout_mode = 2
+text = "⏸"
+
+[node name="BtnSpeed1" type="Button" parent="HBox/SpeedControls"]
+layout_mode = 2
+text = "1×"
+
+[node name="BtnSpeed4" type="Button" parent="HBox/SpeedControls"]
+layout_mode = 2
+text = "4×"
+
+[node name="BtnSpeed8" type="Button" parent="HBox/SpeedControls"]
+layout_mode = 2
+text = "8×"
+
+[node name="BtnSkip" type="Button" parent="HBox/SpeedControls"]
+layout_mode = 2
+text = "跳到下一波 ››"

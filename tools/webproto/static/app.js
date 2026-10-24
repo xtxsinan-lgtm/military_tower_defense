@@ -8,6 +8,16 @@
     choiceDeadlineMs: 0, choiceTimerId: null,
     ammoInitial: {}, lastRadio: "", activePreset: "layered",
     tally: { kills: 0, leaks: 0 }, lastThreatTick: 0, advSig: "", advActions: [],
+    openDrawerIndex: 0, inspectorOpen: true,
+  };
+  const DRAWER_META = {
+    1: { code: "D1", title: "战前部署与阵型沙盘" },
+    2: { code: "D2", title: "防空武器与雷达编制" },
+    3: { code: "D3", title: "火控纪律与电磁条令" },
+    4: { code: "D4", title: "空袭情报与来袭走廊" },
+    5: { code: "D5", title: "城市电网与保卫目标" },
+    6: { code: "D6", title: "导弹库存与战备补给" },
+    7: { code: "D7", title: "值班作战室与战况日志" },
   };
   const canvas = document.getElementById("tactical-canvas");
   const $ = (id) => document.getElementById(id);
@@ -197,6 +207,9 @@
       $("exposed-warning-desc").textContent =
         `昨晚暴露过高的阵地：${kts.map((k) => `${k.name}(#${k.rosterId})`).join("、")}。今夜敌人会专门用巡航导弹打这些坐标——开战前把它们挪走。`;
     } else warnBox.classList.add("hidden");
+    const qInit = new URLSearchParams(location.search);
+    if (qInit.get("inspect") === "0") state.inspectorOpen = false;
+    if (qInit.get("drawer")) openDrawer(Number(qInit.get("drawer")));
     renderIntelList(); renderStructuresAndAmmo(); renderRosterAndInspector(); renderAdvisor(true);
   }
 
@@ -223,6 +236,8 @@
     $("cov-blind-pct").textContent = `${blind.toFixed(1)}%`;
     $("cov-vis-meter").style.width = `${Math.min(100, vis)}%`;
     $("cov-blind-meter").style.width = `${Math.min(100, blind * 4)}%`;
+    if ($("tb-cov-vis")) $("tb-cov-vis").textContent = `${vis.toFixed(1)}%`;
+    if ($("tb-cov-blind")) $("tb-cov-blind").textContent = `${blind.toFixed(1)}%`;
     const vBadge = $("validation-badge"), errBox = $("validation-errors");
     if (cov.valid) {
       vBadge.textContent = "部署合法"; vBadge.className = "badge badge-ok"; errBox.classList.add("hidden");
@@ -231,6 +246,215 @@
       errBox.classList.remove("hidden"); errBox.textContent = cov.errors.slice(0, 2).join("；");
     }
     renderAdvisor();
+    refreshOpenDrawer();
+  }
+
+  // ───────────── D1–D7 指挥所抽屉管理（参照 israel_political_simulation DrawerContainer） ─────────────
+  function syncDrawerButtons() {
+    const idx = state.openDrawerIndex || 0;
+    document.querySelectorAll(".desk-prop-btn[data-drawer]").forEach((b) => {
+      b.classList.toggle("open", Number(b.dataset.drawer) === idx);
+    });
+    document.querySelectorAll(".drawer-tab-btn[data-drawer-tab]").forEach((b) => {
+      b.classList.toggle("active", Number(b.dataset.drawerTab) === idx);
+    });
+    document.querySelectorAll(".tb-kpi-slot[data-open-drawer]").forEach((b) => {
+      b.classList.toggle("active", Number(b.dataset.openDrawer) === idx);
+    });
+    const inspCard = $("unit-inspector");
+    const showInsp = idx === 0 && Boolean(state.inspectorOpen && state.selectedUnitKey);
+    if (inspCard) {
+      inspCard.classList.toggle("collapsed", !showInsp);
+    }
+    if ($("canvas-wrapper")) {
+      $("canvas-wrapper").classList.toggle("inspector-docked", showInsp);
+    }
+    setTimeout(fitCanvas, 10);
+  }
+
+  function openDrawer(index) {
+    const target = Math.max(0, Math.min(7, Number(index) || 0));
+    if (target === 0) return closeDrawer();
+    state.openDrawerIndex = target;
+    const container = $("DrawerContainer");
+    if (container) container.classList.remove("hidden");
+    const m = DRAWER_META[target] || { code: `D${target}`, title: "" };
+    if ($("drawer-code-badge")) $("drawer-code-badge").textContent = m.code;
+    if ($("drawer-title")) $("drawer-title").textContent = m.title;
+    document.querySelectorAll("#drawer-content .drawer-slot").forEach((slot) => {
+      slot.classList.toggle("hidden", Number(slot.dataset.slot) !== target);
+    });
+    syncDrawerButtons();
+    refreshOpenDrawer();
+  }
+
+  function closeDrawer() {
+    state.openDrawerIndex = 0;
+    const container = $("DrawerContainer");
+    if (container) container.classList.add("hidden");
+    syncDrawerButtons();
+  }
+
+  function toggleDrawer(index) {
+    const target = Number(index) || 0;
+    if (state.openDrawerIndex === target) closeDrawer();
+    else openDrawer(target);
+  }
+
+  function kpiCardHtml(title, val, sub, tone) {
+    return `<div class="d-metric-card ${tone ? `tone-${tone}` : ""}">
+      <div class="d-metric-top"><span class="d-metric-name">${esc(title)}</span><span class="d-metric-val">${esc(val)}</span></div>
+      ${sub ? `<div class="d-metric-sub">${esc(sub)}</div>` : ""}
+    </div>`;
+  }
+
+  function renderD1() {
+    const kpiBox = $("d1-kpi-row");
+    if (!kpiBox) return;
+    const cov = state.coverage;
+    const vis = cov && cov.stats ? (cov.stats.visibleFrac * 100).toFixed(1) + "%" : "--%";
+    const blind = cov && cov.stats ? (cov.stats.blindFrac * 100).toFixed(1) + "%" : "--%";
+    const validStr = !cov || cov.valid ? "合法就绪" : `${(cov.errors || []).length} 处冲突`;
+    const presetMap = { layered: "推荐（前推）", default: "均衡（环形）", stacked: "抱团（反例）", custom: "自定义布防" };
+    kpiBox.innerHTML = [
+      kpiCardHtml("100m 雷达覆盖率", vis, "越高越能提早拦截", cov && cov.stats && cov.stats.visibleFrac >= 0.9 ? "good" : "warn"),
+      kpiCardHtml("山脊低空盲区", blind, "巡航导弹易在此贴地渗透", cov && cov.stats && cov.stats.blindFrac <= 0.05 ? "good" : "bad"),
+      kpiCardHtml("部署校验状态", validStr, "检查禁放区与最小间距", !cov || cov.valid ? "good" : "bad"),
+      kpiCardHtml("当前布防方案", presetMap[state.activePreset] || "自定义", `盲区参考高度 ${state.losAltM || 100}m`, ""),
+    ].join("");
+    document.querySelectorAll("#d1-preset-cards .d-preset-card").forEach((b) => {
+      b.classList.toggle("active", b.dataset.preset === state.activePreset);
+    });
+    document.querySelectorAll("#d1-alt-seg .seg-btn").forEach((b) => {
+      b.classList.toggle("active", Number(b.dataset.alt) === Number(state.losAltM));
+    });
+  }
+
+  function renderD3() {
+    const kpiBox = $("d3-kpi-row");
+    if (!kpiBox) return;
+    const units = getActiveUnits();
+    const fireUnits = units.filter((u) => (u.category || "fire") === "fire");
+    const radarUnits = units.filter((u) => (u.emitter && u.emitter.hasEmitter) || u.hasRadar || u.unitDefId === "soviet_mid_range_radar" || u.unitDefId === "nasams");
+    const activeRadars = radarUnits.filter((u) => u.emitter ? u.emitter.on : (u.emissionPolicy !== "silent")).length;
+    const maxExp = Math.round(units.reduce((m, u) => Math.max(m, u.exposure !== undefined ? u.exposure : (u.carryExposure || 0)), 0));
+    const cpCur = state.snapshot && state.snapshot.cp ? state.snapshot.cp.current : (state.meta ? state.meta.commandPointsPerNight : 4);
+    const cpMax = state.snapshot && state.snapshot.cp ? state.snapshot.cp.initial : (state.meta ? state.meta.commandPointsPerNight : 4);
+    kpiBox.innerHTML = [
+      kpiCardHtml("防空火力单元", `${fireUnits.filter((u) => isActiveState(u.deployState)).length} / ${fireUnits.length}`, "NASAMS + IRIS-T + 皮卡×4", "good"),
+      kpiCardHtml("电磁辐射源开机", `${activeRadars} / ${radarUnits.length}`, "警戒雷达 + NASAMS 火控雷达", activeRadars > 0 ? "good" : "warn"),
+      kpiCardHtml("全军最高暴露度", `${maxExp}%`, "达 70% 将引来反辐射导弹", maxExp >= 70 ? "bad" : (maxExp >= 40 ? "warn" : "good")),
+      kpiCardHtml("剩余指挥点 CP", `${cpCur} / ${cpMax}`, "用于阵地转移与导航诱偏", cpCur > 0 ? "" : "warn"),
+    ].join("");
+
+    const wWrap = $("d3-weapons-table-wrap");
+    if (wWrap) {
+      const rows = fireUnits.map((u) => {
+        const w = (u.weapons && u.weapons[0]) || {};
+        const wid = w.weaponId || w.id || "";
+        const wl = w.whitelist || ["UAV", "CM", "BM", "AC_LOW"];
+        const isMissile = u.unitDefId === "nasams" || u.unitDefId === "iris_t_sls";
+        const isHold = w.rule === "hold_fire";
+        const isMissileOnly = !isHold && !wl.includes("UAV") && wl.includes("CM");
+        const isAllOpen = !isHold && wl.includes("UAV");
+        const rds = !isMissile ? "无限弹链" : (w.rounds !== undefined ? (w.rounds < 0 ? "无限" : `${w.rounds}发`) : (w.magazine > 100 ? "无限" : `${w.magazine || 8}发`));
+        const ctrlHtml = isMissile
+          ? `<div class="d-batch-row">
+              <button type="button" class="btn btn-xs ${isMissileOnly ? "btn-primary" : ""}" data-d3-doc="missile_only" data-ukey="${unitKey(u)}" data-wid="${esc(wid)}">只打导弹</button>
+              <button type="button" class="btn btn-xs ${isAllOpen ? "btn-primary" : ""}" data-d3-doc="all_open" data-ukey="${unitKey(u)}" data-wid="${esc(wid)}">全开</button>
+              <button type="button" class="btn btn-xs ${isHold ? "btn-warn" : ""}" data-d3-doc="hold" data-ukey="${unitKey(u)}" data-wid="${esc(wid)}">停火</button>
+            </div>`
+          : `<span class="badge badge-ok">机枪自动自由扫射无人机</span>`;
+        return `<tr>
+          <td class="td-bold">#${u.rosterId} ${esc(FRIENDLY_NAMES[u.unitDefId] || u.name)}</td>
+          <td class="td-num">${esc(rds)}</td>
+          <td>${ctrlHtml}</td>
+        </tr>`;
+      }).join("");
+      wWrap.innerHTML = `<table class="d-table"><thead><tr><th>防空武器单元</th><th>备弹</th><th>开火纪律（点击立即下达）</th></tr></thead><tbody>${rows}</tbody></table>`;
+      wWrap.querySelectorAll("[data-d3-doc]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const u = units.find((x) => String(unitKey(x)) === String(btn.dataset.ukey));
+          if (!u) return;
+          await applyUnitDoctrine(u, btn.dataset.wid, btn.dataset.d3Doc);
+          renderRosterAndInspector();
+        });
+      });
+    }
+
+    const rWrap = $("d3-radars-table-wrap");
+    if (rWrap) {
+      const rRows = radarUnits.map((u) => {
+        const curPol = u.emitter ? u.emitter.policyId : (u.emissionPolicy || "blink");
+        const exp = Math.round(u.exposure !== undefined ? u.exposure : (u.carryExposure || 0));
+        return `<tr>
+          <td class="td-bold">#${u.rosterId} ${esc(FRIENDLY_NAMES[u.unitDefId] || u.name)}</td>
+          <td class="td-num" style="color:${exp >= 70 ? "var(--hostile)" : (exp >= 40 ? "var(--unknown)" : "var(--text)")}">${exp}%</td>
+          <td>
+            <div class="d-batch-row">
+              ${POLICY.map(([id, nm]) => `<button type="button" class="btn btn-xs ${curPol === id || (id === "continuous" && curPol === "always_on") ? "btn-primary" : ""}" data-d3-pol="${id}" data-ukey="${unitKey(u)}">${nm}</button>`).join("")}
+            </div>
+          </td>
+        </tr>`;
+      }).join("");
+      rWrap.innerHTML = `<table class="d-table"><thead><tr><th>雷达单元</th><th>暴露度</th><th>辐射模式</th></tr></thead><tbody>${rRows}</tbody></table>`;
+      rWrap.querySelectorAll("[data-d3-pol]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const u = units.find((x) => String(unitKey(x)) === String(btn.dataset.ukey));
+          if (u) await setPolicy(u, btn.dataset.d3Pol);
+        });
+      });
+    }
+  }
+
+  function renderD5() {
+    const kpiBox = $("d5-kpi-row");
+    const detailBox = $("d5-structures-detail");
+    if (!kpiBox || !detailBox) return;
+    const snap = state.snapshot;
+    const structs = (snap && snap.structures) || (state.meta && state.meta.structures) || [];
+    const okCount = structs.filter((s) => !s.destroyed).length;
+    const unp = snap && snap.grid ? Math.round((snap.grid.unpoweredFrac || 0) * 100) : 0;
+    const alertOn = Boolean(snap && snap.alert && snap.alert.on);
+    const shPct = snap && snap.alert ? Math.round((snap.alert.shelteredFrac || 0) * 100) : 0;
+    kpiBox.innerHTML = [
+      kpiCardHtml("完好保卫设施", `${okCount} / ${structs.length}`, "热电厂 · 变电站 · 水厂", okCount === structs.length ? "good" : "bad"),
+      kpiCardHtml("城市电网状态", unp > 0 ? `断电 ${unp}%` : "100% 正常供电", "热电厂为全城总电源", unp === 0 ? "good" : "bad"),
+      kpiCardHtml("市政防空警报", alertOn ? "已拉响" : "关闭待命", "空袭逼近城区时应拉响", alertOn ? "warn" : ""),
+      kpiCardHtml("市民掩蔽率", `${shPct}%`, "越高越能减少平民伤亡", shPct >= 60 ? "good" : ""),
+    ].join("");
+    detailBox.innerHTML = structs.map((s) => {
+      const metaStruct = (state.meta && (state.meta.structures || []).find((m) => m.id === s.id)) || s;
+      const typ = metaStruct.type || s.type;
+      const roleTag = STRUCT_ROLE[typ] || "保卫设施";
+      const desc = STRUCT_INFO[typ] || "";
+      const frac = Math.max(0, Math.min(1, s.hp / Math.max(1, s.maxHp)));
+      const col = frac > 0.5 ? "var(--ok)" : (frac > 0.2 ? "var(--warn)" : "var(--danger)");
+      return `<div class="struct-item ${s.destroyed ? "destroyed" : ""}" data-sid="${esc(s.id)}">
+        <div class="struct-row">
+          <span class="struct-name"><span class="struct-glyph">★</span>${esc(s.name)} <span class="struct-role-tag">${esc(roleTag)}</span></span>
+          <span class="struct-hp">耐久 ${s.hp}/${s.maxHp}</span>
+        </div>
+        <div class="d-subnote">${desc}</div>
+        <div class="hp-bar-wrap"><div class="hp-bar-fill" style="width:${frac * 100}%;background:${col}"></div></div>
+      </div>`;
+    }).join("");
+    detailBox.querySelectorAll(".struct-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        const stObj = structs.find((x) => String(x.id) === String(el.dataset.sid));
+        if (stObj && stObj.pos) {
+          state.focusStructId = stObj.id;
+          state.pulses.push({ pos: stObj.pos, t0: performance.now(), color: "ok" });
+          closeDrawer();
+        }
+      });
+    });
+  }
+
+  function refreshOpenDrawer() {
+    if (state.openDrawerIndex === 1) renderD1();
+    else if (state.openDrawerIndex === 3) renderD3();
+    else if (state.openDrawerIndex === 5) renderD5();
   }
 
   // ───────────── 面板渲染 ─────────────
@@ -249,6 +473,11 @@
   function renderStructuresAndAmmo() {
     const snap = state.snapshot;
     const structs = (snap && snap.structures) || (state.meta && state.meta.structures) || [];
+    const okCount = structs.filter((s) => !s.destroyed).length;
+    if ($("tb-struct-kpi")) {
+      $("tb-struct-kpi").textContent = `${okCount}/${structs.length} 完好`;
+      $("tb-struct-kpi").className = `tb-kpi-val ${okCount < structs.length ? "tb-val-warn" : ""}`;
+    }
     $("structures-list").innerHTML = structs.map((s) => {
       const metaStruct = (state.meta && (state.meta.structures || []).find((m) => m.id === s.id)) || s;
       const typ = metaStruct.type || s.type;
@@ -293,6 +522,7 @@
         <div class="ammo-top"><span>${esc(AMMO_LABELS[k] || k)}</span><strong class="${!inf && frac < 0.25 ? "low" : ""}">${inf ? "充足" : v}</strong></div>
         <div class="ammo-meter"><i style="width:${frac * 100}%"></i></div></div>`;
     }).join("");
+    if (state.openDrawerIndex === 5) renderD5();
   }
 
   function getAmmoPool() {
@@ -315,7 +545,8 @@
     const w0Obj = u.weapons && u.weapons[0];
     let w0 = "";
     if (w0Obj) {
-      if (w0Obj.rounds !== undefined) w0 = w0Obj.rounds >= 0 ? `弹${w0Obj.rounds}` : "无限弹";
+      if (u.unitDefId === "mobile_fire_team") w0 = "无限弹";
+      else if (w0Obj.rounds !== undefined) w0 = w0Obj.rounds >= 0 ? `弹${w0Obj.rounds}` : "无限弹";
       else if (w0Obj.magazine) w0 = w0Obj.magazine > 100 ? "无限弹" : `弹${w0Obj.magazine}`;
     }
     const expTxt = expV > 0 ? `<span class="${expV >= 70 ? "exp-hi" : (expV >= 35 ? "exp-mid" : "")}">暴露${Math.round(expV)}%</span>` : "";
@@ -338,6 +569,7 @@
     const passiveUnits = units.filter((u) => isPassiveSensor(u));
 
     $("roster-count-badge").textContent = `${fireUnits.length} 部武器 · ${radarUnits.length} 座雷达`;
+    if ($("tb-roster-kpi")) $("tb-roster-kpi").textContent = `${fireUnits.length}火力·${radarUnits.length}雷达`;
     const rBox = $("unit-roster-list");
     const scrollTop = rBox.scrollTop;
     let html = "";
@@ -360,9 +592,16 @@
     const pFold = rBox.querySelector(".passive-roster-fold");
     if (pFold) pFold.addEventListener("toggle", () => { state.openPassiveRoster = pFold.open; });
     rBox.querySelectorAll(".roster-item").forEach((el) => {
-      el.addEventListener("click", () => { state.selectedUnitKey = Number(el.dataset.ukey); renderRosterAndInspector(); });
+      el.addEventListener("click", () => {
+        state.selectedUnitKey = Number(el.dataset.ukey);
+        state.inspectorOpen = true;
+        const targetUnit = units.find((u) => unitKey(u) === state.selectedUnitKey);
+        if (targetUnit && targetUnit.pos) state.pulses.push({ pos: targetUnit.pos, t0: performance.now(), color: "ok" });
+        renderRosterAndInspector();
+      });
     });
     renderInspector(units.find((u) => unitKey(u) === state.selectedUnitKey));
+    if (state.openDrawerIndex === 3) renderD3();
   }
 
   function rangeOf(u) {
@@ -371,6 +610,15 @@
   }
 
   function renderInspector(u) {
+    const inspCard = $("unit-inspector");
+    const showInsp = state.openDrawerIndex === 0 && Boolean(state.inspectorOpen && u);
+    if (inspCard) {
+      inspCard.classList.toggle("collapsed", !showInsp);
+    }
+    if ($("canvas-wrapper")) {
+      $("canvas-wrapper").classList.toggle("inspector-docked", showInsp);
+    }
+    setTimeout(fitCanvas, 10);
     const body = $("insp-body");
     if (body.contains(document.activeElement) && document.activeElement.tagName !== "BUTTON" && body.dataset.ukey === String(u && unitKey(u))) return;
     body.dataset.ukey = String(u ? unitKey(u) : "");
@@ -432,8 +680,8 @@
         const wid = w.weaponId || w.id;
         const wName = WEAPON_NAMES[wid] || w.name || wid;
         const wl = w.whitelist || ["UAV", "CM", "BM", "AC_LOW"];
-        const rds = w.rounds !== undefined ? (w.rounds < 0 ? "无限（机枪弹链充足）" : `${w.rounds}/${w.maxRounds} 发`) : (w.magazine > 100 ? "无限（机枪弹链充足）" : `${w.magazine || 8} 发`);
         const isMissile = u.unitDefId === "nasams" || u.unitDefId === "iris_t_sls";
+        const rds = !isMissile ? "无限（机枪弹链充足）" : (w.rounds !== undefined ? (w.rounds < 0 ? "无限（机枪弹链充足）" : `${w.rounds}/${w.maxRounds} 发`) : (w.magazine > 100 ? "无限（机枪弹链充足）" : `${w.magazine || 8} 发`));
         const isHold = w.rule === "hold_fire";
         const isMissileOnly = !isHold && !wl.includes("UAV") && wl.includes("CM");
         const isAllOpen = !isHold && wl.includes("UAV");
@@ -490,6 +738,29 @@
     bindInspectorEvents(u);
   }
 
+  async function applyUnitDoctrine(u, wid, doc) {
+    const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === wid) || (u.weapons && u.weapons[0]);
+    const targetWid = wid || (wObj && (wObj.weaponId || wObj.id));
+    if (doc === "missile_only") {
+      if (wObj) { wObj.rule = "any"; wObj.whitelist = ["CM", "BM", "AC_LOW"]; }
+      if (state.phase === "battle" && targetWid) {
+        await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: targetWid, rule: "any" });
+        await sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: targetWid, tags: ["CM", "BM", "AC_LOW"] });
+      }
+    } else if (doc === "all_open") {
+      if (wObj) { wObj.rule = "any"; wObj.whitelist = ["UAV", "CM", "BM", "AC_LOW"]; }
+      if (state.phase === "battle" && targetWid) {
+        await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: targetWid, rule: "any" });
+        await sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: targetWid, tags: ["UAV", "CM", "BM", "AC_LOW"] });
+      }
+    } else if (doc === "hold") {
+      if (wObj) { wObj.rule = "hold_fire"; }
+      if (state.phase === "battle" && targetWid) {
+        await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: targetWid, rule: "hold_fire" });
+      }
+    }
+  }
+
   function bindInspectorEvents(u) {
     const det = document.querySelector("#insp-body .adv-weapons");
     if (det) det.addEventListener("toggle", () => { state.openWeapons = det.open; });
@@ -498,31 +769,12 @@
       jumpBtn.addEventListener("click", () => {
         const units = getActiveUnits();
         const mainW = units.find((x) => x.unitDefId === "nasams") || units.find((x) => (x.category || "fire") === "fire");
-        if (mainW) { state.selectedUnitKey = unitKey(mainW); renderRosterAndInspector(); }
+        if (mainW) { state.selectedUnitKey = unitKey(mainW); state.inspectorOpen = true; renderRosterAndInspector(); }
       });
     }
     document.querySelectorAll("#insp-body .policy-btn").forEach((b) => b.addEventListener("click", () => setPolicy(u, b.dataset.pol)));
     document.querySelectorAll("#insp-body .doctrine-btn").forEach((b) => b.addEventListener("click", async () => {
-      const wid = b.dataset.wid, doc = b.dataset.doc;
-      const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === wid);
-      if (doc === "missile_only") {
-        if (wObj) { wObj.rule = "any"; wObj.whitelist = ["CM", "BM", "AC_LOW"]; }
-        if (state.phase === "battle") {
-          await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: wid, rule: "any" });
-          await sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: wid, tags: ["CM", "BM", "AC_LOW"] });
-        }
-      } else if (doc === "all_open") {
-        if (wObj) { wObj.rule = "any"; wObj.whitelist = ["UAV", "CM", "BM", "AC_LOW"]; }
-        if (state.phase === "battle") {
-          await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: wid, rule: "any" });
-          await sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: wid, tags: ["UAV", "CM", "BM", "AC_LOW"] });
-        }
-      } else if (doc === "hold") {
-        if (wObj) { wObj.rule = "hold_fire"; }
-        if (state.phase === "battle") {
-          await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: wid, rule: "hold_fire" });
-        }
-      }
+      await applyUnitDoctrine(u, b.dataset.wid, b.dataset.doc);
       renderRosterAndInspector();
     }));
     const burstBtn = $("insp-btn-burst");
@@ -697,7 +949,7 @@
     if (snap && snap.tick !== undefined) applySnapshot(snap);
   }
 
-  function selectUnit(u) { state.selectedUnitKey = unitKey(u); renderRosterAndInspector(); }
+  function selectUnit(u) { state.selectedUnitKey = unitKey(u); state.inspectorOpen = true; renderRosterAndInspector(); }
 
   function updateHud() {
     const snap = state.snapshot;
@@ -944,7 +1196,10 @@
 
   function fitCanvas() {
     const wrap = $("canvas-wrapper");
-    const size = Math.max(240, Math.min(wrap.clientWidth, wrap.clientHeight) - 12);
+    const showInsp = state.openDrawerIndex === 0 && Boolean(state.inspectorOpen && state.selectedUnitKey);
+    const availW = wrap.clientWidth - (showInsp ? 304 : 12);
+    const availH = wrap.clientHeight - 12;
+    const size = Math.max(240, Math.min(availW, availH));
     const v = canvas._view;
     if (v && v.width === Math.floor(size) && v.dpr === Math.min(2.5, window.devicePixelRatio || 1)) return;
     window.TacticalRenderer.resize(canvas, size, size);
@@ -1269,6 +1524,67 @@
     });
 
     document.querySelectorAll(".btn-preset").forEach((b) => b.addEventListener("click", () => applyPreset(b.dataset.preset)));
+    document.querySelectorAll("#d1-preset-cards .d-preset-card").forEach((b) => b.addEventListener("click", () => applyPreset(b.dataset.preset)));
+    document.querySelectorAll("#d1-alt-seg .seg-btn").forEach((b) => b.addEventListener("click", async () => {
+      state.losAltM = Number(b.dataset.alt);
+      if ($("sel-los-alt")) $("sel-los-alt").value = String(state.losAltM);
+      if (state.losAltM > 0) await refreshCoverage();
+      else renderD1();
+    }));
+
+    // 底部 D1–D7 指挥台器械栏、顶部标签与 KPI 槽点击绑定
+    document.querySelectorAll(".desk-prop-btn[data-drawer]").forEach((b) => {
+      b.addEventListener("click", () => toggleDrawer(Number(b.dataset.drawer)));
+    });
+    document.querySelectorAll(".drawer-tab-btn[data-drawer-tab]").forEach((b) => {
+      b.addEventListener("click", () => toggleDrawer(Number(b.dataset.drawerTab)));
+    });
+    document.querySelectorAll("[data-open-drawer]").forEach((b) => {
+      b.addEventListener("click", () => toggleDrawer(Number(b.dataset.openDrawer)));
+    });
+    if ($("drawer-close-btn")) $("drawer-close-btn").addEventListener("click", closeDrawer);
+    if ($("btn-close-inspector")) $("btn-close-inspector").addEventListener("click", () => {
+      state.inspectorOpen = false;
+      renderRosterAndInspector();
+    });
+
+    // D3 批量火控与电磁条令按钮
+    if ($("btn-d3-all-missile-only")) {
+      $("btn-d3-all-missile-only").addEventListener("click", async () => {
+        for (const u of getActiveUnits().filter((x) => x.unitDefId === "nasams" || x.unitDefId === "iris_t_sls")) {
+          const w0 = u.weapons && u.weapons[0];
+          if (w0) await applyUnitDoctrine(u, w0.weaponId || w0.id, "missile_only");
+        }
+        Toast.show({ kind: "good", icon: "✓", title: "全军防空导弹已设为「只打导弹（省弹）」" });
+        renderRosterAndInspector();
+      });
+    }
+    if ($("btn-d3-all-open")) {
+      $("btn-d3-all-open").addEventListener("click", async () => {
+        for (const u of getActiveUnits().filter((x) => x.unitDefId === "nasams" || x.unitDefId === "iris_t_sls")) {
+          const w0 = u.weapons && u.weapons[0];
+          if (w0) await applyUnitDoctrine(u, w0.weaponId || w0.id, "all_open");
+        }
+        Toast.show({ kind: "info", icon: "✓", title: "全军防空导弹已设为「无人机也打（全开）」" });
+        renderRosterAndInspector();
+      });
+    }
+    document.querySelectorAll("[data-batch-pol]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pol = btn.dataset.batchPol;
+        const radars = getActiveUnits().filter((u) => (u.emitter && u.emitter.hasEmitter) || u.hasRadar || u.unitDefId === "soviet_mid_range_radar" || u.unitDefId === "nasams");
+        for (const u of radars) await setPolicy(u, pol);
+        Toast.show({ kind: "info", icon: "✓", title: `全军雷达已切为「${pol === "continuous" ? "常开" : (pol === "blink" ? "闪烁" : "静默")}」` });
+      });
+    });
+
+    // D5 / D7 快捷按钮
+    if ($("btn-d5-alert-toggle")) $("btn-d5-alert-toggle").addEventListener("click", () => $("btn-alert-toggle").click());
+    if ($("btn-d5-spoof")) $("btn-d5-spoof").addEventListener("click", () => $("btn-national-spoof").click());
+    if ($("btn-d7-briefing")) $("btn-d7-briefing").addEventListener("click", () => { closeDrawer(); showBriefing(); });
+    if ($("btn-d7-tutorial")) $("btn-d7-tutorial").addEventListener("click", () => { closeDrawer(); $("btn-restart-tutorial").click(); });
+    if ($("btn-d7-choice-demo")) $("btn-d7-choice-demo").addEventListener("click", () => { closeDrawer(); $("btn-trigger-choice-demo").click(); });
+    if ($("btn-d7-reset")) $("btn-d7-reset").addEventListener("click", () => { closeDrawer(); $("btn-reset-game").click(); });
 
     $("btn-auto-relocate-exposed").addEventListener("click", async () => {
       const alts = (state.meta.deploy && state.meta.deploy.alternatePositions) || [];
@@ -1324,6 +1640,7 @@
       const best = pickUnitAt(e, 18);
       if (best && e.button === 0) {
         state.selectedUnitKey = unitKey(best);
+        state.inspectorOpen = true;
         if (state.phase === "deploy" && best.mobility !== "fixed") {
           state.draggingUnit = best;
           canvas.classList.add("grabbing");
@@ -1332,6 +1649,11 @@
           return;
         }
         renderRosterAndInspector();
+        return;
+      }
+      // 点击地图空白处时：若抽屉打开则收起抽屉
+      if (state.openDrawerIndex !== 0 && e.button === 0) {
+        closeDrawer();
       }
       // 放大状态下（或按住中键/右键）拖曳空白处平移地图
       const view = window.TacticalRenderer.getView(canvas);
@@ -1407,6 +1729,7 @@
         const best = pickUnitAt(t, 26); // iPad 触控拾取半径放宽到 26px，方便手指点选
         if (best) {
           state.selectedUnitKey = unitKey(best);
+          state.inspectorOpen = true;
           renderRosterAndInspector();
           if (state.phase === "deploy" && best.mobility !== "fixed") {
             state.draggingUnit = best;
@@ -1498,7 +1821,19 @@
     window.addEventListener("keydown", (e) => {
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (e.code === "Escape") { if (Coach.active) Coach.stop(false); closeMore(); if (!$("briefing-modal").classList.contains("hidden")) closeBriefing(); return; }
+      if (e.code === "Escape") {
+        if (Coach.active) { Coach.stop(false); return; }
+        if (state.openDrawerIndex !== 0) { closeDrawer(); return; }
+        if (state.inspectorOpen) { state.inspectorOpen = false; renderRosterAndInspector(); return; }
+        closeMore();
+        if (!$("briefing-modal").classList.contains("hidden")) closeBriefing();
+        return;
+      }
+      if (/^F[1-7]$/.test(e.code)) {
+        e.preventDefault();
+        toggleDrawer(Number(e.code.slice(1)));
+        return;
+      }
       if (e.code === "Space" && state.phase === "battle") { e.preventDefault(); setSpeed(state.speed > 0 ? 0 : 1); }
       else if (e.code === "Tab") { e.preventDefault(); toggleViewMode(); }
       else if (e.code === "KeyN") skipToNextContact();
@@ -1514,11 +1849,13 @@
   }
   function closeMore() { $("more-dd").classList.remove("open"); }
 
-  // 调试/截图辅助：?demo=battle&ticks=600&view=live25d&god=1&bot=smart_blink&tutorial=0
+  // 调试/截图辅助：?demo=battle&ticks=600&view=live25d&god=1&bot=smart_blink&tutorial=0&drawer=3&inspect=1
   async function runDemoFromUrl() {
     const q = new URLSearchParams(location.search);
     if (q.get("view") === "live25d") setViewMode("live25d");
     if (q.get("god") === "1") { state.godView = true; $("chk-god-view").checked = true; }
+    if (q.get("inspect") === "1") { state.inspectorOpen = true; renderRosterAndInspector(); }
+    if (q.get("drawer")) { openDrawer(Number(q.get("drawer"))); }
     if (q.get("demo") === "battle") {
       LS.set("nw_seen_brief", "1"); LS.set("nw_hints_off", "1");
       if (q.get("bot")) $("sel-bot-mode").value = q.get("bot");
@@ -1533,9 +1870,11 @@
         left -= n;
         if (!snap || snap.isEnded || snap.activeChoice) break;
       }
+      if (q.get("drawer")) openDrawer(Number(q.get("drawer")));
       return;
     }
     if (q.get("tutorial") === "1") { runDeployTutorial(); return; }
+    if (q.get("drawer") || q.get("inspect") === "1") return;
     if (q.get("brief") === "1" || !LS.get("nw_seen_brief")) showBriefing();
   }
 

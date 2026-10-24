@@ -1,0 +1,139 @@
+[gd_scene load_steps=8 format=3 uid="uid://nw_desk_main"]
+
+[ext_resource type="Script" path="res://ui/controllers/DeskMainController.cs" id="1_desk"]
+[ext_resource type="PackedScene" path="res://ui/components/TopBar.tscn" id="2_topbar"]
+[ext_resource type="PackedScene" path="res://ui/map/TacticalMapCanvas.tscn" id="3_map"]
+[ext_resource type="PackedScene" path="res://ui/map/UnitInspectorCard.tscn" id="4_insp"]
+[ext_resource type="PackedScene" path="res://ui/drawers/DrawerContainer.tscn" id="5_drawer"]
+[ext_resource type="PackedScene" path="res://ui/components/DiegeticDeskPropsBar.tscn" id="6_props"]
+[ext_resource type="PackedScene" path="res://ui/components/AlertOutliner.tscn" id="7_outliner"]
+
+[node name="DeskMain" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_desk")
+
+[node name="RootVBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="TopBar" parent="RootVBox" instance=ExtResource("2_topbar")]
+layout_mode = 2
+
+[node name="BodySplit" type="HBoxContainer" parent="RootVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 0
+
+[node name="MapDeskLayer" type="VBoxContainer" parent="RootVBox/BodySplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 0
+
+[node name="MapToolbar" type="HBoxContainer" parent="RootVBox/BodySplit/MapDeskLayer"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DrawerTabs" type="HBoxContainer" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="BtnD1" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D1 部署与盲区"
+
+[node name="BtnD2" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D2 防空编制表"
+
+[node name="BtnD3" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D3 火控与电磁"
+
+[node name="BtnD4" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D4 空袭情报"
+
+[node name="BtnD5" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D5 电网与目标"
+
+[node name="BtnD6" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D6 导弹库存"
+
+[node name="BtnD7" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "D7 作战日志"
+
+[node name="RightTools" type="HBoxContainer" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ZoomLbl" type="Label" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools"]
+layout_mode = 2
+text = "地图缩放"
+
+[node name="BtnZoomOut" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools"]
+layout_mode = 2
+text = "−"
+
+[node name="BtnZoomReset" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools"]
+layout_mode = 2
+text = "100%"
+
+[node name="BtnZoomIn" type="Button" parent="RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools"]
+layout_mode = 2
+text = "+"
+
+[node name="RadioBanner" type="HBoxContainer" parent="RootVBox/BodySplit/MapDeskLayer"]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="RadioTag" type="Label" parent="RootVBox/BodySplit/MapDeskLayer/RadioBanner"]
+layout_mode = 2
+text = "■ 防空电台"
+
+[node name="RadioText" type="Label" parent="RootVBox/BodySplit/MapDeskLayer/RadioBanner"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "战前部署：把【皮卡机枪】摆在无人机来路上，把【IRIS-T / NASAMS 导弹】护在 ★ 热电厂周围。"
+
+[node name="CanvasWrapper" type="Control" parent="RootVBox/BodySplit/MapDeskLayer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TacticalMapCanvas" parent="RootVBox/BodySplit/MapDeskLayer/CanvasWrapper" instance=ExtResource("3_map")]
+layout_mode = 1
+
+[node name="UnitInspectorCard" parent="RootVBox/BodySplit/MapDeskLayer/CanvasWrapper" instance=ExtResource("4_insp")]
+layout_mode = 0
+
+[node name="DrawerContainer" parent="RootVBox/BodySplit/MapDeskLayer/CanvasWrapper" instance=ExtResource("5_drawer")]
+layout_mode = 0
+
+[node name="DiegeticDeskPropsBar" parent="RootVBox/BodySplit/MapDeskLayer" instance=ExtResource("6_props")]
+layout_mode = 2
+
+[node name="AlertOutliner" parent="RootVBox/BodySplit" instance=ExtResource("7_outliner")]
+layout_mode = 2

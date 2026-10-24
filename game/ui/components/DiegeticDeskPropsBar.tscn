@@ -1,0 +1,53 @@
+[gd_scene load_steps=2 format=3 uid="uid://nw_desk_props_bar"]
+
+[ext_resource type="Script" path="res://ui/controllers/DiegeticDeskPropsController.cs" id="1_props"]
+
+[node name="DiegeticDeskPropsBar" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 68)
+script = ExtResource("1_props")
+
+[node name="PropsGrid" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PropD1" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "沙盘标图板 · 部署与盲区 D1 (F1)"
+
+[node name="PropD2" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "防空编制簿 · 武器与雷达 D2 (F2)"
+
+[node name="PropD3" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "火控控制台 · 火控与电磁 D3 (F3)"
+
+[node name="PropD4" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "预警电传机 · 空袭情报 D4 (F4)"
+
+[node name="PropD5" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "电网监控屏 · 保卫目标 D5 (F5)"
+
+[node name="PropD6" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "弹药军械库 · 导弹库存 D6 (F6)"
+
+[node name="PropD7" type="Button" parent="PropsGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "值班作战室 · 战况日志 D7 (F7)"
