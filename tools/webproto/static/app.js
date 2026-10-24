@@ -8,7 +8,8 @@
     choiceDeadlineMs: 0, choiceTimerId: null,
     ammoInitial: {}, lastRadio: "", activePreset: "layered",
     tally: { kills: 0, leaks: 0 }, lastThreatTick: 0, advSig: "", advActions: [],
-    openDrawerIndex: 0, inspectorOpen: true, drawerPane: {},
+    // 检视器是“上下文浮窗”：只在玩家点选单位后浮出（商业 RTS 惯例），开局不占地图
+    openDrawerIndex: 0, inspectorOpen: false, drawerPane: {},
   };
   // 指挥台 D1–D7：一级入口；每个抽屉内的 .d-pane 自动生成二级页签
   const DRAWER_META = {
@@ -276,10 +277,6 @@
     if (inspCard) {
       inspCard.classList.toggle("collapsed", !showInsp);
     }
-    if ($("canvas-wrapper")) {
-      $("canvas-wrapper").classList.toggle("inspector-docked", showInsp);
-    }
-    setTimeout(fitCanvas, 10);
   }
 
   function openDrawer(index) {
@@ -652,10 +649,6 @@
     if (inspCard) {
       inspCard.classList.toggle("collapsed", !showInsp);
     }
-    if ($("canvas-wrapper")) {
-      $("canvas-wrapper").classList.toggle("inspector-docked", showInsp);
-    }
-    setTimeout(fitCanvas, 10);
     const body = $("insp-body");
     if (body.contains(document.activeElement) && document.activeElement.tagName !== "BUTTON" && body.dataset.ukey === String(u && unitKey(u))) return;
     body.dataset.ukey = String(u ? unitKey(u) : "");
@@ -1231,15 +1224,53 @@
 
   function animLoop() { window.TacticalRenderer.renderFrame(canvas, state); requestAnimationFrame(animLoop); }
 
+  // 全屏画布：画布铺满整个视口；HUD 浮层占用的四边留白作为“安全区”交给渲染器，
+  // 作战区（AO）在安全区内居中、未缩放时完整可见，安全区外照常绘制区外地形。
+  function hudSafeInsets(W, H) {
+    const wrap = $("canvas-wrapper");
+    const wr = wrap.getBoundingClientRect();
+    const k = wr.width > 0 && wrap.clientWidth > 0 ? wr.width / wrap.clientWidth : 1; // 兼容界面缩放（body.zoom）
+    const box = (el) => {
+      if (!el || el.offsetParent === null) return null;
+      const r = el.getBoundingClientRect();
+      if (!r.width && !r.height) return null;
+      return { l: (r.left - wr.left) / k, t: (r.top - wr.top) / k, r: (r.right - wr.left) / k, b: (r.bottom - wr.top) / k };
+    };
+    let top = 0;
+    document.querySelectorAll("#TopBar .hud-cluster").forEach((el) => { const r = box(el); if (r) top = Math.max(top, r.b); });
+    const bar = box($("DiegeticDeskPropsBar"));
+    const radio = box($("radio-banner"));
+    const tools = box($("map-tools"));
+    const ops = box($("AlertOutliner"));
+    return {
+      l: tools ? tools.r + 6 : 6,
+      t: top + 4,
+      r: ops ? Math.max(6, W - ops.l + 6) : 6,
+      b: bar ? Math.max(6, H - bar.t + 4) : 6,
+      lb: radio ? Math.max(6, H - radio.t + 4) : 0,
+    };
+  }
+
   function fitCanvas() {
     const wrap = $("canvas-wrapper");
-    const showInsp = state.openDrawerIndex === 0 && Boolean(state.inspectorOpen && state.selectedUnitKey);
-    const availW = wrap.clientWidth - (showInsp ? 304 : 12);
-    const availH = wrap.clientHeight - 12;
-    const size = Math.max(240, Math.min(availW, availH));
-    const v = canvas._view;
-    if (v && v.width === Math.floor(size) && v.dpr === Math.min(2.5, window.devicePixelRatio || 1)) return;
-    window.TacticalRenderer.resize(canvas, size, size);
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (!W || !H) return;
+    window.TacticalRenderer.resize(canvas, W, H, hudSafeInsets(W, H));
+  }
+
+  // 右侧作战面板收起 / 展开（H 键）；收起后地图自动在更大的安全区内重新居中
+  function setOpsCollapsed(on, persist) {
+    const collapsed = Boolean(on);
+    document.body.classList.toggle("ops-collapsed", collapsed);
+    const b = $("btn-ops-toggle");
+    if (b) b.setAttribute("aria-label", collapsed ? "展开作战面板" : "收起作战面板");
+    if (persist !== false) LS.set("nw_ops_collapsed", collapsed ? "1" : "0");
+    requestAnimationFrame(fitCanvas);
+  }
+  function ensureOpsVisibleFor(target) {
+    if (typeof target !== "string" || !document.body.classList.contains("ops-collapsed")) return;
+    const panel = $("AlertOutliner");
+    if (panel && panel.querySelector(target)) setOpsCollapsed(false, false);
   }
 
   // ───────────── 地图拾取、缩放与悬停说明 ─────────────
@@ -1424,6 +1455,7 @@
 
   function runDeployTutorial() {
     LS.set("nw_hints_off", "");
+    setOpsCollapsed(false, false);
     state.hintsSeen = {};
     const meta = state.meta;
     const sel = () => state.placements.find((p) => p.unitDefId === "nasams")
@@ -1505,6 +1537,7 @@
     };
     const h = H[key];
     if (!h) return;
+    ensureOpsVisibleFor(h.target);
     if (typeof h.target === "function" && !h.target()) return;
     state.hintsSeen[key] = true;
     const prev = state.speed || 1;
@@ -1584,6 +1617,13 @@
       b.addEventListener("click", () => toggleDrawer(Number(b.dataset.openDrawer)));
     });
     if ($("drawer-close-btn")) $("drawer-close-btn").addEventListener("click", closeDrawer);
+    if ($("btn-ops-toggle")) $("btn-ops-toggle").addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpsCollapsed(!document.body.classList.contains("ops-collapsed"));
+    });
+    document.querySelector("#AlertOutliner .ops-head").addEventListener("click", () => {
+      if (document.body.classList.contains("ops-collapsed")) setOpsCollapsed(false);
+    });
     if ($("btn-close-inspector")) $("btn-close-inspector").addEventListener("click", () => {
       state.inspectorOpen = false;
       renderRosterAndInspector();
@@ -1884,6 +1924,7 @@
       if (e.code === "Space" && state.phase === "battle") { e.preventDefault(); setSpeed(state.speed > 0 ? 0 : 1); }
       else if (e.code === "Tab") { e.preventDefault(); toggleViewMode(); }
       else if (e.code === "KeyN") skipToNextContact();
+      else if (e.code === "KeyH") setOpsCollapsed(!document.body.classList.contains("ops-collapsed"));
       else if (e.code === "Equal" || e.code === "NumpadAdd") { e.preventDefault(); stepMapZoom(1.28); }
       else if (e.code === "Minus" || e.code === "NumpadSubtract") { e.preventDefault(); stepMapZoom(1 / 1.28); }
       else if (e.code === "Digit0" || e.code === "Numpad0") { e.preventDefault(); resetMapZoom(); }
@@ -1891,7 +1932,14 @@
         setSpeed({ Digit1: 1, Digit2: 4, Digit3: 8 }[e.code]);
       }
     });
-    if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe($("canvas-wrapper"));
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => requestAnimationFrame(fitCanvas));
+      ro.observe($("canvas-wrapper"));
+      ro.observe($("TopBar"));
+      ro.observe($("AlertOutliner"));
+      ro.observe($("hud-bottom"));
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => requestAnimationFrame(fitCanvas));
     window.addEventListener("resize", fitCanvas);
   }
   function closeMore() { $("more-dd").classList.remove("open"); $("legend-dd").classList.remove("open"); }
@@ -1927,6 +1975,11 @@
   }
 
   bindGlobalEvents();
+  {
+    // 作战面板初始状态：沿用上次选择；窄屏（< 1080px）默认收起，让地图占满
+    const savedOps = LS.get("nw_ops_collapsed");
+    setOpsCollapsed(savedOps ? savedOps === "1" : window.innerWidth < 1080, false);
+  }
   fitCanvas();
   setPhase("deploy");
   requestAnimationFrame(animLoop);

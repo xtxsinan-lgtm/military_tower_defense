@@ -2,7 +2,7 @@
 // 说明：所有绘制使用"逻辑像素"坐标（CSS 像素），通过 devicePixelRatio 变换保证高分屏清晰。
 (function () {
   const MAP_SIZE_M = 20000;
-  const PAD = 34; // 平面图四周留白（逻辑像素），用于坐标格标注
+  const PAD = 26; // 平面图四周留白（逻辑像素），用于坐标格标注
 
   // 我方单位统一用北约军标"友军蓝"系，按类别细分明度/色相
   const CAT_COLORS = { fire: "#5fb6ff", sensor: "#7fe0e0", ew: "#a9a4ff", deception: "#66778a" };
@@ -25,6 +25,29 @@
     return canvas._view || { width: canvas.width, height: canvas.height, dpr: 1, zoom: 1, panX: 0, panY: 0 };
   }
 
+  // 全屏画布（地图铺满整个视口，界面以浮层叠加其上，参照 DEFCON）：
+  // view.safe = 被 HUD 浮层占用的四边留白 {l,t,r,b}（逻辑像素）；
+  // lb = 画布内标注（比例尺、射程标签）的底部留白，额外避开无线电字幕条。
+  // 作战区（AO）正方形在安全区内居中，未缩放时完整可见；安全区之外照常绘制“区外地形”。
+  function safeOf(view) {
+    const s = view.safe || {};
+    return { l: s.l || 0, t: s.t || 0, r: s.r || 0, b: s.b || 0, lb: Math.max(s.lb || 0, s.b || 0) };
+  }
+
+  // 基准（缩放=1）地图外框：含 PAD 坐标标注带的正方形 {x, y, s}
+  function mapFrame(view) {
+    const sa = safeOf(view);
+    const aw = Math.max(120, view.width - sa.l - sa.r);
+    const ah = Math.max(120, view.height - sa.t - sa.b);
+    const s = Math.min(aw, ah);
+    return { x: sa.l + (aw - s) / 2, y: sa.t + (ah - s) / 2, s };
+  }
+
+  // 基准比例尺：每米对应的逻辑像素（缩放=1）
+  function basePxPerM(view) {
+    return (mapFrame(view).s - PAD * 2) / MAP_SIZE_M;
+  }
+
   function clampCamera(view) {
     const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, view.zoom || 1));
     view.zoom = z;
@@ -34,18 +57,31 @@
       view.panY = 0;
       return;
     }
-    const maxPanX = Math.max(0, (view.width - PAD * 2) * (z - 1) * 0.5);
-    const maxPanY = Math.max(0, (view.height - PAD * 2) * (z - 1) * 0.5);
-    view.panX = Math.max(-maxPanX, Math.min(maxPanX, view.panX || 0));
-    view.panY = Math.max(-maxPanY, Math.min(maxPanY, view.panY || 0));
+    // 允许把 AO 任一边缘拖到安全区边缘（再多留一点余量），但不允许整张图被拖出视野
+    const f = mapFrame(view);
+    const sa = safeOf(view);
+    const cx = view.width * 0.5, cy = view.height * 0.5;
+    const slack = 48;
+    const axis = (lo0, hi0, c, safeLo, safeHi) => {
+      const L = c + (lo0 - c) * z, R = c + (hi0 - c) * z;
+      const lo = safeHi - slack - R; // 右（下）缘不得离开安全区
+      const hi = safeLo + slack - L; // 左（上）缘不得离开安全区
+      return lo > hi ? [(lo + hi) / 2, (lo + hi) / 2] : [lo, hi];
+    };
+    const [x0, x1] = axis(f.x + PAD, f.x + f.s - PAD, cx, sa.l, view.width - sa.r);
+    const [y0, y1] = axis(f.y + PAD, f.y + f.s - PAD, cy, sa.t, view.height - sa.b);
+    view.panX = Math.max(x0, Math.min(x1, view.panX || 0));
+    view.panY = Math.max(y0, Math.min(y1, view.panY || 0));
   }
 
   function zoomAt(canvas, newZoom, anchorX, anchorY, newAnchorX, newAnchorY) {
     const view = getView(canvas);
     const oldZ = view.zoom || 1;
     const targetZ = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-    const ax0 = anchorX !== undefined ? anchorX : view.width * 0.5;
-    const ay0 = anchorY !== undefined ? anchorY : view.height * 0.5;
+    // 未指定锚点（按钮 / 键盘缩放）时以 HUD 安全区中心为锚，而非画布中心
+    const sa = safeOf(view);
+    const ax0 = anchorX !== undefined ? anchorX : sa.l + (view.width - sa.l - sa.r) * 0.5;
+    const ay0 = anchorY !== undefined ? anchorY : sa.t + (view.height - sa.t - sa.b) * 0.5;
     const ax1 = newAnchorX !== undefined ? newAnchorX : ax0;
     const ay1 = newAnchorY !== undefined ? newAnchorY : ay0;
     const cx = view.width * 0.5;
@@ -74,19 +110,19 @@
   }
 
   function baseWorldToScreen(wx, wy, altM, view, viewMode, elevM) {
-    const W = view.width;
-    const H = view.height;
+    const f = mapFrame(view);
+    const S = f.s;
     const nx = wx / MAP_SIZE_M;
     const ny = 1.0 - wy / MAP_SIZE_M;
     if (viewMode !== "live25d") {
-      return { x: PAD + nx * (W - PAD * 2), y: PAD + ny * (H - PAD * 2), scale: 1.0 };
+      return { x: f.x + PAD + nx * (S - PAD * 2), y: f.y + PAD + ny * (S - PAD * 2), scale: 1.0 };
     }
     // 25° 俯角 2.5D 透视投影：北端略收窄，地形海拔与目标高度向上抬升
     const persp = 0.72 + 0.28 * ny;
-    const sx = W * 0.5 + (nx - 0.5) * (W * 0.86) * persp;
-    const baseSy = H * 0.13 + Math.pow(Math.max(0, ny), 0.92) * (H * 0.79);
-    const groundZ = (elevM || 0) * 0.08 * (H / 920);
-    const totalZ = groundZ + (altM || 0) * 0.055 * (H / 920);
+    const sx = f.x + S * 0.5 + (nx - 0.5) * (S * 0.86) * persp;
+    const baseSy = f.y + S * 0.13 + Math.pow(Math.max(0, ny), 0.92) * (S * 0.79);
+    const groundZ = (elevM || 0) * 0.08 * (S / 920);
+    const totalZ = groundZ + (altM || 0) * 0.055 * (S / 920);
     return { x: sx, y: baseSy - totalZ, groundY: baseSy - groundZ, scale: persp };
   }
 
@@ -114,18 +150,20 @@
     const cy = H * 0.5;
     const bx = cx + (px - cx - panX) / z;
     const by = cy + (py - cy - panY) / z;
+    const f = mapFrame(view);
+    const S = f.s;
     if (viewMode !== "live25d") {
-      const nx = (bx - PAD) / (W - PAD * 2);
-      const ny = (by - PAD) / (H - PAD * 2);
+      const nx = (bx - f.x - PAD) / (S - PAD * 2);
+      const ny = (by - f.y - PAD) / (S - PAD * 2);
       return [
         Math.max(0, Math.min(MAP_SIZE_M, nx * MAP_SIZE_M)),
         Math.max(0, Math.min(MAP_SIZE_M, (1.0 - ny) * MAP_SIZE_M)),
       ];
     }
-    const rawNy = Math.max(0, Math.min(1, (by - H * 0.13) / (H * 0.79)));
+    const rawNy = Math.max(0, Math.min(1, (by - f.y - S * 0.13) / (S * 0.79)));
     const ny = Math.pow(rawNy, 1 / 0.92);
     const persp = 0.72 + 0.28 * ny;
-    const nx = 0.5 + (bx - W * 0.5) / ((W * 0.86) * persp);
+    const nx = 0.5 + (bx - f.x - S * 0.5) / ((S * 0.86) * persp);
     return [
       Math.max(0, Math.min(MAP_SIZE_M, nx * MAP_SIZE_M)),
       Math.max(0, Math.min(MAP_SIZE_M, (1.0 - ny) * MAP_SIZE_M)),
@@ -202,8 +240,101 @@
   }
 
   // ───────────────────────── 静态地形缓存 ─────────────────────────
+  // 渲染用值噪声（确定性哈希，仅用于区外地形外观，不参与模拟）
+  function valueNoise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const h = (a, b) => hash01(a * 157.31 + b * 311.17);
+    const a = h(xi, yi), b = h(xi + 1, yi), c = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y) {
+    let s = 0, amp = 0.5, f = 1;
+    for (let o = 0; o < 4; o++) { s += amp * valueNoise(x * f, y * f); f *= 2.03; amp *= 0.5; }
+    return s / 0.9375;
+  }
+  // 作战区外的渲染高程：AO 边缘高程按距离指数衰减到程序噪声地形
+  function surroundElev(g, N, wx, wy, minE, maxE) {
+    const cxm = Math.max(0, Math.min(MAP_SIZE_M, wx)), cym = Math.max(0, Math.min(MAP_SIZE_M, wy));
+    const d = Math.hypot(wx - cxm, wy - cym);
+    const edge = sampleElevSmooth(g, N, cxm, cym);
+    const n = minE + (maxE - minE) * (0.15 + 0.7 * fbm(wx / 5200 + 17.3, wy / 5200 - 4.1));
+    const b = Math.exp(-d / 3500);
+    return edge * b + n * (1 - b);
+  }
+
+  // 区外地形：作战区之外延伸的低对比晕渲（AO 边缘高程平滑过渡到程序噪声），让地图铺满全屏
+  function drawSurroundTerrain(ctx, meta, view) {
+    const { width: W, height: H, dpr } = view;
+    const f = mapFrame(view);
+    const g = meta.map.elevationGrid || [];
+    const N = g.length;
+    if (!N) return;
+    const minE = meta.map.minElevationM || 80;
+    const maxE = Math.max(minE + 10, meta.map.maxElevationM || 320);
+    const inner = f.s - PAD * 2;
+    const mPerCss = MAP_SIZE_M / inner;
+    const k = Math.max(1, Math.round(2 / Math.min(1.5, dpr))); // 每纹素约 2 个逻辑像素
+    const TW = Math.ceil(W / k) + 2, TH = Math.ceil(H / k) + 2;
+    const E = new Float32Array(TW * TH);
+    const mPerTex = mPerCss * k;
+    for (let ty = 0; ty < TH; ty++) {
+      const wy = (1 - ((ty * k) - f.y - PAD) / inner) * MAP_SIZE_M;
+      for (let tx = 0; tx < TW; tx++) {
+        const wx = (((tx * k) - f.x - PAD) / inner) * MAP_SIZE_M;
+        E[ty * TW + tx] = surroundElev(g, N, wx, wy, minE, maxE);
+      }
+    }
+    const img = ctx.createImageData(TW, TH);
+    const dd = img.data;
+    const L = [-0.5, 0.5, 0.707];
+    const zx = 3.2;
+    for (let ty = 0; ty < TH; ty++) {
+      for (let tx = 0; tx < TW; tx++) {
+        const i = ty * TW + tx;
+        const e = E[i];
+        const eL = E[ty * TW + Math.max(0, tx - 1)], eR = E[ty * TW + Math.min(TW - 1, tx + 1)];
+        const eU = E[Math.max(0, ty - 1) * TW + tx], eD = E[Math.min(TH - 1, ty + 1) * TW + tx];
+        const dzdx = ((eR - eL) / (2 * mPerTex)) * zx;
+        const dzdy = ((eU - eD) / (2 * mPerTex)) * zx;
+        const nl = Math.hypot(dzdx, dzdy, 1);
+        const shade = Math.max(0, (-dzdx * L[0] - dzdy * L[1] + L[2]) / nl);
+        const t = Math.max(0, Math.min(1, (e - minE) / (maxE - minE)));
+        const c = rampColor(t);
+        const kk = (0.5 + 0.75 * shade) * 0.8; // 区外略压暗，突出作战区
+        let r = c[0] * kk, gg = c[1] * kk, bb = c[2] * kk;
+        const band = Math.floor(e / 20);
+        if (band !== Math.floor(eR / 20) || band !== Math.floor(eD / 20)) {
+          r = r * 0.93 + 90 * 0.07; gg = gg * 0.93 + 112 * 0.07; bb = bb * 0.93 + 135 * 0.07;
+        }
+        dd[i * 4] = r; dd[i * 4 + 1] = gg; dd[i * 4 + 2] = bb; dd[i * 4 + 3] = 255;
+      }
+    }
+    const tex = document.createElement("canvas");
+    tex.width = TW; tex.height = TH;
+    tex.getContext("2d").putImageData(img, 0, 0);
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(tex, 0, 0, TW * k, TH * k);
+    // 区外 2.5 km 参考网格（与作战区方格对齐，营造“标图桌”的延伸感）
+    ctx.strokeStyle = "rgba(120, 150, 180, 0.1)";
+    ctx.lineWidth = 1;
+    const cell = 2500 / mPerCss;
+    const ox = f.x + PAD, oy = f.y + PAD;
+    ctx.beginPath();
+    for (let x = ox - Math.ceil(ox / cell) * cell; x <= W; x += cell) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, H); }
+    for (let y = oy - Math.ceil(oy / cell) * cell; y <= H; y += cell) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(W, Math.round(y) + 0.5); }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function buildTerrainCommand(meta, view) {
     const { width: W, height: H, dpr } = view;
+    const fr = mapFrame(view);
+    const inner = fr.s - PAD * 2;
     const off = document.createElement("canvas");
     off.width = Math.round(W * dpr); off.height = Math.round(H * dpr);
     const ctx = off.getContext("2d");
@@ -211,13 +342,15 @@
     ctx.fillRect(0, 0, off.width, off.height);
     if (!meta || !meta.map) return off;
 
+    drawSurroundTerrain(ctx, meta, view);
+
     const g = meta.map.elevationGrid || [];
     const N = g.length;
     const minE = meta.map.minElevationM || 80;
     const maxE = Math.max(minE + 10, meta.map.maxElevationM || 320);
 
     // 1) 生成高分辨率晕渲 + 等高线纹理
-    const S = Math.max(64, Math.min(1400, Math.round((W - PAD * 2) * dpr)));
+    const S = Math.max(64, Math.min(1400, Math.round(inner * dpr)));
     const mPerPx = MAP_SIZE_M / S;
     const E = new Float32Array(S * S);
     for (let py = 0; py < S; py++) {
@@ -262,18 +395,20 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(tex, PAD, PAD, W - PAD * 2, H - PAD * 2);
+    ctx.drawImage(tex, fr.x + PAD, fr.y + PAD, inner, inner);
     return off;
   }
 
   function buildTerrain25D(meta, view) {
     const { width: W, height: H, dpr } = view;
+    const fr = mapFrame(view);
     const off = document.createElement("canvas");
     off.width = Math.round(W * dpr); off.height = Math.round(H * dpr);
     const ctx = off.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const sky = ctx.createLinearGradient(0, 0, 0, H * 0.35);
-    sky.addColorStop(0, "#070a0e"); sky.addColorStop(1, "#0f151c");
+    const horizonY = fr.y + fr.s * 0.13;
+    const sky = ctx.createLinearGradient(0, 0, 0, Math.max(40, horizonY + 20));
+    sky.addColorStop(0, "#06080c"); sky.addColorStop(1, "#111821");
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     if (!meta || !meta.map) return off;
 
@@ -282,50 +417,74 @@
     const minE = meta.map.minElevationM || 80;
     const maxE = Math.max(minE + 10, meta.map.maxElevationM || 320);
     const step = MAP_SIZE_M / N;
-    const elevAt = (wx, wy) => sampleElevSmooth(g, N, wx, wy);
+    const inAO = (wx, wy) => wx >= 0 && wx <= MAP_SIZE_M && wy >= 0 && wy <= MAP_SIZE_M;
+    const elevAt = (wx, wy) => (inAO(wx, wy) ? sampleElevSmooth(g, N, wx, wy) : surroundElev(g, N, wx, wy, minE, maxE));
+
+    // 区外延伸：横向铺满视口、向南（近景）铺到画面底部；北侧收于地平线
+    const halfW = Math.max(fr.x + fr.s * 0.5, W - fr.x - fr.s * 0.5);
+    const extraX = Math.max(0, Math.ceil(N * (halfW / (fr.s * 0.86 * 0.72) - 0.5)) + 1);
+    const nyMax = Math.pow(Math.max(1, (H - fr.y - fr.s * 0.13) / (fr.s * 0.79)), 1 / 0.92);
+    const extraS = Math.max(0, Math.ceil(N * (nyMax - 1)) + 1);
 
     // 由远（北）至近（南）绘制网格面片
-    for (let iy = N - 1; iy >= 0; iy--) {
-      for (let ix = 0; ix < N; ix++) {
+    for (let iy = N - 1; iy >= -extraS; iy--) {
+      for (let ix = -extraX; ix < N + extraX; ix++) {
         const x0 = ix * step, x1 = (ix + 1) * step, y0 = iy * step, y1 = (iy + 1) * step;
+        const out = !(ix >= 0 && ix < N && iy >= 0);
         const e00 = elevAt(x0, y0), e10 = elevAt(x1, y0), e11 = elevAt(x1, y1), e01 = elevAt(x0, y1);
         const p00 = worldToScreen(x0, y0, 0, view, "live25d", e00);
         const p10 = worldToScreen(x1, y0, 0, view, "live25d", e10);
         const p11 = worldToScreen(x1, y1, 0, view, "live25d", e11);
         const p01 = worldToScreen(x0, y1, 0, view, "live25d", e01);
-        const e = g[iy][ix];
+        if (out && (Math.max(p00.x, p10.x, p11.x, p01.x) < -4 || Math.min(p00.x, p10.x, p11.x, p01.x) > W + 4)) continue;
+        const e = out ? (e00 + e10 + e11 + e01) / 4 : g[iy][ix];
         const dzdx = ((e10 + e11) - (e00 + e01)) / (2 * step) * 3.2;
         const dzdy = ((e01 + e11) - (e00 + e10)) / (2 * step) * 3.2;
         const nl = Math.hypot(dzdx, dzdy, 1);
         const shade = Math.max(0, (dzdx * 0.5 - dzdy * 0.5 + 0.707) / nl);
         const t = Math.max(0, Math.min(1, (e - minE) / (maxE - minE)));
         const c = rampColor(t);
-        const fog = 0.62 + 0.38 * (1 - iy / N); // 远处更暗
-        const k = (0.5 + 0.75 * Math.min(1, shade)) * fog;
+        const fog = 0.62 + 0.38 * Math.min(1, 1 - iy / N); // 远处更暗
+        const k = (0.5 + 0.75 * Math.min(1, shade)) * fog * (out ? 0.62 : 1);
         const col = `rgb(${(c[0] * k) | 0},${(c[1] * k) | 0},${(c[2] * k) | 0})`;
         ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 0.8;
         ctx.beginPath();
         ctx.moveTo(p00.x, p00.y); ctx.lineTo(p10.x, p10.y); ctx.lineTo(p11.x, p11.y); ctx.lineTo(p01.x, p01.y);
         ctx.closePath(); ctx.fill(); ctx.stroke();
         // 每 100m 高程带勾一条细亮线
-        if (Math.floor(e / 40) !== Math.floor(g[iy][Math.min(N - 1, ix + 1)] / 40)) {
+        if (!out && Math.floor(e / 40) !== Math.floor(g[iy][Math.min(N - 1, ix + 1)] / 40)) {
           ctx.strokeStyle = "rgba(95, 182, 255, 0.10)";
           ctx.beginPath(); ctx.moveTo(p10.x, p10.y); ctx.lineTo(p11.x, p11.y); ctx.stroke();
         }
       }
     }
+    // 作战区边界（贴地虚线）
+    ctx.save();
+    ctx.strokeStyle = "rgba(140, 170, 200, 0.35)"; ctx.lineWidth = 1; ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    const edge = [[0, 0], [MAP_SIZE_M, 0], [MAP_SIZE_M, MAP_SIZE_M], [0, MAP_SIZE_M], [0, 0]];
+    for (let i = 0; i < edge.length - 1; i++) {
+      const a = edge[i], b = edge[i + 1];
+      for (let s = 0; s <= 20; s++) {
+        const wx = a[0] + (b[0] - a[0]) * s / 20, wy = a[1] + (b[1] - a[1]) * s / 20;
+        const p = worldToScreen(wx, wy, 0, view, "live25d", sampleElevSmooth(g, N, Math.min(MAP_SIZE_M - 1, wx), Math.min(MAP_SIZE_M - 1, wy)));
+        if (i === 0 && s === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
     drawVectorLayers(ctx, meta, view, "live25d");
     // 远景雾化
-    const fogG = ctx.createLinearGradient(0, H * 0.1, 0, H * 0.45);
-    fogG.addColorStop(0, "rgba(9, 13, 18, 0.55)"); fogG.addColorStop(1, "rgba(9, 13, 18, 0)");
-    ctx.fillStyle = fogG; ctx.fillRect(0, 0, W, H * 0.45);
+    const fogG = ctx.createLinearGradient(0, horizonY - fr.s * 0.03, 0, horizonY + fr.s * 0.32);
+    fogG.addColorStop(0, "rgba(9, 13, 18, 0.7)"); fogG.addColorStop(1, "rgba(9, 13, 18, 0)");
+    ctx.fillStyle = fogG; ctx.fillRect(0, 0, W, horizonY + fr.s * 0.32);
     return off;
   }
 
   function drawVectorLayers(ctx, meta, view, mode) {
     const ly = meta.layers || {};
     const z = view.zoom || 1;
-    const pxPerM = ((view.width - PAD * 2) / MAP_SIZE_M) * z;
+    const pxPerM = basePxPerM(view) * z;
     (ly.forests || []).forEach((f) => {
       polyPath(ctx, f.polygon, view, mode, meta);
       ctx.fillStyle = "rgba(26, 42, 38, 0.32)"; ctx.fill();
@@ -385,12 +544,35 @@
 
   function drawCommandFrame(ctx, view) {
     const { width: W, height: H } = view;
-    const x0 = PAD, y0 = PAD, x1 = W - PAD, y1 = H - PAD;
-    ctx.strokeStyle = "rgba(140, 154, 170, 0.38)";
+    const sa = safeOf(view);
+    // 作战区边界随缩放 / 平移实时变换（全屏画布下不再是固定外框）
+    const tl = worldToScreen(0, MAP_SIZE_M, 0, view, "command", 0);
+    const br = worldToScreen(MAP_SIZE_M, 0, 0, view, "command", 0);
+    const x0 = tl.x, y0 = tl.y, x1 = br.x, y1 = br.y;
+    // 外侧压暗一圈，作战区内外层次分明
+    ctx.save();
+    ctx.fillStyle = "rgba(4, 6, 9, 0.2)";
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    ctx.fill("evenodd");
+    ctx.restore();
+    ctx.strokeStyle = "rgba(140, 170, 200, 0.5)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
-    // 1km 刻度（随缩放与平移实时对齐世界坐标）
-    ctx.strokeStyle = "rgba(140, 154, 170, 0.35)";
+    ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0) - 1, Math.round(y1 - y0) - 1);
+    // 四角括弧
+    ctx.strokeStyle = "rgba(170, 200, 230, 0.75)";
+    ctx.lineWidth = 2;
+    const cl = 14;
+    [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]].forEach(([x, y, dx, dy]) => {
+      ctx.beginPath(); ctx.moveTo(x + dx * cl, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * cl); ctx.stroke();
+    });
+    // 坐标标注带：AO 边缘在视野内时贴边，否则钉在安全区边缘
+    const lblTop = Math.max(sa.t + 12, Math.min(y1 - 12, y0 - 16));
+    const lblLeft = Math.max(sa.l + 12, Math.min(x1 - 12, x0 - 17));
+    // 1km 刻度
+    ctx.strokeStyle = "rgba(140, 170, 200, 0.4)";
+    ctx.lineWidth = 1;
     for (let m = 0; m <= MAP_SIZE_M; m += 1000) {
       const p = worldToScreen(m, MAP_SIZE_M - m, 0, view, "command", 0);
       const len = m % 5000 === 0 ? 7 : 3.5;
@@ -406,18 +588,16 @@
       ctx.stroke();
     }
     // 方格编号 A–H / 1–8
-    ctx.font = "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace";
-    ctx.fillStyle = "rgba(112, 128, 146, 0.65)";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const font = "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace";
     const cells = MAP_SIZE_M / 2500;
     for (let i = 0; i < cells; i++) {
       const wm = (i + 0.5) * 2500;
       const p = worldToScreen(wm, MAP_SIZE_M - wm, 0, view, "command", 0);
-      if (p.x >= x0 + 8 && p.x <= x1 - 8) {
-        ctx.fillText(String.fromCharCode(65 + i), p.x, y0 - 16);
+      if (p.x >= Math.max(x0, sa.l) + 8 && p.x <= Math.min(x1, W - sa.r) - 8) {
+        haloText(ctx, String.fromCharCode(65 + i), p.x, lblTop + 4, "rgba(150, 170, 192, 0.8)", font);
       }
-      if (p.y >= y0 + 8 && p.y <= y1 - 8) {
-        ctx.fillText(String(i + 1), x0 - 17, p.y);
+      if (p.y >= Math.max(y0, sa.t) + 8 && p.y <= Math.min(y1, H - sa.b) - 8) {
+        haloText(ctx, String(i + 1), lblLeft, p.y + 4, "rgba(150, 170, 192, 0.8)", font);
       }
     }
     ctx.textBaseline = "alphabetic";
@@ -505,6 +685,7 @@
   // ───────────────────────── 覆盖层缓存 ─────────────────────────
   function buildCoverageLayer(cov, meta, view, mode) {
     const { width: W, height: H, dpr } = view;
+    const fr = mapFrame(view);
     const off = document.createElement("canvas");
     off.width = Math.round(W * dpr); off.height = Math.round(H * dpr);
     const ctx = off.getContext("2d");
@@ -529,14 +710,14 @@
       vctx.putImageData(vi, 0, 0); bctx.putImageData(bi, 0, 0);
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
       ctx.globalAlpha = 0.05;
-      ctx.drawImage(vis, PAD, PAD, W - PAD * 2, H - PAD * 2);
+      ctx.drawImage(vis, fr.x + PAD, fr.y + PAD, fr.s - PAD * 2, fr.s - PAD * 2);
       ctx.globalAlpha = 1;
       // 盲区：平滑遮罩 + 红色斜线填充
       const tmp = document.createElement("canvas"); tmp.width = off.width; tmp.height = off.height;
       const tctx = tmp.getContext("2d");
       tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       tctx.imageSmoothingEnabled = true; tctx.imageSmoothingQuality = "high";
-      tctx.drawImage(bl, PAD, PAD, W - PAD * 2, H - PAD * 2);
+      tctx.drawImage(bl, fr.x + PAD, fr.y + PAD, fr.s - PAD * 2, fr.s - PAD * 2);
       tctx.globalCompositeOperation = "source-in";
       tctx.setTransform(1, 0, 0, 1, 0, 0);
       tctx.fillStyle = tctx.createPattern(cache.hatchRed, "repeat");
@@ -612,8 +793,9 @@
       cache.hatchRedSoft = makeHatch("rgba(255, 91, 79, 0.35)", "rgba(255, 91, 79, 0.05)", Math.round(9 * dpr), 1 * dpr);
     }
     const viewMode = state.viewMode || "command";
-    const baseView = { width: view.width, height: view.height, dpr: view.dpr, zoom: 1, panX: 0, panY: 0 };
-    const key = `${meta.levelId}_${meta.nightIndex}_${view.width}x${view.height}@${dpr}`;
+    const baseView = { width: view.width, height: view.height, dpr: view.dpr, safe: view.safe, zoom: 1, panX: 0, panY: 0 };
+    const fk = mapFrame(view);
+    const key = `${meta.levelId}_${meta.nightIndex}_${view.width}x${view.height}@${dpr}_${fk.x | 0},${fk.y | 0},${fk.s | 0}`;
     if (cache.terrainKey !== key) {
       cache.terrain.command = null; cache.terrain.live25d = null;
       cache.terrainKey = key; cache.covKey = "";
@@ -628,15 +810,8 @@
     ctx.fillStyle = "#080b0f";
     ctx.fillRect(0, 0, view.width, view.height);
 
-    // 裁剪至地图主视区，防止放大后地形与射程圈溢出外框刻度区
+    // 全屏画布：地形铺满视口，不再裁剪到固定外框（区外地形与射程圈自然延伸到浮层之下）
     ctx.save();
-    ctx.beginPath();
-    if (viewMode !== "live25d" && (view.zoom || 1) > 1.01) {
-      ctx.rect(PAD, PAD, view.width - PAD * 2, view.height - PAD * 2);
-    } else {
-      ctx.rect(0, 0, view.width, view.height);
-    }
-    ctx.clip();
 
     drawCachedLayer(ctx, cache.terrain[viewMode], view);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -896,7 +1071,7 @@
     });
 
     const structs = (snap && snap.structures) || meta.structures || [];
-    const pxPerM = (view.width - PAD * 2) / MAP_SIZE_M;
+    const pxPerM = basePxPerM(view);
     structs.forEach((s) => {
       const p = P(s.pos, view, mode, meta);
       const hpFrac = Math.max(0, s.hp / Math.max(1, s.maxHp));
@@ -1088,8 +1263,9 @@
         ctx.fillStyle = "rgba(126, 217, 154, 0.04)"; ctx.fill();
         ctx.strokeStyle = "rgba(126, 217, 154, 0.6)"; ctx.lineWidth = 1.2;
         ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]);
-        const tp = worldToScreen(focusU.pos[0], Math.min(MAP_SIZE_M, focusU.pos[1] + detR), 0, view, mode, 0);
-        haloText(ctx, `探测范围 ${(detR / 1000).toFixed(1)}km`, tp.x, tp.y - 4, "rgba(127, 224, 224, 0.92)", "600 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
+        const tp = worldToScreen(focusU.pos[0], focusU.pos[1] + detR, 0, view, mode, 0);
+        // 全屏画布：射程 / 探测环可能超出视野，标注钉在 HUD 安全区内
+        haloText(ctx, `探测范围 ${(detR / 1000).toFixed(1)}km`, tp.x, Math.max(safeOf(view).t + 14, tp.y - 4), "rgba(127, 224, 224, 0.92)", "600 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
       }
       (focusU.weapons || []).forEach((w, wi) => {
         if (!(w.rangeM > 0)) return;
@@ -1099,8 +1275,9 @@
         ctx.fill();
         ctx.strokeStyle = isGun ? "rgba(127, 224, 224, 0.9)" : "rgba(95, 182, 255, 0.88)";
         ctx.lineWidth = 1.5; ctx.stroke();
-        const tp = worldToScreen(focusU.pos[0], Math.max(0, focusU.pos[1] - w.rangeM), 0, view, mode, 0);
-        haloText(ctx, `${w.name || w.weaponId} · 射程 ${(w.rangeM / 1000).toFixed(1)}km`, tp.x, tp.y + 13 + wi * 12, isGun ? "#7fe0e0" : "#c4e0ff", "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
+        const tp = worldToScreen(focusU.pos[0], focusU.pos[1] - w.rangeM, 0, view, mode, 0);
+        const maxY = view.height - safeOf(view).lb - 8 - ((focusU.weapons || []).length - 1 - wi) * 12;
+        haloText(ctx, `${w.name || w.weaponId} · 射程 ${(w.rangeM / 1000).toFixed(1)}km`, tp.x, Math.min(maxY, tp.y + 13 + wi * 12), isGun ? "#7fe0e0" : "#c4e0ff", "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
       });
     }
 
@@ -1344,7 +1521,7 @@
       if (trk.quality === 0) {
         ctx.strokeStyle = "rgba(112, 128, 146, 0.5)"; ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
-        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(10, (trk.uncertaintyRadiusM || 600) * ((view.width - PAD * 2) / MAP_SIZE_M)), 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(10, (trk.uncertaintyRadiusM || 600) * basePxPerM(view)), 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
       }
       ctx.save();
@@ -1425,13 +1602,32 @@
 
   function drawHud(ctx, view, mode, state) {
     const { width: W, height: H } = view;
-    // 暗角
-    const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.38, W / 2, H / 2, Math.max(W, H) * 0.75);
-    vg.addColorStop(0, "rgba(0, 0, 0, 0)"); vg.addColorStop(1, "rgba(0, 0, 0, 0.5)");
+    const sa = safeOf(view);
+    const fr = mapFrame(view);
+    // 暗角（以作战区中心为焦点，四周浮层下方逐渐压暗，提升 HUD 可读性）
+    const fcx = fr.x + fr.s / 2, fcy = fr.y + fr.s / 2;
+    const vg = ctx.createRadialGradient(fcx, fcy, fr.s * 0.42, fcx, fcy, Math.max(W, H) * 0.85);
+    vg.addColorStop(0, "rgba(0, 0, 0, 0)"); vg.addColorStop(1, "rgba(0, 0, 0, 0.55)");
     ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    // 顶 / 底边缘渐暗，给浮动 HUD 一个“托底”
+    const tg = ctx.createLinearGradient(0, 0, 0, 90);
+    tg.addColorStop(0, "rgba(4, 6, 9, 0.55)"); tg.addColorStop(1, "rgba(4, 6, 9, 0)");
+    ctx.fillStyle = tg; ctx.fillRect(0, 0, W, 90);
+    const bg = ctx.createLinearGradient(0, H - 110, 0, H);
+    bg.addColorStop(0, "rgba(4, 6, 9, 0)"); bg.addColorStop(1, "rgba(4, 6, 9, 0.6)");
+    ctx.fillStyle = bg; ctx.fillRect(0, H - 110, W, 110);
 
-    // 指北针
-    const cx = W - PAD - 22, cy = PAD + 24;
+    // AO 内角（随缩放平移），钉在安全区内
+    const tl = worldToScreen(0, MAP_SIZE_M, 0, view, "command", 0);
+    const brp = worldToScreen(MAP_SIZE_M, 0, 0, view, "command", 0);
+    const isFlat = mode !== "live25d";
+    const aoR = isFlat ? Math.min(brp.x, W - sa.r) : Math.min(fr.x + fr.s, W - sa.r);
+    const aoT = isFlat ? Math.max(tl.y, sa.t) : Math.max(fr.y, sa.t);
+    const aoL = isFlat ? Math.max(tl.x, sa.l) : Math.max(fr.x, sa.l);
+    const aoB = isFlat ? Math.min(brp.y, H - sa.lb) : Math.min(fr.y + fr.s, H - sa.lb);
+
+    // 指北针（AO 右下内角：右上角留给事件浮窗）
+    const cx = aoR - 26, cy = aoB - 30;
     ctx.fillStyle = "rgba(9, 13, 18, 0.72)";
     ctx.strokeStyle = "rgba(140, 154, 170, 0.35)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -1442,14 +1638,15 @@
     haloText(ctx, "N", cx, cy - 19, "#ffc9c3", "700 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
 
     // 比例尺（平面图，随缩放倍率自动切换量程）
-    if (mode !== "live25d") {
+    if (isFlat) {
       const z = view.zoom || 1;
-      const pxPerM = ((W - PAD * 2) / MAP_SIZE_M) * z;
-      const refKm = z >= 2.5 ? 0.5 : (z >= 1.45 ? 1 : 2);
+      const pxPerM = basePxPerM(view) * z;
+      // 量程自适应：取使比例尺长度落在约 70–170 px 的最小整数量程
+      const refKm = [0.5, 1, 2, 5, 10].find((k) => k * 1000 * pxPerM >= 70) || 10;
       const len = refKm * 1000 * pxPerM;
-      const x0 = PAD + 14, y0 = H - PAD - 14;
+      const x0 = aoL + 16, y0 = aoB - 14;
       ctx.fillStyle = "rgba(9, 13, 18, 0.72)";
-      roundRect(ctx, x0 - 8, y0 - 18, len + 16, 26, 5); ctx.fill();
+      roundRect(ctx, x0 - 8, y0 - 18, len + 16, 26, 2); ctx.fill();
       ctx.fillStyle = "rgba(220, 228, 236, 0.85)";
       ctx.fillRect(x0, y0, len / 2, 3);
       ctx.fillStyle = "rgba(86, 100, 116, 0.85)";
@@ -1459,29 +1656,43 @@
       ctx.textAlign = "center"; ctx.fillText(String(refKm / 2), x0 + len / 2, y0 - 5);
       ctx.textAlign = "right"; ctx.fillText(`${refKm} km`, x0 + len + 4, y0 - 5);
     } else {
-      pillLabel(ctx, "2.5D 实况斜视角 · 25°", PAD + 70, PAD + 4, { fg: "#dce4ec", bg: "rgba(9, 13, 18, 0.72)", border: "rgba(220, 228, 236, 0.35)", size: 10 });
+      pillLabel(ctx, "2.5D 实况斜视角 · 25°", aoL + 80, aoT + 14, { fg: "#dce4ec", bg: "rgba(9, 13, 18, 0.72)", border: "rgba(220, 228, 236, 0.35)", size: 10 });
     }
   }
 
-  function resize(canvas, cssW, cssH) {
+  function sameSafe(a, b) {
+    a = a || {}; b = b || {};
+    return ["l", "t", "r", "b", "lb"].every((k) => Math.round(a[k] || 0) === Math.round(b[k] || 0));
+  }
+
+  // cssW / cssH：画布逻辑尺寸（全屏）；safe：HUD 浮层占用的四边留白
+  function resize(canvas, cssW, cssH, safe) {
     const dpr = Math.min(2.5, window.devicePixelRatio || 1);
     const w = Math.max(200, Math.floor(cssW)), h = Math.max(200, Math.floor(cssH));
     const prev = canvas._view;
-    canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
-    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const sf = safe
+      ? { l: Math.round(safe.l || 0), t: Math.round(safe.t || 0), r: Math.round(safe.r || 0), b: Math.round(safe.b || 0), lb: Math.round(safe.lb || 0) }
+      : { l: 0, t: 0, r: 0, b: 0, lb: 0 };
+    if (prev && prev.width === w && prev.height === h && prev.dpr === dpr && sameSafe(prev.safe, sf)) return false;
+    if (!prev || prev.width !== w || prev.height !== h || prev.dpr !== dpr) {
+      canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
     canvas._view = {
       width: w,
       height: h,
       dpr,
+      safe: sf,
       zoom: prev ? prev.zoom || 1 : 1,
       panX: prev && prev.width ? (prev.panX || 0) * (w / prev.width) : 0,
       panY: prev && prev.height ? (prev.panY || 0) * (h / prev.height) : 0,
     };
     clampCamera(canvas._view);
+    return true;
   }
 
   window.TacticalRenderer = {
     renderFrame, worldToScreen, screenToWorld, sampleElevation,
-    resize, getView, unitScreenPos, zoomAt, panBy, resetCamera,
+    resize, getView, unitScreenPos, zoomAt, panBy, resetCamera, mapFrame,
   };
 })();

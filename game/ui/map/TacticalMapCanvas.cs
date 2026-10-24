@@ -8,6 +8,8 @@ namespace Nightwatch.Game.Ui.Map;
 /// 战术防空标绘地图画布（Godot 4 Control）：
 /// 支持鼠标滚轮以光标为中心缩放、中键/右键拖拽平移、iPad / 触控屏双指捏合缩放（InputEventMagnifyGesture 与多点触控），
 /// 并以北约军标风格矢量绘制保卫目标、山脊盲区、防空火力与射程圈。
+/// 画布铺满整个窗口（DEFCON 式全屏地图）：HUD 浮层占用的四边留白通过 <see cref="SetSafeMargins"/> 传入，
+/// 作战区正方形在安全区内居中；安全区之外继续绘制区外参考网格，地图不再被面板挤成小方块。
 /// </summary>
 public partial class TacticalMapCanvas : Control
 {
@@ -41,6 +43,8 @@ public partial class TacticalMapCanvas : Control
 
     private double _zoom = 1.0;
     private Vector2 _panOffsetPx = Vector2.Zero;
+    // HUD 浮层占用的四边留白（像素）：X = 左，Y = 上，Z = 右，W = 下
+    private Vector4 _safeMargins = Vector4.Zero;
     private bool _isPanning;
     private Vector2 _panStartMouse;
     private Vector2 _panStartOffset;
@@ -139,7 +143,40 @@ public partial class TacticalMapCanvas : Control
 
     public void StepZoom(double factor)
     {
-        ZoomAt( _zoom * factor, Size * 0.5f);
+        ZoomAt(_zoom * factor, SafeCenter());
+    }
+
+    /// <summary>设置 HUD 安全区留白（左、上、右、下，像素），作战区随之在剩余区域内居中。</summary>
+    public void SetSafeMargins(Vector4 margins)
+    {
+        if (margins.IsEqualApprox(_safeMargins))
+        {
+            return;
+        }
+        _safeMargins = margins;
+        ClampPan();
+        QueueRedraw();
+    }
+
+    private Vector2 SafeCenter()
+    {
+        float w = Math.Max(1.0f, Size.X - _safeMargins.X - _safeMargins.Z);
+        float h = Math.Max(1.0f, Size.Y - _safeMargins.Y - _safeMargins.W);
+        return new Vector2(_safeMargins.X + w * 0.5f, _safeMargins.Y + h * 0.5f);
+    }
+
+    private float BaseSide()
+    {
+        float w = Size.X - _safeMargins.X - _safeMargins.Z;
+        float h = Size.Y - _safeMargins.Y - _safeMargins.W;
+        return Math.Max(120.0f, Math.Min(w, h)) * 0.94f;
+    }
+
+    private Rect2 CurrentMapRect()
+    {
+        float side = BaseSide() * (float)_zoom;
+        Vector2 origin = SafeCenter() + _panOffsetPx - new Vector2(side * 0.5f, side * 0.5f);
+        return new Rect2(origin, new Vector2(side, side));
     }
 
     public void ResetCamera()
@@ -154,7 +191,7 @@ public partial class TacticalMapCanvas : Control
     public void ZoomAt(double targetZoom, Vector2 anchorLocalPx)
     {
         double nextZoom = Math.Clamp(targetZoom, 0.65, 4.0);
-        Vector2 center = Size * 0.5f;
+        Vector2 center = SafeCenter();
         Vector2 worldBefore = (anchorLocalPx - center - _panOffsetPx) / (float)_zoom;
         _zoom = nextZoom;
         _panOffsetPx = anchorLocalPx - center - worldBefore * (float)_zoom;
@@ -223,7 +260,7 @@ public partial class TacticalMapCanvas : Control
                 {
                     double ratio = curDist / _pinchInitialDist;
                     double nextZ = Math.Clamp(_pinchInitialZoom * ratio, 0.65, 4.0);
-                    Vector2 center = Size * 0.5f;
+                    Vector2 center = SafeCenter();
                     Vector2 worldAnchor = (_pinchInitialMid - center - _pinchInitialPan) / (float)_pinchInitialZoom;
                     _zoom = nextZ;
                     _panOffsetPx = curMid - center - worldAnchor * (float)_zoom;
@@ -325,9 +362,25 @@ public partial class TacticalMapCanvas : Control
         Rect2 rect = new Rect2(Vector2.Zero, Size);
         DrawRect(rect, Color.FromHtml("#070a0e"), true);
 
-        float side = Math.Min(Size.X, Size.Y) * 0.88f * (float)_zoom;
-        Vector2 origin = Size * 0.5f + _panOffsetPx - new Vector2(side * 0.5f, side * 0.5f);
-        Rect2 mapRect = new Rect2(origin, new Vector2(side, side));
+        Rect2 mapRect = CurrentMapRect();
+        float side = mapRect.Size.X;
+
+        // 0. 区外参考网格：与作战区 8×8 方格对齐并延伸到整个窗口（全屏“标图桌”）
+        float cell = side / 8.0f;
+        if (cell > 4.0f)
+        {
+            Color outerGrid = new Color(0.47f, 0.59f, 0.71f, 0.06f);
+            float startX = mapRect.Position.X - Mathf.Ceil(mapRect.Position.X / cell) * cell;
+            for (float x = startX; x <= Size.X; x += cell)
+            {
+                DrawLine(new Vector2(x, 0), new Vector2(x, Size.Y), outerGrid, 1.0f);
+            }
+            float startY = mapRect.Position.Y - Mathf.Ceil(mapRect.Position.Y / cell) * cell;
+            for (float y = startY; y <= Size.Y; y += cell)
+            {
+                DrawLine(new Vector2(0, y), new Vector2(Size.X, y), outerGrid, 1.0f);
+            }
+        }
 
         DrawRect(mapRect, Color.FromHtml("#0b1118"), true);
         DrawRect(mapRect, Color.FromHtml("#223244"), false, 1.5f);
@@ -396,20 +449,18 @@ public partial class TacticalMapCanvas : Control
 
     private Vector2 ScreenToNormalized(Vector2 screenPt)
     {
-        float side = Math.Min(Size.X, Size.Y) * 0.88f * (float)_zoom;
-        Vector2 origin = Size * 0.5f + _panOffsetPx - new Vector2(side * 0.5f, side * 0.5f);
+        Rect2 mapRect = CurrentMapRect();
+        float side = mapRect.Size.X;
         if (side <= 1.0f)
         {
             return new Vector2(0.5f, 0.5f);
         }
-        return (screenPt - origin) / side;
+        return (screenPt - mapRect.Position) / side;
     }
 
     private MapUnitMarker? PickUnit(Vector2 mousePos, float maxRadiusPx)
     {
-        float side = Math.Min(Size.X, Size.Y) * 0.88f * (float)_zoom;
-        Vector2 origin = Size * 0.5f + _panOffsetPx - new Vector2(side * 0.5f, side * 0.5f);
-        Rect2 mapRect = new Rect2(origin, new Vector2(side, side));
+        Rect2 mapRect = CurrentMapRect();
 
         MapUnitMarker? best = null;
         float bestDistSq = maxRadiusPx * maxRadiusPx;

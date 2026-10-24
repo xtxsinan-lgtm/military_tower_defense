@@ -13,148 +13,10 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="phase-deploy">
-  <!-- ═══════════════════ 顶栏：品牌 · 态势读数（点击直达 D1–D7）· 世界时 · 速度 · SYS 系统菜单 ═══════════════════ -->
-  <header class="topbar" id="TopBar">
-    <a class="brand topbar-brand" href="#" aria-label="守夜 Nightwatch">
-      <svg viewBox="0 0 32 32" class="brand-mark" aria-hidden="true">
-        <g fill="none" stroke="currentColor" stroke-width="1.6">
-          <circle cx="16" cy="16" r="11" />
-          <circle cx="16" cy="16" r="5.5" stroke-opacity="0.5" />
-          <path d="M16 2v5M16 25v5M2 16h5M25 16h5" />
-          <path d="M16 16L24 8" stroke-linecap="square" />
-        </g>
-        <rect x="21.2" y="10.2" width="3" height="3" fill="currentColor" />
-      </svg>
-      <span class="brand-name">守夜</span>
-      <span class="brand-code">NIGHTWATCH</span>
-    </a>
-
-    <nav class="tb-kpis" aria-label="核心态势读数">
-      <button type="button" class="tb-kpi-slot" data-open-drawer="1" data-tip="100 m 高度雷达覆盖 / 山脊低空盲区 · 点击打开【D1 布势】">
-        <span class="tb-kpi-lbl">覆盖 / 盲区<i>COV</i></span>
-        <span class="tb-kpi-val"><b id="tb-cov-vis">--%</b><small class="tb-kpi-sep">/</small><em id="tb-cov-blind" class="tb-val-warn">--%</em></span>
-      </button>
-      <button type="button" class="tb-kpi-slot" data-open-drawer="2" data-tip="防空火力单元与警戒雷达 · 点击打开【D2 编成】">
-        <span class="tb-kpi-lbl">火力编成<i>ORBAT</i></span>
-        <span class="tb-kpi-val" id="tb-roster-kpi">—</span>
-      </button>
-      <button type="button" class="tb-kpi-slot" data-open-drawer="3" data-tip="指挥点：每夜固定配额，转移阵地、导航诱偏会消耗 · 点击打开【D3 火控】">
-        <span class="tb-kpi-lbl">指挥点<i>CP</i></span>
-        <span class="tb-kpi-val"><span id="cp-badge">4 / 4</span><span id="cp-pips" class="cp-pips"></span></span>
-      </button>
-      <button type="button" class="tb-kpi-slot" data-open-drawer="6" data-tip="公信力：浪费昂贵导弹、设施受损会降低 · 点击打开【D6 弹药】">
-        <span class="tb-kpi-lbl">公信力<i>TRUST</i></span>
-        <span class="tb-kpi-val" id="trust-badge">50</span>
-      </button>
-      <button type="button" class="tb-kpi-slot" data-open-drawer="5" data-tip="★ 热电厂、变电站、水厂 · 点击打开【D5 要地】">
-        <span class="tb-kpi-lbl">★ 要地<i>ASSETS</i></span>
-        <span class="tb-kpi-val" id="tb-struct-kpi">3/3 完好</span>
-      </button>
-    </nav>
-
-    <div class="tb-clock topbar-clock" data-tip="空袭从 22:00 持续到 06:00 拂晓。撑到拂晓即完成本夜。">
-      <div class="clock-row">
-        <span id="world-clock" class="clock-digits">22:00:00</span>
-        <span id="tick-readout" class="clock-sub">战前准备</span>
-      </div>
-      <div class="clock-bar"><div id="clock-progress" class="clock-bar-fill" style="width: 0%"></div><i style="left:25%"></i><i style="left:50%"></i><i style="left:75%"></i></div>
-    </div>
-
-    <div class="time-ctrl" id="time-ctrl">
-      <div class="seg seg-speed" id="speed-btn-group" role="group" aria-label="模拟速度">
-        <button id="btn-pause" class="seg-btn active" data-speed="0" data-tip="暂停 / 继续（空格）" aria-label="暂停">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="3.5" width="2" height="9"/><rect x="9.5" y="3.5" width="2" height="9"/></svg>
-        </button>
-        <button class="seg-btn" data-speed="1" data-tip="正常速度（键 1）">1×</button>
-        <button class="seg-btn" data-speed="4" data-tip="4 倍速（键 2）">4×</button>
-        <button class="seg-btn" data-speed="8" data-tip="8 倍速（键 3）">8×</button>
-      </div>
-      <button id="btn-skip" class="tb-btn" data-tip="没有敌情时，快进到下一次发现敌机（键 N）">下一波 <span class="kbd">N</span></button>
-      <button id="btn-step-once" class="hidden" aria-hidden="true"></button>
-    </div>
-
-    <!-- SYS 系统菜单（二级菜单：作战 / 显示 / 系统） -->
-    <div class="dropdown" id="more-dd">
-      <button class="tb-btn tb-sys" id="btn-more" aria-haspopup="true" data-tip="系统菜单：简报、教程、显示设置、重置">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg>SYS
-      </button>
-      <div class="dropdown-menu" role="menu">
-        <div class="dd-sec">作战 <i>OPS</i></div>
-        <button id="btn-help" class="dd-item dd-btn" role="menuitem"><span>作战简报</span><span class="dd-hint">BRIEF</span></button>
-        <button id="btn-restart-tutorial" class="dd-item dd-btn" role="menuitem"><span>交互教程</span><span class="dd-hint">TUTOR</span></button>
-        <button id="btn-trigger-choice-demo" class="dd-item dd-btn" role="menuitem"><span>演练“紧急抉择”</span><span class="dd-hint">DRILL</span></button>
-        <div class="dd-sec">显示 <i>DISPLAY</i></div>
-        <div class="dd-item">
-          <span class="dd-lbl">盲区预览高度</span>
-          <select id="sel-los-alt" class="select-sm">
-            <option value="100" selected>100 m 巡航弹</option>
-            <option value="50">50 m 超低空</option>
-            <option value="180">180 m 无人机</option>
-            <option value="0">隐藏盲区</option>
-          </select>
-        </div>
-        <div class="dd-item">
-          <span class="dd-lbl">界面缩放</span>
-          <div class="zoom-inline" role="group" aria-label="主界面整体缩放">
-            <button id="btn-ui-zoom-out" class="zi-btn" aria-label="缩小界面">−</button>
-            <button id="btn-ui-zoom-reset" class="zi-val" data-tip="复位 100%">100%</button>
-            <button id="btn-ui-zoom-in" class="zi-btn" aria-label="放大界面">+</button>
-          </div>
-        </div>
-        <label class="dd-item toggle-pill" data-tip="调试用：显示我方还没发现的真实敌机">
-          <span class="dd-lbl">透视真实敌机（作弊）</span>
-          <input type="checkbox" id="chk-god-view" />
-          <span class="toggle-track"><span class="toggle-knob"></span></span>
-        </label>
-        <div class="dd-sec">系统 <i>SYSTEM</i></div>
-        <div class="dd-item"><span class="dd-lbl">模拟引擎</span><span id="engine-mode-badge" class="badge">检测中</span></div>
-        <button id="btn-reset-game" class="dd-item dd-btn dd-danger" role="menuitem"><span>重置到第 1 夜</span><span class="dd-hint">RESET</span></button>
-      </div>
-    </div>
-  </header>
-
-  <!-- ═══════════════════ 主工作台：地图列（图头 · 战术地图 · 指挥台）+ 右栏 ═══════════════════ -->
+  <!-- ═══════════════════ 全屏战术地图（DEFCON 式：地图铺满整个屏幕，所有界面以半透明浮层叠加） ═══════════════════ -->
   <main class="desk-stage" id="DeskMain">
     <section class="map-desk-layer" id="MapDeskLayer">
-      <!-- 图头条：作战区标牌 · 防空电台 · 视图与图例 -->
-      <div class="map-head">
-        <div class="map-plate">
-          <span class="plate-code">AO-01</span>
-          <strong id="level-title" class="plate-title">测试地图 01</strong>
-          <span id="night-badge" class="chip">第 1 夜 / 共 2 夜</span>
-          <span id="phase-badge" class="chip chip-amber">战前部署</span>
-          <span id="date-weather-badge" class="chip chip-dim">2022-11-15 · 晴</span>
-        </div>
-        <div id="radio-banner" class="radio-banner">
-          <span class="radio-tag"><i class="radio-dot"></i>RADIO</span>
-          <span id="radio-text">战前部署阶段。</span>
-        </div>
-        <div class="map-head-tools">
-          <div class="seg seg-sm" id="view-seg" data-tip="切换视图（Tab 键）" role="tablist">
-            <button class="seg-btn active" data-view="command">平面</button>
-            <button class="seg-btn" data-view="live25d">2.5D</button>
-          </div>
-          <button id="btn-view-mode" class="hidden" aria-hidden="true"></button>
-          <div class="dropdown legend-dd" id="legend-dd">
-            <button class="tb-btn" id="btn-legend" aria-haspopup="true">图例</button>
-            <div class="dropdown-menu legend-menu">
-              <div class="dd-sec">图例 <i>LEGEND</i></div>
-              <div class="lg-row"><i class="sw sw-struct"></i><span>★ 保卫目标（要地）</span></div>
-              <div class="lg-row"><i class="sw sw-weapon"></i><span>我方防空武器 / 雷达</span></div>
-              <div class="lg-row"><i class="sw sw-post"></i><span>被动暗哨（自动工作）</span></div>
-              <div class="lg-row"><i class="sw sw-axis"></i><span>敌方预计攻击走廊</span></div>
-              <div class="lg-row"><i class="sw sw-blind"></i><span>雷达低空盲区</span></div>
-              <div class="lg-row"><i class="sw sw-alt"></i><span>预备阵地</span></div>
-              <div class="dd-sec">航迹质量 <i>TRACK Q</i></div>
-              <div class="lg-row lg-q"><i class="dot dot-t0"></i>初现 <i class="dot dot-t1"></i>跟踪 <i class="dot dot-t2"></i>可开火 <i class="dot dot-t3"></i>已识别</div>
-              <div class="dd-sec">操作 <i>INPUT</i></div>
-              <div class="lg-help">拖动单位部署 · 滚轮 / 双指捏合缩放 · 放大后拖动空白平移 · 双击放大/复位 · F1–F7 打开指挥台 · Esc 收起</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 战术地图主视区 -->
+      <!-- 战术地图主视区（全屏） -->
       <div class="canvas-wrapper" id="canvas-wrapper">
         <canvas id="tactical-canvas" width="920" height="920"></canvas>
 
@@ -380,19 +242,245 @@
         </div>
 
         <div id="hover-telemetry" class="telemetry-readout">GRID —  ·  X —  Y —  ·  ELEV —</div>
-        <div id="map-zoom-dock" class="map-zoom-dock" role="group" aria-label="地图缩放">
-          <button id="btn-zoom-in" class="mzd-btn" data-tip="放大地图（+ / 双指张开）" aria-label="放大地图">+</button>
-          <button id="btn-zoom-reset" class="mzd-readout" data-tip="当前倍率 · 点击复位（0）">100%</button>
-          <button id="btn-zoom-out" class="mzd-btn" data-tip="缩小地图（− / 双指捏合）" aria-label="缩小地图">−</button>
-        </div>
         <div id="toast-stack" class="toast-stack"></div>
         <div id="map-tip" class="map-tip hidden"></div>
         <div id="busy-indicator" class="busy-indicator hidden">
           <span class="spinner"></span><span id="busy-text">正在计算…</span>
         </div>
       </div>
+    </section>
 
-      <!-- 指挥台：D1–D7 唯一入口 -->
+    <!-- ═══════════════════ 顶部 HUD：左 任务铭牌 · 中 态势读数 + 世界时 · 右 时间控制 + SYS ═══════════════════ -->
+    <header class="topbar hud-top" id="TopBar">
+      <div class="hud-cluster hud-tl hud-glass">
+        <a class="brand topbar-brand" href="#" aria-label="守夜 Nightwatch">
+          <svg viewBox="0 0 32 32" class="brand-mark" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="16" cy="16" r="11" />
+              <circle cx="16" cy="16" r="5.5" stroke-opacity="0.5" />
+              <path d="M16 2v5M16 25v5M2 16h5M25 16h5" />
+              <path d="M16 16L24 8" stroke-linecap="square" />
+            </g>
+            <rect x="21.2" y="10.2" width="3" height="3" fill="currentColor" />
+          </svg>
+        </a>
+        <div class="map-plate">
+          <div class="plate-row">
+            <span class="brand-name">守夜</span>
+            <span class="plate-code">AO-01</span>
+            <strong id="level-title" class="plate-title">测试地图 01</strong>
+          </div>
+          <div class="plate-row plate-chips">
+            <span id="night-badge" class="chip">第 1 夜 / 共 2 夜</span>
+            <span id="phase-badge" class="chip chip-amber">战前部署</span>
+            <span id="date-weather-badge" class="chip chip-dim">2022-11-15 · 晴</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-cluster hud-tc hud-glass">
+        <nav class="tb-kpis tb-kpis-l" aria-label="核心态势读数（左）">
+          <button type="button" class="tb-kpi-slot" data-open-drawer="1" data-tip="100 m 高度雷达覆盖 / 山脊低空盲区 · 点击打开【D1 布势】">
+            <span class="tb-kpi-lbl">覆盖 / 盲区<i>COV</i></span>
+            <span class="tb-kpi-val"><b id="tb-cov-vis">--%</b><small class="tb-kpi-sep">/</small><em id="tb-cov-blind" class="tb-val-warn">--%</em></span>
+          </button>
+          <button type="button" class="tb-kpi-slot" data-open-drawer="2" data-tip="防空火力单元与警戒雷达 · 点击打开【D2 编成】">
+            <span class="tb-kpi-lbl">火力编成<i>ORBAT</i></span>
+            <span class="tb-kpi-val" id="tb-roster-kpi">—</span>
+          </button>
+          <button type="button" class="tb-kpi-slot" data-open-drawer="3" data-tip="指挥点：每夜固定配额，转移阵地、导航诱偏会消耗 · 点击打开【D3 火控】">
+            <span class="tb-kpi-lbl">指挥点<i>CP</i></span>
+            <span class="tb-kpi-val"><span id="cp-badge">4 / 4</span><span id="cp-pips" class="cp-pips"></span></span>
+          </button>
+        </nav>
+        <div class="tb-clock topbar-clock" data-tip="空袭从 22:00 持续到 06:00 拂晓。撑到拂晓即完成本夜。">
+          <div class="clock-row">
+            <span id="world-clock" class="clock-digits">22:00:00</span>
+            <span id="tick-readout" class="clock-sub">战前准备</span>
+          </div>
+          <div class="clock-bar"><div id="clock-progress" class="clock-bar-fill" style="width: 0%"></div><i style="left:25%"></i><i style="left:50%"></i><i style="left:75%"></i></div>
+        </div>
+        <nav class="tb-kpis tb-kpis-r" aria-label="核心态势读数（右）">
+          <button type="button" class="tb-kpi-slot" data-open-drawer="6" data-tip="公信力：浪费昂贵导弹、设施受损会降低 · 点击打开【D6 弹药】">
+            <span class="tb-kpi-lbl">公信力<i>TRUST</i></span>
+            <span class="tb-kpi-val" id="trust-badge">50</span>
+          </button>
+          <button type="button" class="tb-kpi-slot" data-open-drawer="5" data-tip="★ 热电厂、变电站、水厂 · 点击打开【D5 要地】">
+            <span class="tb-kpi-lbl">★ 要地<i>ASSETS</i></span>
+            <span class="tb-kpi-val" id="tb-struct-kpi">3/3 完好</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="hud-cluster hud-tr hud-glass">
+        <div class="time-ctrl" id="time-ctrl">
+          <div class="seg seg-speed" id="speed-btn-group" role="group" aria-label="模拟速度">
+            <button id="btn-pause" class="seg-btn active" data-speed="0" data-tip="暂停 / 继续（空格）" aria-label="暂停">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="3.5" width="2" height="9"/><rect x="9.5" y="3.5" width="2" height="9"/></svg>
+            </button>
+            <button class="seg-btn" data-speed="1" data-tip="正常速度（键 1）">1×</button>
+            <button class="seg-btn" data-speed="4" data-tip="4 倍速（键 2）">4×</button>
+            <button class="seg-btn" data-speed="8" data-tip="8 倍速（键 3）">8×</button>
+          </div>
+          <button id="btn-skip" class="tb-btn" data-tip="没有敌情时，快进到下一次发现敌机（键 N）">下一波 <span class="kbd">N</span></button>
+          <button id="btn-step-once" class="hidden" aria-hidden="true"></button>
+        </div>
+
+          <!-- SYS 系统菜单（二级菜单：作战 / 显示 / 系统） -->
+        <div class="dropdown" id="more-dd">
+          <button class="tb-btn tb-sys" id="btn-more" aria-haspopup="true" data-tip="系统菜单：简报、教程、显示设置、重置">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg>SYS
+          </button>
+          <div class="dropdown-menu" role="menu">
+            <div class="dd-sec">作战 <i>OPS</i></div>
+            <button id="btn-help" class="dd-item dd-btn" role="menuitem"><span>作战简报</span><span class="dd-hint">BRIEF</span></button>
+            <button id="btn-restart-tutorial" class="dd-item dd-btn" role="menuitem"><span>交互教程</span><span class="dd-hint">TUTOR</span></button>
+            <button id="btn-trigger-choice-demo" class="dd-item dd-btn" role="menuitem"><span>演练“紧急抉择”</span><span class="dd-hint">DRILL</span></button>
+            <div class="dd-sec">显示 <i>DISPLAY</i></div>
+            <div class="dd-item">
+              <span class="dd-lbl">盲区预览高度</span>
+              <select id="sel-los-alt" class="select-sm">
+                <option value="100" selected>100 m 巡航弹</option>
+                <option value="50">50 m 超低空</option>
+                <option value="180">180 m 无人机</option>
+                <option value="0">隐藏盲区</option>
+              </select>
+            </div>
+            <div class="dd-item">
+              <span class="dd-lbl">界面缩放</span>
+              <div class="zoom-inline" role="group" aria-label="主界面整体缩放">
+                <button id="btn-ui-zoom-out" class="zi-btn" aria-label="缩小界面">−</button>
+                <button id="btn-ui-zoom-reset" class="zi-val" data-tip="复位 100%">100%</button>
+                <button id="btn-ui-zoom-in" class="zi-btn" aria-label="放大界面">+</button>
+              </div>
+            </div>
+            <label class="dd-item toggle-pill" data-tip="调试用：显示我方还没发现的真实敌机">
+              <span class="dd-lbl">透视真实敌机（作弊）</span>
+              <input type="checkbox" id="chk-god-view" />
+              <span class="toggle-track"><span class="toggle-knob"></span></span>
+            </label>
+            <div class="dd-sec">系统 <i>SYSTEM</i></div>
+            <div class="dd-item"><span class="dd-lbl">模拟引擎</span><span id="engine-mode-badge" class="badge">检测中</span></div>
+            <button id="btn-reset-game" class="dd-item dd-btn dd-danger" role="menuitem"><span>重置到第 1 夜</span><span class="dd-hint">RESET</span></button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ═══════════════════ 右侧浮动作战面板：布防 · 要地 · 参谋（可收起，H） ═══════════════════ -->
+    <aside class="right-panel ops-panel hud-glass" id="AlertOutliner" aria-label="作战面板">
+      <div class="ops-head">
+        <span class="ops-title"><i class="ops-led"></i>作战面板<em>OPS</em></span>
+        <button type="button" class="ops-toggle" id="btn-ops-toggle" data-tip="收起 / 展开作战面板（H）" aria-label="收起作战面板">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </button>
+      </div>
+      <div class="ops-body" id="ops-body">
+        <div id="exposed-warning-box" class="warning-card hidden">
+          <div class="warning-title">敌方已标定昨晚暴露的阵地</div>
+          <p id="exposed-warning-desc" class="warning-desc"></p>
+          <button id="btn-auto-relocate-exposed" class="btn btn-warn btn-block">一键转移到预备阵地</button>
+        </div>
+
+        <!-- 部署阶段：布防 -->
+        <section id="deploy-controls-section" class="rp-sec rp-deploy">
+          <div class="rp-hdr">
+            <span class="rp-title"><i>01</i>布防<em>DEPLOY</em></span>
+            <span id="validation-badge" class="badge badge-ok">部署合法</span>
+          </div>
+          <div class="preset-row seg" role="group" aria-label="预设阵型">
+            <button class="btn-preset active" data-preset="layered" data-tip="把雷达和观察哨推过北山脊，盲区最少"><b>前推</b><small>推荐</small></button>
+            <button class="btn-preset" data-preset="default" data-tip="标准均衡部署"><b>环形</b><small>均衡</small></button>
+            <button class="btn-preset" data-preset="stacked" data-tip="全部挤在热电厂旁——山脊北侧会出现大片盲区"><b>收缩</b><small>反例</small></button>
+          </div>
+          <div id="coverage-summary" class="coverage-bar">
+            <div class="cov-cell" data-tip="100 米高度上雷达能看到的区域比例，越高越好">
+              <span class="cov-lbl">雷达覆盖<i>COV</i></span>
+              <strong id="cov-vis-pct">--%</strong>
+              <div class="cov-meter"><div id="cov-vis-meter" class="cov-meter-fill"></div></div>
+            </div>
+            <div class="cov-cell" data-tip="被山脊挡住、雷达看不到的低空区域，越低越好">
+              <span class="cov-lbl">低空盲区<i>GAP</i></span>
+              <strong id="cov-blind-pct" class="cov-red">--%</strong>
+              <div class="cov-meter"><div id="cov-blind-meter" class="cov-meter-fill cov-meter-red"></div></div>
+            </div>
+          </div>
+          <div id="validation-errors" class="error-list hidden"></div>
+        </section>
+
+        <section class="rp-sec" id="structures-card">
+          <div class="rp-hdr">
+            <span class="rp-title"><i>★</i>要地<em>ASSETS</em></span>
+            <span id="grid-status-badge" class="badge badge-ok">电网正常</span>
+          </div>
+          <div id="structures-list" class="structures-list"></div>
+        </section>
+
+        <section class="rp-sec rp-grow" id="advisor-card">
+          <div class="rp-hdr">
+            <span class="rp-title"><i>!</i>参谋<em>STAFF</em></span>
+            <span class="badge" id="advisor-count"></span>
+          </div>
+          <div id="advisor-list" class="advisor-list"></div>
+        </section>
+      </div>
+    </aside>
+
+    <!-- ═══════════════════ 右下行动坞：部署阶段“开始守夜”，战斗阶段“战时指令” ═══════════════════ -->
+    <div class="action-dock" id="action-dock">
+      <button id="btn-start-night" class="btn-start">
+        <span class="bs-main">▶ 开始守夜</span>
+        <span class="bs-sub">COMMENCE · 开战后武器自动迎击</span>
+      </button>
+      <!-- 战斗阶段：战时指令 -->
+      <section id="battle-controls-section" class="rp-orders battle-only-block" aria-label="战时指令">
+        <button id="btn-alert-toggle" class="order-btn" data-tip="防空警报：市民进入掩体，减少伤亡。但一直拉响会让市民疲惫、越来越不配合。">
+          <span class="ob-name">民防警报<i>CIV ALERT</i></span>
+          <span class="ob-state">OFF</span>
+        </button>
+        <button id="btn-national-spoof" class="order-btn" data-tip="国家级导航诱偏：让敌方无人机和导弹的卫星导航偏航一段时间。消耗 1 指挥点。">
+          <span class="ob-name">导航诱偏<i>GNSS SPOOF</i></span>
+          <span class="ob-state">1 CP</span>
+        </button>
+      </section>
+    </div>
+
+    <!-- ═══════════════════ 左下地图工具：缩放 · 视图 · 图例 ═══════════════════ -->
+    <div class="map-tools" id="map-tools">
+      <div id="map-zoom-dock" class="map-zoom-dock" role="group" aria-label="地图缩放">
+        <button id="btn-zoom-in" class="mzd-btn" data-tip="放大地图（+ / 双指张开）" aria-label="放大地图">+</button>
+        <button id="btn-zoom-reset" class="mzd-readout" data-tip="当前倍率 · 点击复位（0）">100%</button>
+        <button id="btn-zoom-out" class="mzd-btn" data-tip="缩小地图（− / 双指捏合）" aria-label="缩小地图">−</button>
+      </div>
+      <div class="seg seg-sm" id="view-seg" data-tip="切换视图（Tab 键）" role="tablist">
+        <button class="seg-btn active" data-view="command">平面</button>
+        <button class="seg-btn" data-view="live25d">2.5D</button>
+      </div>
+      <button id="btn-view-mode" class="hidden" aria-hidden="true"></button>
+      <div class="dropdown legend-dd" id="legend-dd">
+        <button class="tb-btn" id="btn-legend" aria-haspopup="true">图例</button>
+        <div class="dropdown-menu legend-menu">
+          <div class="dd-sec">图例 <i>LEGEND</i></div>
+          <div class="lg-row"><i class="sw sw-struct"></i><span>★ 保卫目标（要地）</span></div>
+          <div class="lg-row"><i class="sw sw-weapon"></i><span>我方防空武器 / 雷达</span></div>
+          <div class="lg-row"><i class="sw sw-post"></i><span>被动暗哨（自动工作）</span></div>
+          <div class="lg-row"><i class="sw sw-axis"></i><span>敌方预计攻击走廊</span></div>
+          <div class="lg-row"><i class="sw sw-blind"></i><span>雷达低空盲区</span></div>
+          <div class="lg-row"><i class="sw sw-alt"></i><span>预备阵地</span></div>
+          <div class="dd-sec">航迹质量 <i>TRACK Q</i></div>
+          <div class="lg-row lg-q"><i class="dot dot-t0"></i>初现 <i class="dot dot-t1"></i>跟踪 <i class="dot dot-t2"></i>可开火 <i class="dot dot-t3"></i>已识别</div>
+          <div class="dd-sec">操作 <i>INPUT</i></div>
+          <div class="lg-help">拖动单位部署 · 滚轮 / 双指捏合缩放 · 放大后拖动空白平移 · 双击放大/复位 · F1–F7 打开指挥台 · H 收起作战面板 · Esc 收起</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ 底部中央：无线电字幕 + 指挥台 D1–D7（唯一入口） ═══════════════════ -->
+    <div class="hud-bottom" id="hud-bottom">
+      <div id="radio-banner" class="radio-banner">
+        <span class="radio-tag"><i class="radio-dot"></i>RADIO</span>
+        <span id="radio-text">战前部署阶段。</span>
+      </div>
       <nav class="desk-props-bar" id="DiegeticDeskPropsBar" aria-label="指挥台">
         <button type="button" class="desk-prop-btn" data-drawer="1" data-tip="布势：预设阵型、盲区预览高度、AI 代行（F1）">
           <svg class="desk-prop-icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" /></svg>
@@ -430,78 +518,9 @@
           <span class="desk-prop-key">F7</span>
         </button>
       </nav>
-    </section>
-
-    <!-- 右栏：阶段指令 · 要地 · 参谋 -->
-    <aside class="right-panel" id="AlertOutliner">
-      <div id="exposed-warning-box" class="warning-card hidden">
-        <div class="warning-title">敌方已标定昨晚暴露的阵地</div>
-        <p id="exposed-warning-desc" class="warning-desc"></p>
-        <button id="btn-auto-relocate-exposed" class="btn btn-warn btn-block">一键转移到预备阵地</button>
-      </div>
-
-      <!-- 部署阶段：布防 -->
-      <section id="deploy-controls-section" class="rp-sec rp-deploy">
-        <div class="rp-hdr">
-          <span class="rp-title"><i>01</i>布防<em>DEPLOY</em></span>
-          <span id="validation-badge" class="badge badge-ok">部署合法</span>
-        </div>
-        <div class="preset-row seg" role="group" aria-label="预设阵型">
-          <button class="btn-preset active" data-preset="layered" data-tip="把雷达和观察哨推过北山脊，盲区最少"><b>前推</b><small>推荐</small></button>
-          <button class="btn-preset" data-preset="default" data-tip="标准均衡部署"><b>环形</b><small>均衡</small></button>
-          <button class="btn-preset" data-preset="stacked" data-tip="全部挤在热电厂旁——山脊北侧会出现大片盲区"><b>收缩</b><small>反例</small></button>
-        </div>
-        <div id="coverage-summary" class="coverage-bar">
-          <div class="cov-cell" data-tip="100 米高度上雷达能看到的区域比例，越高越好">
-            <span class="cov-lbl">雷达覆盖<i>COV</i></span>
-            <strong id="cov-vis-pct">--%</strong>
-            <div class="cov-meter"><div id="cov-vis-meter" class="cov-meter-fill"></div></div>
-          </div>
-          <div class="cov-cell" data-tip="被山脊挡住、雷达看不到的低空区域，越低越好">
-            <span class="cov-lbl">低空盲区<i>GAP</i></span>
-            <strong id="cov-blind-pct" class="cov-red">--%</strong>
-            <div class="cov-meter"><div id="cov-blind-meter" class="cov-meter-fill cov-meter-red"></div></div>
-          </div>
-        </div>
-        <div id="validation-errors" class="error-list hidden"></div>
-        <button id="btn-start-night" class="btn-start">
-          <span class="bs-main">▶ 开始守夜</span>
-          <span class="bs-sub">COMMENCE · 开战后武器自动迎击</span>
-        </button>
-      </section>
-
-      <!-- 战斗阶段：战时指令 -->
-      <section id="battle-controls-section" class="rp-sec rp-orders battle-only-block">
-        <div class="rp-hdr">
-          <span class="rp-title"><i>02</i>战时指令<em>ORDERS</em></span>
-        </div>
-        <button id="btn-alert-toggle" class="order-btn" data-tip="防空警报：市民进入掩体，减少伤亡。但一直拉响会让市民疲惫、越来越不配合。">
-          <span class="ob-name">民防警报<i>CIV ALERT</i></span>
-          <span class="ob-state">OFF</span>
-        </button>
-        <button id="btn-national-spoof" class="order-btn" data-tip="国家级导航诱偏：让敌方无人机和导弹的卫星导航偏航一段时间。消耗 1 指挥点。">
-          <span class="ob-name">导航诱偏<i>GNSS SPOOF</i></span>
-          <span class="ob-state">1 CP</span>
-        </button>
-      </section>
-
-      <section class="rp-sec" id="structures-card">
-        <div class="rp-hdr">
-          <span class="rp-title"><i>★</i>要地<em>ASSETS</em></span>
-          <span id="grid-status-badge" class="badge badge-ok">电网正常</span>
-        </div>
-        <div id="structures-list" class="structures-list"></div>
-      </section>
-
-      <section class="rp-sec rp-grow" id="advisor-card">
-        <div class="rp-hdr">
-          <span class="rp-title"><i>!</i>参谋<em>STAFF</em></span>
-          <span class="badge" id="advisor-count"></span>
-        </div>
-        <div id="advisor-list" class="advisor-list"></div>
-      </section>
-    </aside>
+    </div>
   </main>
+
 
   <!-- 任务简报 -->
   <div id="briefing-modal" class="modal-backdrop hidden">

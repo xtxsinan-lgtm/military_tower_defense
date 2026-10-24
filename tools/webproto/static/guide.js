@@ -72,6 +72,12 @@
       if (s.placement === "top") cands.unshift(cands[3]);
       if (s.placement === "left") cands.unshift(cands[1]);
       let pos = cands.find(([bx, by]) => bx >= 8 && by >= 8 && bx + bw <= vw - 8 && by + bh <= vh - 8);
+      // 全屏 HUD 下目标常贴近屏幕角落（如右下“开始守夜”）：候选位置先夹回视口，再选不遮挡聚光区的那个
+      if (!pos) {
+        const clampPos = ([bx, by]) => [Math.max(8, Math.min(vw - bw - 8, bx)), Math.max(8, Math.min(vh - bh - 8, by))];
+        const overlaps = ([bx, by]) => !(bx + bw <= x || bx >= x + w || by + bh <= y || by >= y + h);
+        pos = cands.map(clampPos).find((p) => !overlaps(p));
+      }
       if (!pos) pos = [Math.min(vw - bw - 8, Math.max(8, x + w + gap)), Math.min(vh - bh - 8, Math.max(8, y))];
       b.style.left = `${Math.max(8, Math.min(vw - bw - 8, pos[0]))}px`;
       b.style.top = `${Math.max(8, Math.min(vh - bh - 8, pos[1]))}px`;

@@ -8,6 +8,8 @@ namespace Nightwatch.Game.Ui.Controllers;
 /// 统筹顶栏态势条（TopBar）、中央全幅战术地图（MapDeskLayer / TacticalMapCanvas）、
 /// 浮动单位检查器（UnitInspectorCard）、按需展开的 D1–D7 部门抽屉（DrawerContainer）、
 /// 底部 7 工位防空器械栏（DiegeticDeskPropsBar）与右侧精简大纲栏（AlertOutliner）。
+/// 布局为 DEFCON 式“全屏地图 + 浮动 HUD”：MapLayer 铺满窗口，HudLayer 中各浮层锚定在屏幕四角 / 四边；
+/// 本控制器负责把浮层占用的四边留白（安全区）同步给地图，使作战区始终在可见区域内居中。
 /// </summary>
 public partial class DeskMainController : Control
 {
@@ -42,12 +44,12 @@ public partial class DeskMainController : Control
 
     public override void _Ready()
     {
-        TopBar ??= GetNodeOrNull<TopBarController>("RootVBox/TopBar");
-        MapCanvas ??= GetNodeOrNull<TacticalMapCanvas>("RootVBox/BodySplit/MapDeskLayer/CanvasWrapper/TacticalMapCanvas");
-        UnitInspector ??= GetNodeOrNull<UnitInspectorCard>("RootVBox/BodySplit/MapDeskLayer/CanvasWrapper/UnitInspectorCard");
-        DrawerContainer ??= GetNodeOrNull<DrawerContainerController>("RootVBox/BodySplit/MapDeskLayer/CanvasWrapper/DrawerContainer");
-        DeskPropsBar ??= GetNodeOrNull<DiegeticDeskPropsController>("RootVBox/BodySplit/MapDeskLayer/DiegeticDeskPropsBar");
-        AlertOutliner ??= GetNodeOrNull<AlertOutlinerController>("RootVBox/BodySplit/AlertOutliner");
+        TopBar ??= GetNodeOrNull<TopBarController>("HudLayer/TopBar");
+        MapCanvas ??= GetNodeOrNull<TacticalMapCanvas>("MapLayer/TacticalMapCanvas");
+        UnitInspector ??= GetNodeOrNull<UnitInspectorCard>("HudLayer/UnitInspectorCard");
+        DrawerContainer ??= GetNodeOrNull<DrawerContainerController>("HudLayer/DrawerContainer");
+        DeskPropsBar ??= GetNodeOrNull<DiegeticDeskPropsController>("HudLayer/BottomDock/DiegeticDeskPropsBar");
+        AlertOutliner ??= GetNodeOrNull<AlertOutlinerController>("HudLayer/AlertOutliner");
 
         if (TopBar != null)
         {
@@ -76,9 +78,51 @@ public partial class DeskMainController : Control
             MapCanvas.UnitSelected += OnMapUnitSelected;
         }
 
-        // 绑定地图工具条上的 D1–D7 顶部快捷页签按钮
-        BindToolbarDrawerTabs();
-        BindToolbarZoomButtons();
+        // HUD 浮层尺寸或显隐变化时，重新计算地图安全区
+        Resized += QueueSafeAreaUpdate;
+        foreach (Control? hud in new Control?[] { TopBar, AlertOutliner, DeskPropsBar })
+        {
+            if (hud != null)
+            {
+                hud.Resized += QueueSafeAreaUpdate;
+                hud.VisibilityChanged += QueueSafeAreaUpdate;
+            }
+        }
+        QueueSafeAreaUpdate();
+    }
+
+    private void QueueSafeAreaUpdate()
+    {
+        Callable.From(UpdateMapSafeArea).CallDeferred();
+    }
+
+    /// <summary>
+    /// 计算 HUD 浮层占用的四边留白：上 = 顶部态势条底边，右 = 作战面板左缘，下 = 底部指挥台顶边。
+    /// 左侧检查器 / 抽屉是按需浮出的上下文浮窗，不计入安全区（与网页原型一致）。
+    /// </summary>
+    private void UpdateMapSafeArea()
+    {
+        if (MapCanvas == null)
+        {
+            return;
+        }
+
+        Rect2 root = GetGlobalRect();
+        const float pad = 6.0f;
+        float top = pad, right = pad, bottom = pad, left = pad;
+        if (TopBar != null && TopBar.Visible)
+        {
+            top = TopBar.GetGlobalRect().End.Y - root.Position.Y + pad;
+        }
+        if (AlertOutliner != null && AlertOutliner.Visible)
+        {
+            right = root.End.X - AlertOutliner.GetGlobalRect().Position.X + pad;
+        }
+        if (DeskPropsBar != null && DeskPropsBar.Visible)
+        {
+            bottom = root.End.Y - DeskPropsBar.GetGlobalRect().Position.Y + pad;
+        }
+        MapCanvas.SetSafeMargins(new Vector4(left, top, right, bottom));
     }
 
     public override void _UnhandledKeyInput(InputEvent @event)
@@ -124,7 +168,6 @@ public partial class DeskMainController : Control
         DrawerContainer?.OpenDrawer(clamped);
         DeskPropsBar?.SetActiveDrawer(clamped);
         TopBar?.SetActiveDrawer(clamped);
-        SyncToolbarTabHighlight(clamped);
 
         // 打开抽屉时自动收起左侧浮动单位检查器，避免画面拥挤
         if (UnitInspector != null)
@@ -141,7 +184,6 @@ public partial class DeskMainController : Control
         DrawerContainer?.CloseAll();
         DeskPropsBar?.SetActiveDrawer(0);
         TopBar?.SetActiveDrawer(0);
-        SyncToolbarTabHighlight(0);
     }
 
     public void ToggleDrawer(int drawerIndex)
@@ -161,7 +203,6 @@ public partial class DeskMainController : Control
         OpenDrawerIndex = 0;
         DeskPropsBar?.SetActiveDrawer(0);
         TopBar?.SetActiveDrawer(0);
-        SyncToolbarTabHighlight(0);
     }
 
     private void OnMapUnitSelected(int rosterId, string unitName, string specText, string descText, double rangeKm, int exposurePct)
@@ -172,70 +213,5 @@ public partial class DeskMainController : Control
         }
 
         UnitInspector?.ShowUnit(rosterId, unitName, specText, descText, rangeKm, exposurePct);
-    }
-
-    private void BindToolbarDrawerTabs()
-    {
-        var tabRow = GetNodeOrNull<HBoxContainer>("RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs");
-        if (tabRow == null)
-        {
-            return;
-        }
-
-        for (int i = 1; i <= 7; i++)
-        {
-            int idx = i;
-            var btn = tabRow.GetNodeOrNull<Button>($"BtnD{idx}");
-            if (btn != null)
-            {
-                btn.Pressed += () => ToggleDrawer(idx);
-            }
-        }
-    }
-
-    private void SyncToolbarTabHighlight(int activeIndex)
-    {
-        var tabRow = GetNodeOrNull<HBoxContainer>("RootVBox/BodySplit/MapDeskLayer/MapToolbar/DrawerTabs");
-        if (tabRow == null)
-        {
-            return;
-        }
-
-        for (int i = 1; i <= 7; i++)
-        {
-            var btn = tabRow.GetNodeOrNull<Button>($"BtnD{i}");
-            if (btn != null)
-            {
-                btn.ButtonPressed = (i == activeIndex);
-            }
-        }
-    }
-
-    private void BindToolbarZoomButtons()
-    {
-        var btnOut = GetNodeOrNull<Button>("RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools/BtnZoomOut");
-        var btnReset = GetNodeOrNull<Button>("RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools/BtnZoomReset");
-        var btnIn = GetNodeOrNull<Button>("RootVBox/BodySplit/MapDeskLayer/MapToolbar/RightTools/BtnZoomIn");
-
-        if (btnOut != null)
-        {
-            btnOut.Pressed += () => MapCanvas?.StepZoom(1.0 / 1.25);
-        }
-        if (btnReset != null)
-        {
-            btnReset.Pressed += () => MapCanvas?.ResetCamera();
-        }
-        if (btnIn != null)
-        {
-            btnIn.Pressed += () => MapCanvas?.StepZoom(1.25);
-        }
-
-        if (MapCanvas != null && btnReset != null)
-        {
-            MapCanvas.ZoomChanged += (zoomFactor) =>
-            {
-                btnReset.Text = $"{Mathf.RoundToInt((float)(zoomFactor * 100.0))}%";
-            };
-        }
     }
 }
