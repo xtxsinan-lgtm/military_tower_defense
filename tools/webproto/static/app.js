@@ -8,16 +8,17 @@
     choiceDeadlineMs: 0, choiceTimerId: null,
     ammoInitial: {}, lastRadio: "", activePreset: "layered",
     tally: { kills: 0, leaks: 0 }, lastThreatTick: 0, advSig: "", advActions: [],
-    openDrawerIndex: 0, inspectorOpen: true,
+    openDrawerIndex: 0, inspectorOpen: true, drawerPane: {},
   };
+  // 指挥台 D1–D7：一级入口；每个抽屉内的 .d-pane 自动生成二级页签
   const DRAWER_META = {
-    1: { code: "D1", title: "战前部署与阵型沙盘" },
-    2: { code: "D2", title: "防空武器与雷达编制" },
-    3: { code: "D3", title: "火控纪律与电磁条令" },
-    4: { code: "D4", title: "空袭情报与来袭走廊" },
-    5: { code: "D5", title: "城市电网与保卫目标" },
-    6: { code: "D6", title: "导弹库存与战备补给" },
-    7: { code: "D7", title: "值班作战室与战况日志" },
+    1: { code: "D1", title: "布势", en: "DEPLOYMENT · 阵型与盲区" },
+    2: { code: "D2", title: "编成", en: "ORDER OF BATTLE · 武器与雷达" },
+    3: { code: "D3", title: "火控", en: "ROE · EMCON · 开火纪律与辐射管控" },
+    4: { code: "D4", title: "敌情", en: "THREAT INTEL · 预警与来袭走廊" },
+    5: { code: "D5", title: "要地", en: "DEFENDED ASSETS · 保卫目标与民防" },
+    6: { code: "D6", title: "弹药", en: "MUNITIONS · 库存与效费" },
+    7: { code: "D7", title: "值班日志", en: "DUTY LOG · 交战记录与训练" },
   };
   const canvas = document.getElementById("tactical-canvas");
   const $ = (id) => document.getElementById(id);
@@ -186,13 +187,11 @@
     $("world-clock").textContent = "22:00:00";
     $("tick-readout").textContent = "战前准备";
     $("clock-progress").style.width = "0%";
-    $("step-goal").textContent = `保卫目标：★ 热电厂 · 中心变电站 · 水厂（撑到 06:00）`;
     setCp(meta.commandPointsPerNight, meta.commandPointsPerNight);
     $("deploy-controls-section").classList.remove("hidden");
     $("report-modal").classList.add("hidden");
     $("choice-modal").classList.add("hidden");
-    $("btn-alert-toggle").textContent = "防空警报：关";
-    $("btn-alert-toggle").className = "btn btn-sm battle-only";
+    setAlertButton(false, 0);
     setRadio(meta.nightIndex > 1
       ? "第 2 夜：昨晚暴露的防空阵地已被敌人记住，开战前先把它们挪走。"
       : "战前部署：把【皮卡机枪】摆在无人机来路上，把【IRIS-T / NASAMS 导弹】护在 ★ 热电厂周围。");
@@ -216,6 +215,17 @@
   function setCp(cur, init) {
     $("cp-badge").textContent = `${cur} / ${init}`;
     $("cp-pips").innerHTML = Array.from({ length: init }, (_, i) => `<i class="${i < cur ? "on" : ""}"></i>`).join("");
+    const spoofState = document.querySelector("#btn-national-spoof .ob-state");
+    if (spoofState) spoofState.textContent = cur > 0 ? `1 CP · 余 ${cur}` : "CP 不足";
+  }
+
+  // 右栏“战时指令”中的民防警报开关
+  function setAlertButton(on, shPct) {
+    const b = $("btn-alert-toggle");
+    if (!b) return;
+    b.classList.toggle("on", Boolean(on));
+    const st = b.querySelector(".ob-state");
+    if (st) st.textContent = on ? `ON · 掩蔽 ${shPct}%` : "OFF";
   }
 
   function setRadio(text) {
@@ -278,14 +288,41 @@
     state.openDrawerIndex = target;
     const container = $("DrawerContainer");
     if (container) container.classList.remove("hidden");
-    const m = DRAWER_META[target] || { code: `D${target}`, title: "" };
+    const m = DRAWER_META[target] || { code: `D${target}`, title: "", en: "" };
     if ($("drawer-code-badge")) $("drawer-code-badge").textContent = m.code;
     if ($("drawer-title")) $("drawer-title").textContent = m.title;
+    if ($("drawer-en")) $("drawer-en").textContent = m.en || "";
     document.querySelectorAll("#drawer-content .drawer-slot").forEach((slot) => {
       slot.classList.toggle("hidden", Number(slot.dataset.slot) !== target);
     });
+    renderSubtabs(target);
     syncDrawerButtons();
     refreshOpenDrawer();
+  }
+
+  // 二级页签：由抽屉内 .d-pane[data-pane-label] 自动生成，记住每个抽屉上次停留的页签
+  function renderSubtabs(target, paneId) {
+    const bar = $("drawer-subtabs");
+    const slot = $(`drawer-slot-d${target}`);
+    if (!bar) return;
+    const panes = slot ? Array.from(slot.querySelectorAll(".d-pane")) : [];
+    if (!panes.length) { bar.innerHTML = ""; return; }
+    let cur = paneId || state.drawerPane[target];
+    if (!panes.some((p) => p.dataset.pane === cur)) cur = panes[0].dataset.pane;
+    state.drawerPane[target] = cur;
+    bar.innerHTML = panes.map((p) => `<button type="button" role="tab" class="sub-tab ${p.dataset.pane === cur ? "active" : ""}" data-pane="${esc(p.dataset.pane)}">${esc(p.dataset.paneLabel || p.dataset.pane)}<i>${esc(p.dataset.paneCode || "")}</i></button>`).join("");
+    panes.forEach((p) => p.classList.toggle("active", p.dataset.pane === cur));
+    bar.querySelectorAll(".sub-tab").forEach((b) => b.addEventListener("click", () => renderSubtabs(target, b.dataset.pane)));
+  }
+
+  function cycleSubtab(dir) {
+    const t = state.openDrawerIndex;
+    const slot = t ? $(`drawer-slot-d${t}`) : null;
+    if (!slot) return;
+    const ids = Array.from(slot.querySelectorAll(".d-pane")).map((p) => p.dataset.pane);
+    if (ids.length < 2) return;
+    const i = Math.max(0, ids.indexOf(state.drawerPane[t]));
+    renderSubtabs(t, ids[(i + dir + ids.length) % ids.length]);
   }
 
   function closeDrawer() {
@@ -956,10 +993,12 @@
     const structs = (snap && snap.structures) || (state.meta && state.meta.structures) || [];
     const ok = structs.filter((s) => !s.destroyed).length;
     const set = (id, v) => {
-      const b = $(id).querySelector("b");
+      const el = $(id);
+      const b = el && el.querySelector("b");
+      if (!b) return;
       if (b.textContent !== String(v)) {
         b.textContent = v;
-        $(id).classList.remove("bump"); void $(id).offsetWidth; $(id).classList.add("bump");
+        el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
       }
     };
     set("hud-structs", `${ok}/${structs.length}`);
@@ -1012,10 +1051,8 @@
     $("tick-readout").textContent = `距拂晓 ${Math.floor(remMin / 60)}h${String(remMin % 60).padStart(2, "0")}m`;
     setCp(snap.cp.current, snap.cp.initial);
 
-    const alBtn = $("btn-alert-toggle");
     const shPct = Math.round((snap.alert.shelteredFrac || 0) * 100);
-    alBtn.textContent = snap.alert.on ? `防空警报：开 · 已掩蔽 ${shPct}%` : "防空警报：关";
-    alBtn.className = `btn btn-sm battle-only ${snap.alert.on ? "btn-alert-on" : ""}`;
+    setAlertButton(snap.alert.on, shPct);
     if (snap.radioBanner) setRadio(snap.radioBanner);
 
     const logBox = $("event-log-list");
@@ -1510,11 +1547,15 @@
       if (state.phase !== "deploy") await initGame(1, true);
       runDeployTutorial();
     });
-    $("btn-help").addEventListener("click", showBriefing);
-    $("btn-more").addEventListener("click", (e) => { e.stopPropagation(); $("more-dd").classList.toggle("open"); });
-    document.addEventListener("click", (e) => { if (!$("more-dd").contains(e.target)) closeMore(); });
+    $("btn-help").addEventListener("click", () => { closeMore(); showBriefing(); });
+    $("btn-more").addEventListener("click", (e) => { e.stopPropagation(); $("legend-dd").classList.remove("open"); $("more-dd").classList.toggle("open"); });
+    $("btn-legend").addEventListener("click", (e) => { e.stopPropagation(); $("more-dd").classList.remove("open"); $("legend-dd").classList.toggle("open"); });
+    document.addEventListener("click", (e) => {
+      if (!$("more-dd").contains(e.target)) $("more-dd").classList.remove("open");
+      if (!$("legend-dd").contains(e.target)) $("legend-dd").classList.remove("open");
+    });
     $("btn-clear-log").addEventListener("click", () => { $("event-log-list").innerHTML = ""; });
-    $("map-hint-x").addEventListener("click", () => $("map-hint").classList.add("hidden"));
+    if ($("map-hint-x")) $("map-hint-x").addEventListener("click", () => $("map-hint").classList.add("hidden"));
 
     $("btn-brief-skip").addEventListener("click", () => { closeBriefing(); LS.set("nw_hints_off", ""); });
     $("btn-brief-tutorial").addEventListener("click", async () => {
@@ -1680,7 +1721,7 @@
       const elev = Math.round(window.TacticalRenderer.sampleElevation(state.meta, pt[0], pt[1]));
       const col = String.fromCharCode(65 + Math.min(7, Math.floor(pt[0] / 2500)));
       const row = 8 - Math.min(7, Math.floor(pt[1] / 2500));
-      $("hover-telemetry").textContent = `方格 ${col}${row} · X ${(pt[0] / 1000).toFixed(2)} km · Y ${(pt[1] / 1000).toFixed(2)} km · 海拔 ${elev} m`;
+      $("hover-telemetry").textContent = `GRID ${col}${row}  ·  X ${(pt[0] / 1000).toFixed(2)}  Y ${(pt[1] / 1000).toFixed(2)} km  ·  ELEV ${elev} m`;
       if (state.draggingUnit && state.phase === "deploy") {
         state.draggingUnit.pos = [Math.round(pt[0]), Math.round(pt[1])];
         return;
@@ -1823,15 +1864,21 @@
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (e.code === "Escape") {
         if (Coach.active) { Coach.stop(false); return; }
+        if ($("more-dd").classList.contains("open") || $("legend-dd").classList.contains("open")) { closeMore(); return; }
         if (state.openDrawerIndex !== 0) { closeDrawer(); return; }
         if (state.inspectorOpen) { state.inspectorOpen = false; renderRosterAndInspector(); return; }
-        closeMore();
         if (!$("briefing-modal").classList.contains("hidden")) closeBriefing();
         return;
       }
       if (/^F[1-7]$/.test(e.code)) {
         e.preventDefault();
         toggleDrawer(Number(e.code.slice(1)));
+        return;
+      }
+      // 抽屉打开时：[ / ] 切换二级页签
+      if (state.openDrawerIndex !== 0 && (e.code === "BracketLeft" || e.code === "BracketRight")) {
+        e.preventDefault();
+        cycleSubtab(e.code === "BracketRight" ? 1 : -1);
         return;
       }
       if (e.code === "Space" && state.phase === "battle") { e.preventDefault(); setSpeed(state.speed > 0 ? 0 : 1); }
@@ -1847,14 +1894,15 @@
     if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe($("canvas-wrapper"));
     window.addEventListener("resize", fitCanvas);
   }
-  function closeMore() { $("more-dd").classList.remove("open"); }
+  function closeMore() { $("more-dd").classList.remove("open"); $("legend-dd").classList.remove("open"); }
 
-  // 调试/截图辅助：?demo=battle&ticks=600&view=live25d&god=1&bot=smart_blink&tutorial=0&drawer=3&inspect=1
+  // 调试/截图辅助：?demo=battle&ticks=600&view=live25d&god=1&bot=smart_blink&tutorial=0&drawer=3&pane=emcon&inspect=1
   async function runDemoFromUrl() {
     const q = new URLSearchParams(location.search);
     if (q.get("view") === "live25d") setViewMode("live25d");
     if (q.get("god") === "1") { state.godView = true; $("chk-god-view").checked = true; }
     if (q.get("inspect") === "1") { state.inspectorOpen = true; renderRosterAndInspector(); }
+    if (q.get("drawer") && q.get("pane")) state.drawerPane[Number(q.get("drawer"))] = q.get("pane");
     if (q.get("drawer")) { openDrawer(Number(q.get("drawer"))); }
     if (q.get("demo") === "battle") {
       LS.set("nw_seen_brief", "1"); LS.set("nw_hints_off", "1");

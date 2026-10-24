@@ -378,7 +378,7 @@
 
     // 北山脊标注
     const rp = worldToScreen(10000, 14500, 0, view, mode, sampleElevation(meta, 10000, 14500));
-    pillLabel(ctx, "▲ 北山脊棱线 · 海拔≈280m · 低空雷达遮挡带", rp.x, rp.y - 10, {
+    pillLabel(ctx, "▲ 北山脊 ≈280m · 低空遮挡", rp.x, rp.y - 10, {
       fg: "#f5cf47", bg: "rgba(13, 18, 24, 0.8)", border: "rgba(245, 207, 71, 0.45)", size: 10.5,
     });
   }
@@ -805,14 +805,14 @@
     drawAttackCorridor(
       ctx,
       [[19100, 13200], [16600, 10700], [14000, 7550]],
-      "▶ 东路无人机群 → 直扑【★热电厂】",
+      "AXIS-E  无人机群 → ★热电厂",
       view, mode, meta, nowMs, corridorAlpha,
       [15600, 13300]
     );
     drawAttackCorridor(
       ctx,
       [[1100, 18100], [4500, 15200], [7400, 12750], [10400, 10750]],
-      "▶ 西北低空巡航导弹 → 借盲区偷袭【★水厂 / 变电站】",
+      "AXIS-NW  巡航导弹·低空 → ★水厂/变电站",
       view, mode, meta, nowMs, corridorAlpha,
       [4800, 15500]
     );
@@ -961,7 +961,7 @@
       ctx.restore();
 
       // 3. 顶部高优先级保卫目标铭牌（绝不被普通单位遮挡）
-      const tagPrefix = isPrimary ? "★ 核心保卫 · " : "★ 保卫 · ";
+      const tagPrefix = "★ ";
       const sr = pillLabel(ctx, `${tagPrefix}${s.name}  ${s.hp}/${s.maxHp}`, p.x, p.y - sz / 2 - 13, {
         fg: s.destroyed ? "#ff9d94" : "#eef3f7",
         bg: s.destroyed ? "rgba(40, 12, 10, 0.92)" : "rgba(11, 16, 22, 0.92)",
