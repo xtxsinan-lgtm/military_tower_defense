@@ -17,12 +17,63 @@
     trails: new Map(), lastTick: -1,
   };
 
-  // ───────────────────────── 坐标投影 ─────────────────────────
+  // ───────────────────────── 坐标投影与镜头缩放 ─────────────────────────
+  const MIN_ZOOM = 1.0;
+  const MAX_ZOOM = 4.0;
+
   function getView(canvas) {
-    return canvas._view || { width: canvas.width, height: canvas.height, dpr: 1 };
+    return canvas._view || { width: canvas.width, height: canvas.height, dpr: 1, zoom: 1, panX: 0, panY: 0 };
   }
 
-  function worldToScreen(wx, wy, altM, view, viewMode, elevM) {
+  function clampCamera(view) {
+    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, view.zoom || 1));
+    view.zoom = z;
+    if (z <= 1.001) {
+      view.zoom = 1.0;
+      view.panX = 0;
+      view.panY = 0;
+      return;
+    }
+    const maxPanX = Math.max(0, (view.width - PAD * 2) * (z - 1) * 0.5);
+    const maxPanY = Math.max(0, (view.height - PAD * 2) * (z - 1) * 0.5);
+    view.panX = Math.max(-maxPanX, Math.min(maxPanX, view.panX || 0));
+    view.panY = Math.max(-maxPanY, Math.min(maxPanY, view.panY || 0));
+  }
+
+  function zoomAt(canvas, newZoom, anchorX, anchorY, newAnchorX, newAnchorY) {
+    const view = getView(canvas);
+    const oldZ = view.zoom || 1;
+    const targetZ = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+    const ax0 = anchorX !== undefined ? anchorX : view.width * 0.5;
+    const ay0 = anchorY !== undefined ? anchorY : view.height * 0.5;
+    const ax1 = newAnchorX !== undefined ? newAnchorX : ax0;
+    const ay1 = newAnchorY !== undefined ? newAnchorY : ay0;
+    const cx = view.width * 0.5;
+    const cy = view.height * 0.5;
+    const bx = cx + (ax0 - cx - (view.panX || 0)) / oldZ;
+    const by = cy + (ay0 - cy - (view.panY || 0)) / oldZ;
+    view.zoom = targetZ;
+    view.panX = ax1 - cx - (bx - cx) * targetZ;
+    view.panY = ay1 - cy - (by - cy) * targetZ;
+    clampCamera(view);
+    return view.zoom;
+  }
+
+  function panBy(canvas, dx, dy) {
+    const view = getView(canvas);
+    view.panX = (view.panX || 0) + dx;
+    view.panY = (view.panY || 0) + dy;
+    clampCamera(view);
+  }
+
+  function resetCamera(canvas) {
+    const view = getView(canvas);
+    view.zoom = 1.0;
+    view.panX = 0;
+    view.panY = 0;
+  }
+
+  function baseWorldToScreen(wx, wy, altM, view, viewMode, elevM) {
     const W = view.width;
     const H = view.height;
     const nx = wx / MAP_SIZE_M;
@@ -39,21 +90,42 @@
     return { x: sx, y: baseSy - totalZ, groundY: baseSy - groundZ, scale: persp };
   }
 
+  function worldToScreen(wx, wy, altM, view, viewMode, elevM) {
+    const b = baseWorldToScreen(wx, wy, altM, view, viewMode, elevM);
+    const z = view.zoom || 1;
+    const px = view.panX || 0;
+    const py = view.panY || 0;
+    if (z === 1 && px === 0 && py === 0) return b;
+    const cx = view.width * 0.5;
+    const cy = view.height * 0.5;
+    const sx = cx + (b.x - cx) * z + px;
+    const sy = cy + (b.y - cy) * z + py;
+    const groundY = b.groundY !== undefined ? cy + (b.groundY - cy) * z + py : undefined;
+    return { x: sx, y: sy, groundY, scale: b.scale };
+  }
+
   function screenToWorld(px, py, view, viewMode) {
     const W = view.width;
     const H = view.height;
+    const z = view.zoom || 1;
+    const panX = view.panX || 0;
+    const panY = view.panY || 0;
+    const cx = W * 0.5;
+    const cy = H * 0.5;
+    const bx = cx + (px - cx - panX) / z;
+    const by = cy + (py - cy - panY) / z;
     if (viewMode !== "live25d") {
-      const nx = (px - PAD) / (W - PAD * 2);
-      const ny = (py - PAD) / (H - PAD * 2);
+      const nx = (bx - PAD) / (W - PAD * 2);
+      const ny = (by - PAD) / (H - PAD * 2);
       return [
         Math.max(0, Math.min(MAP_SIZE_M, nx * MAP_SIZE_M)),
         Math.max(0, Math.min(MAP_SIZE_M, (1.0 - ny) * MAP_SIZE_M)),
       ];
     }
-    const rawNy = Math.max(0, Math.min(1, (py - H * 0.13) / (H * 0.79)));
+    const rawNy = Math.max(0, Math.min(1, (by - H * 0.13) / (H * 0.79)));
     const ny = Math.pow(rawNy, 1 / 0.92);
     const persp = 0.72 + 0.28 * ny;
-    const nx = 0.5 + (px - W * 0.5) / ((W * 0.86) * persp);
+    const nx = 0.5 + (bx - W * 0.5) / ((W * 0.86) * persp);
     return [
       Math.max(0, Math.min(MAP_SIZE_M, nx * MAP_SIZE_M)),
       Math.max(0, Math.min(MAP_SIZE_M, (1.0 - ny) * MAP_SIZE_M)),
@@ -191,9 +263,6 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(tex, PAD, PAD, W - PAD * 2, H - PAD * 2);
-
-    drawVectorLayers(ctx, meta, view, "command");
-    drawCommandFrame(ctx, view);
     return off;
   }
 
@@ -255,7 +324,8 @@
 
   function drawVectorLayers(ctx, meta, view, mode) {
     const ly = meta.layers || {};
-    const pxPerM = (view.width - PAD * 2) / MAP_SIZE_M;
+    const z = view.zoom || 1;
+    const pxPerM = ((view.width - PAD * 2) / MAP_SIZE_M) * z;
     (ly.forests || []).forEach((f) => {
       polyPath(ctx, f.polygon, view, mode, meta);
       ctx.fillStyle = "rgba(26, 42, 38, 0.32)"; ctx.fill();
@@ -319,29 +389,36 @@
     ctx.strokeStyle = "rgba(140, 154, 170, 0.38)";
     ctx.lineWidth = 1;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
-    // 1km 刻度
+    // 1km 刻度（随缩放与平移实时对齐世界坐标）
     ctx.strokeStyle = "rgba(140, 154, 170, 0.35)";
     for (let m = 0; m <= MAP_SIZE_M; m += 1000) {
-      const t = (m / MAP_SIZE_M);
+      const p = worldToScreen(m, MAP_SIZE_M - m, 0, view, "command", 0);
       const len = m % 5000 === 0 ? 7 : 3.5;
-      const x = x0 + t * (x1 - x0), y = y0 + t * (y1 - y0);
       ctx.beginPath();
-      ctx.moveTo(x, y0); ctx.lineTo(x, y0 - len);
-      ctx.moveTo(x, y1); ctx.lineTo(x, y1 + len);
-      ctx.moveTo(x0, y); ctx.lineTo(x0 - len, y);
-      ctx.moveTo(x1, y); ctx.lineTo(x1 + len, y);
+      if (p.x >= x0 - 0.5 && p.x <= x1 + 0.5) {
+        ctx.moveTo(p.x, y0); ctx.lineTo(p.x, y0 - len);
+        ctx.moveTo(p.x, y1); ctx.lineTo(p.x, y1 + len);
+      }
+      if (p.y >= y0 - 0.5 && p.y <= y1 + 0.5) {
+        ctx.moveTo(x0, p.y); ctx.lineTo(x0 - len, p.y);
+        ctx.moveTo(x1, p.y); ctx.lineTo(x1 + len, p.y);
+      }
       ctx.stroke();
     }
     // 方格编号 A–H / 1–8
     ctx.font = "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace";
-    ctx.fillStyle = "rgba(112, 128, 146, 0.6)";
+    ctx.fillStyle = "rgba(112, 128, 146, 0.65)";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     const cells = MAP_SIZE_M / 2500;
     for (let i = 0; i < cells; i++) {
-      const t = (i + 0.5) / cells;
-      const x = x0 + t * (x1 - x0), y = y0 + t * (y1 - y0);
-      ctx.fillText(String.fromCharCode(65 + i), x, y0 - 16);
-      ctx.fillText(String(i + 1), x0 - 17, y);
+      const wm = (i + 0.5) * 2500;
+      const p = worldToScreen(wm, MAP_SIZE_M - wm, 0, view, "command", 0);
+      if (p.x >= x0 + 8 && p.x <= x1 - 8) {
+        ctx.fillText(String.fromCharCode(65 + i), p.x, y0 - 16);
+      }
+      if (p.y >= y0 + 8 && p.y <= y1 - 8) {
+        ctx.fillText(String(i + 1), x0 - 17, p.y);
+      }
     }
     ctx.textBaseline = "alphabetic";
   }
@@ -504,6 +581,21 @@
     return pts;
   }
 
+  function drawCachedLayer(ctx, img, view) {
+    const { width: W, height: H, dpr } = view;
+    const z = view.zoom || 1;
+    const px = view.panX || 0;
+    const py = view.panY || 0;
+    ctx.save();
+    ctx.setTransform(
+      dpr * z, 0, 0, dpr * z,
+      (W * 0.5 + px - W * 0.5 * z) * dpr,
+      (H * 0.5 + py - H * 0.5 * z) * dpr
+    );
+    ctx.drawImage(img, 0, 0, W, H);
+    ctx.restore();
+  }
+
   // ───────────────────────── 主渲染 ─────────────────────────
   function renderFrame(canvas, state) {
     const ctx = canvas.getContext("2d");
@@ -520,20 +612,38 @@
       cache.hatchRedSoft = makeHatch("rgba(255, 91, 79, 0.35)", "rgba(255, 91, 79, 0.05)", Math.round(9 * dpr), 1 * dpr);
     }
     const viewMode = state.viewMode || "command";
+    const baseView = { width: view.width, height: view.height, dpr: view.dpr, zoom: 1, panX: 0, panY: 0 };
     const key = `${meta.levelId}_${meta.nightIndex}_${view.width}x${view.height}@${dpr}`;
     if (cache.terrainKey !== key) {
       cache.terrain.command = null; cache.terrain.live25d = null;
       cache.terrainKey = key; cache.covKey = "";
     }
     if (!cache.terrain[viewMode]) {
-      cache.terrain[viewMode] = viewMode === "live25d" ? buildTerrain25D(meta, view) : buildTerrainCommand(meta, view);
+      cache.terrain[viewMode] = viewMode === "live25d" ? buildTerrain25D(meta, baseView) : buildTerrainCommand(meta, baseView);
     }
     const nowMs = performance.now();
     cache.frameRects = [];
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(cache.terrain[viewMode], 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#080b0f";
+    ctx.fillRect(0, 0, view.width, view.height);
+
+    // 裁剪至地图主视区，防止放大后地形与射程圈溢出外框刻度区
+    ctx.save();
+    ctx.beginPath();
+    if (viewMode !== "live25d" && (view.zoom || 1) > 1.01) {
+      ctx.rect(PAD, PAD, view.width - PAD * 2, view.height - PAD * 2);
+    } else {
+      ctx.rect(0, 0, view.width, view.height);
+    }
+    ctx.clip();
+
+    drawCachedLayer(ctx, cache.terrain[viewMode], view);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (viewMode !== "live25d") {
+      drawVectorLayers(ctx, meta, view, "command");
+    }
 
     // 城市灯火
     drawCityLights(ctx, view, viewMode, meta, state);
@@ -542,11 +652,10 @@
     if (state.losAltM > 0 && state.coverage && state.coverage.grid) {
       const ck = `${key}_${viewMode}`;
       if (cache.covRef !== state.coverage || cache.covKey !== ck) {
-        cache.covLayer = buildCoverageLayer(state.coverage, meta, view, viewMode);
+        cache.covLayer = buildCoverageLayer(state.coverage, meta, baseView, viewMode);
         cache.covRef = state.coverage; cache.covKey = ck;
       }
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(cache.covLayer, 0, 0);
+      drawCachedLayer(ctx, cache.covLayer, view);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
@@ -604,6 +713,12 @@
 
     // 7. 战场航迹、真值透视、拦截弹与爆炸特效
     if (state.snapshot) drawTracksAndCombat(ctx, view, state, viewMode, meta, nowMs);
+
+    ctx.restore();
+
+    if (viewMode !== "live25d") {
+      drawCommandFrame(ctx, view);
+    }
 
     // 8. HUD：暗角、指北针、比例尺
     drawHud(ctx, view, viewMode, state);
@@ -1326,10 +1441,12 @@
     ctx.beginPath(); ctx.moveTo(cx, cy + 12); ctx.lineTo(cx + 4.5, cy); ctx.lineTo(cx - 4.5, cy); ctx.closePath(); ctx.fill();
     haloText(ctx, "N", cx, cy - 19, "#ffc9c3", "700 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
 
-    // 比例尺（平面图）
+    // 比例尺（平面图，随缩放倍率自动切换量程）
     if (mode !== "live25d") {
-      const pxPerM = (W - PAD * 2) / MAP_SIZE_M;
-      const len = 2000 * pxPerM;
+      const z = view.zoom || 1;
+      const pxPerM = ((W - PAD * 2) / MAP_SIZE_M) * z;
+      const refKm = z >= 2.5 ? 0.5 : (z >= 1.45 ? 1 : 2);
+      const len = refKm * 1000 * pxPerM;
       const x0 = PAD + 14, y0 = H - PAD - 14;
       ctx.fillStyle = "rgba(9, 13, 18, 0.72)";
       roundRect(ctx, x0 - 8, y0 - 18, len + 16, 26, 5); ctx.fill();
@@ -1339,8 +1456,8 @@
       ctx.fillRect(x0 + len / 2, y0, len / 2, 3);
       ctx.font = "600 9px 'JetBrains Mono', 'SF Mono', Menlo, monospace"; ctx.fillStyle = "rgba(156, 170, 184, 0.8)";
       ctx.textAlign = "left"; ctx.fillText("0", x0 - 2, y0 - 5);
-      ctx.textAlign = "center"; ctx.fillText("1", x0 + len / 2, y0 - 5);
-      ctx.textAlign = "right"; ctx.fillText("2 km", x0 + len + 4, y0 - 5);
+      ctx.textAlign = "center"; ctx.fillText(String(refKm / 2), x0 + len / 2, y0 - 5);
+      ctx.textAlign = "right"; ctx.fillText(`${refKm} km`, x0 + len + 4, y0 - 5);
     } else {
       pillLabel(ctx, "2.5D 实况斜视角 · 25°", PAD + 70, PAD + 4, { fg: "#dce4ec", bg: "rgba(9, 13, 18, 0.72)", border: "rgba(220, 228, 236, 0.35)", size: 10 });
     }
@@ -1349,10 +1466,22 @@
   function resize(canvas, cssW, cssH) {
     const dpr = Math.min(2.5, window.devicePixelRatio || 1);
     const w = Math.max(200, Math.floor(cssW)), h = Math.max(200, Math.floor(cssH));
+    const prev = canvas._view;
     canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
-    canvas._view = { width: w, height: h, dpr };
+    canvas._view = {
+      width: w,
+      height: h,
+      dpr,
+      zoom: prev ? prev.zoom || 1 : 1,
+      panX: prev && prev.width ? (prev.panX || 0) * (w / prev.width) : 0,
+      panY: prev && prev.height ? (prev.panY || 0) * (h / prev.height) : 0,
+    };
+    clampCamera(canvas._view);
   }
 
-  window.TacticalRenderer = { renderFrame, worldToScreen, screenToWorld, sampleElevation, resize, getView, unitScreenPos };
+  window.TacticalRenderer = {
+    renderFrame, worldToScreen, screenToWorld, sampleElevation,
+    resize, getView, unitScreenPos, zoomAt, panBy, resetCamera,
+  };
 })();

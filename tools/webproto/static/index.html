@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#0b0f14" />
   <title>《守夜》Nightwatch · 纸上原型 · test_01</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0f14'/%3E%3Cg fill='none' stroke='%235fb6ff' stroke-width='2'%3E%3Ccircle cx='16' cy='16' r='10'/%3E%3Cpath d='M16 3v5M16 24v5M3 16h5M24 16h5M16 16l7-7'/%3E%3C/g%3E%3C/svg%3E" />
@@ -186,6 +187,19 @@
             <button class="seg-btn" data-view="live25d">2.5D 实况</button>
           </div>
           <button id="btn-view-mode" class="hidden" aria-hidden="true"></button>
+          <span class="tool-sep" aria-hidden="true"></span>
+          <div class="zoom-inline" role="group" aria-label="战术地图缩放">
+            <span class="zoom-lbl">地图缩放</span>
+            <button id="btn-tb-zoom-out" class="zi-btn" data-tip="缩小地图（快捷键 - / 双指捏合）" aria-label="缩小地图">−</button>
+            <button id="btn-tb-zoom-reset" class="zi-val" data-tip="点击复位 100% 全图视野（支持滚轮、触控板与 iPad 双指捏合缩放）">100%</button>
+            <button id="btn-tb-zoom-in" class="zi-btn" data-tip="放大地图（快捷键 + / 双击地图 / iPad 双指张开）" aria-label="放大地图">+</button>
+          </div>
+          <div class="zoom-inline zoom-ui-inline" role="group" aria-label="主界面整体缩放">
+            <span class="zoom-lbl">界面</span>
+            <button id="btn-ui-zoom-out" class="zi-btn" data-tip="缩小主界面面板与字号" aria-label="缩小界面">A−</button>
+            <button id="btn-ui-zoom-reset" class="zi-val" data-tip="点击复位主界面 100% 比例">100%</button>
+            <button id="btn-ui-zoom-in" class="zi-btn" data-tip="放大主界面面板与字号" aria-label="放大界面">A+</button>
+          </div>
         </div>
         <div class="tool-group">
           <button id="btn-alert-toggle" class="btn btn-sm battle-only" data-tip="防空警报：市民进入掩体，减少伤亡。但一直拉响会让市民疲惫、越来越不配合。">
@@ -238,6 +252,11 @@
           <span><b style="color:var(--accent)">★ 白色地标</b>＝保卫目标　<b>拖动武器</b>堵截敌军红箭头来路　<span class="hl-red">红色斜线</span>＝山脊盲区</span>
           <button class="map-hint-x" id="map-hint-x" aria-label="关闭提示">×</button>
         </div>
+        <div id="map-zoom-dock" class="map-zoom-dock" role="group" aria-label="地图触控缩放">
+          <button id="btn-zoom-in" class="mzd-btn" data-tip="放大地图（快捷键 + / iPad 双指张开）" aria-label="放大地图">+</button>
+          <button id="btn-zoom-reset" class="mzd-readout" data-tip="当前地图倍率 · 点击复位到 100% 全图（快捷键 0）">100%</button>
+          <button id="btn-zoom-out" class="mzd-btn" data-tip="缩小地图（快捷键 - / iPad 双指捏合）" aria-label="缩小地图">−</button>
+        </div>
         <div id="toast-stack" class="toast-stack"></div>
         <div id="map-tip" class="map-tip hidden"></div>
         <div id="busy-indicator" class="busy-indicator hidden">
@@ -246,7 +265,7 @@
       </div>
 
       <footer class="map-footer">
-        <div id="hover-telemetry" class="telemetry-readout">把鼠标移到地图上，查看防空武器与保卫目标</div>
+        <div id="hover-telemetry" class="telemetry-readout">滚轮 / iPad 双指捏合缩放地图 · 拖动部署武器</div>
         <div class="map-legend">
           <span class="legend-item" data-tip="你要死守的城市命脉设施（热电厂、中心变电站、水厂）"><i class="sw sw-struct"></i>★ 保卫目标</span>
           <span class="legend-item" data-tip="你控制的防空导弹与皮卡高射机枪"><i class="sw sw-weapon"></i>防空武器</span>

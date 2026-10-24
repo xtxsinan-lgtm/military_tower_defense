@@ -950,10 +950,58 @@
     window.TacticalRenderer.resize(canvas, size, size);
   }
 
-  // ───────────── 地图拾取与悬停说明 ─────────────
+  // ───────────── 地图拾取、缩放与悬停说明 ─────────────
   function canvasXY(e) {
     const rect = canvas.getBoundingClientRect();
-    return [e.clientX - rect.left, e.clientY - rect.top];
+    const view = window.TacticalRenderer.getView(canvas);
+    const sx = rect.width ? view.width / rect.width : 1;
+    const sy = rect.height ? view.height / rect.height : 1;
+    return [(e.clientX - rect.left) * sx, (e.clientY - rect.top) * sy];
+  }
+
+  function updateZoomReadout() {
+    const view = window.TacticalRenderer.getView(canvas);
+    const pct = `${Math.round((view.zoom || 1) * 100)}%`;
+    if ($("btn-zoom-reset")) $("btn-zoom-reset").textContent = pct;
+    if ($("btn-tb-zoom-reset")) $("btn-tb-zoom-reset").textContent = pct;
+  }
+
+  function stepMapZoom(factor, ax, ay) {
+    const view = window.TacticalRenderer.getView(canvas);
+    const cur = view.zoom || 1;
+    window.TacticalRenderer.zoomAt(canvas, cur * factor, ax, ay);
+    updateZoomReadout();
+  }
+
+  function resetMapZoom() {
+    window.TacticalRenderer.resetCamera(canvas);
+    updateZoomReadout();
+  }
+
+  function applyUiScale(scale) {
+    const s = Math.max(0.8, Math.min(1.3, Math.round(scale * 20) / 20));
+    state.uiScale = s;
+    document.body.style.zoom = s === 1 ? "" : String(s);
+    if ($("btn-ui-zoom-reset")) $("btn-ui-zoom-reset").textContent = `${Math.round(s * 100)}%`;
+    LS.set("nw_ui_scale", String(s));
+    setTimeout(fitCanvas, 30);
+  }
+
+  async function finishUnitDrag() {
+    canvas.classList.remove("grabbing");
+    if (!state.draggingUnit) return;
+    const u = state.draggingUnit;
+    state.draggingUnit = null;
+    const kts = (state.meta && state.meta.carryIn && state.meta.carryIn.knownTargets) || [];
+    const kt = kts.find((k) => Number(k.rosterId) === Number(u.rosterId));
+    if (kt && kt.pos && Math.hypot(u.pos[0] - kt.pos[0], u.pos[1] - kt.pos[1]) > 600.0) {
+      u.isExposed = false;
+      u.carryExposure = 0;
+    }
+    state.activePreset = "custom";
+    document.querySelectorAll(".btn-preset").forEach((x) => x.classList.remove("active"));
+    await refreshCoverage();
+    renderRosterAndInspector();
   }
   function worldToCanvas(pos, alt) {
     const view = window.TacticalRenderer.getView(canvas);
@@ -1238,22 +1286,74 @@
       applyLevelMeta(await apiPost("/api/next_night", {}, "正在结转到下一夜…")); await refreshCoverage();
     });
 
+    // 地图缩放与主界面缩放按钮
+    if ($("btn-zoom-in")) $("btn-zoom-in").addEventListener("click", () => stepMapZoom(1.28));
+    if ($("btn-zoom-out")) $("btn-zoom-out").addEventListener("click", () => stepMapZoom(1 / 1.28));
+    if ($("btn-zoom-reset")) $("btn-zoom-reset").addEventListener("click", resetMapZoom);
+    if ($("btn-tb-zoom-in")) $("btn-tb-zoom-in").addEventListener("click", () => stepMapZoom(1.28));
+    if ($("btn-tb-zoom-out")) $("btn-tb-zoom-out").addEventListener("click", () => stepMapZoom(1 / 1.28));
+    if ($("btn-tb-zoom-reset")) $("btn-tb-zoom-reset").addEventListener("click", resetMapZoom);
+
+    if ($("btn-ui-zoom-in")) $("btn-ui-zoom-in").addEventListener("click", () => applyUiScale((state.uiScale || 1) + 0.1));
+    if ($("btn-ui-zoom-out")) $("btn-ui-zoom-out").addEventListener("click", () => applyUiScale((state.uiScale || 1) - 0.1));
+    if ($("btn-ui-zoom-reset")) $("btn-ui-zoom-reset").addEventListener("click", () => applyUiScale(1.0));
+    const savedUiScale = Number(LS.get("nw_ui_scale"));
+    if (savedUiScale >= 0.8 && savedUiScale <= 1.3 && savedUiScale !== 1) applyUiScale(savedUiScale);
+
+    // 鼠标滚轮 / 触控板双指缩放（以光标为中心）
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const [px, py] = canvasXY(e);
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022));
+      stepMapZoom(factor, px, py);
+    }, { passive: false });
+
+    // 双击地图空白处快速放大 / 复位
+    canvas.addEventListener("dblclick", (e) => {
+      if (pickUnitAt(e, 18)) return;
+      const [px, py] = canvasXY(e);
+      const view = window.TacticalRenderer.getView(canvas);
+      if ((view.zoom || 1) >= 2.2) resetMapZoom();
+      else {
+        window.TacticalRenderer.zoomAt(canvas, Math.min(4.0, (view.zoom || 1) * 1.75), px, py);
+        updateZoomReadout();
+      }
+    });
+
     canvas.addEventListener("mousedown", (e) => {
       const best = pickUnitAt(e, 18);
-      if (best) {
+      if (best && e.button === 0) {
         state.selectedUnitKey = unitKey(best);
         if (state.phase === "deploy" && best.mobility !== "fixed") {
           state.draggingUnit = best;
           canvas.classList.add("grabbing");
           $("map-tip").classList.add("hidden");
+          renderRosterAndInspector();
+          return;
         }
         renderRosterAndInspector();
+      }
+      // 放大状态下（或按住中键/右键）拖曳空白处平移地图
+      const view = window.TacticalRenderer.getView(canvas);
+      if ((view.zoom || 1) > 1.01 || e.button === 1 || e.button === 2) {
+        const [px, py] = canvasXY(e);
+        state.panningMap = { lastX: px, lastY: py };
+        canvas.classList.add("panning");
+        $("map-tip").classList.add("hidden");
       }
     });
     canvas.addEventListener("mousemove", (e) => {
       if (!state.meta) return;
       const [px, py] = canvasXY(e);
       const view = window.TacticalRenderer.getView(canvas);
+      if (state.panningMap) {
+        const dx = px - state.panningMap.lastX;
+        const dy = py - state.panningMap.lastY;
+        state.panningMap.lastX = px;
+        state.panningMap.lastY = py;
+        window.TacticalRenderer.panBy(canvas, dx, dy);
+        return;
+      }
       const pt = window.TacticalRenderer.screenToWorld(px, py, view, state.viewMode);
       const elev = Math.round(window.TacticalRenderer.sampleElevation(state.meta, pt[0], pt[1]));
       const col = String.fromCharCode(65 + Math.min(7, Math.floor(pt[0] / 2500)));
@@ -1271,22 +1371,130 @@
     });
     canvas.addEventListener("mouseleave", () => { state.hoverUnitKey = null; $("map-tip").classList.add("hidden"); });
     window.addEventListener("mouseup", async () => {
-      canvas.classList.remove("grabbing");
-      if (state.draggingUnit) {
-        const u = state.draggingUnit;
-        state.draggingUnit = null;
-        const kts = (state.meta && state.meta.carryIn && state.meta.carryIn.knownTargets) || [];
-        const kt = kts.find((k) => Number(k.rosterId) === Number(u.rosterId));
-        if (kt && kt.pos && Math.hypot(u.pos[0] - kt.pos[0], u.pos[1] - kt.pos[1]) > 600.0) {
-          u.isExposed = false;
-          u.carryExposure = 0;
-        }
-        state.activePreset = "custom";
-        document.querySelectorAll(".btn-preset").forEach((x) => x.classList.remove("active"));
-        await refreshCoverage();
-        renderRosterAndInspector();
+      if (state.panningMap) {
+        state.panningMap = null;
+        canvas.classList.remove("panning");
       }
+      await finishUnitDrag();
     });
+
+    // ───────────── iPad / 触屏手势：双指捏合缩放 + 双指平移 + 单指拖拽部署 + 双击缩放 ─────────────
+    let touchPinch = null;
+    let lastTapInfo = { t: 0, x: 0, y: 0 };
+
+    canvas.addEventListener("touchstart", (e) => {
+      if (!state.meta) return;
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        state.draggingUnit = null;
+        state.panningMap = null;
+        canvas.classList.remove("grabbing", "panning");
+        $("map-tip").classList.add("hidden");
+        const [x0, y0] = canvasXY(e.touches[0]);
+        const [x1, y1] = canvasXY(e.touches[1]);
+        touchPinch = {
+          lastDist: Math.max(10, Math.hypot(x1 - x0, y1 - y0)),
+          lastMidX: (x0 + x1) * 0.5,
+          lastMidY: (y0 + y1) * 0.5,
+        };
+        return;
+      }
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        touchPinch = null;
+        const t = e.touches[0];
+        const [px, py] = canvasXY(t);
+        const best = pickUnitAt(t, 26); // iPad 触控拾取半径放宽到 26px，方便手指点选
+        if (best) {
+          state.selectedUnitKey = unitKey(best);
+          renderRosterAndInspector();
+          if (state.phase === "deploy" && best.mobility !== "fixed") {
+            state.draggingUnit = best;
+            canvas.classList.add("grabbing");
+            $("map-tip").classList.add("hidden");
+          } else {
+            showMapTip(t);
+            state.panningMap = { lastX: px, lastY: py };
+          }
+          return;
+        }
+        // 双击空白处快速放大或复位
+        const now = performance.now();
+        if (now - lastTapInfo.t < 300 && Math.hypot(px - lastTapInfo.x, py - lastTapInfo.y) < 30) {
+          const view = window.TacticalRenderer.getView(canvas);
+          if ((view.zoom || 1) >= 1.8) resetMapZoom();
+          else {
+            window.TacticalRenderer.zoomAt(canvas, Math.min(4.0, (view.zoom || 1) * 1.9), px, py);
+            updateZoomReadout();
+          }
+          lastTapInfo.t = 0;
+          return;
+        }
+        lastTapInfo = { t: now, x: px, y: py };
+        showMapTip(t);
+        state.panningMap = { lastX: px, lastY: py };
+      }
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", (e) => {
+      if (!state.meta) return;
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        const [x0, y0] = canvasXY(e.touches[0]);
+        const [x1, y1] = canvasXY(e.touches[1]);
+        const dist = Math.max(10, Math.hypot(x1 - x0, y1 - y0));
+        const midX = (x0 + x1) * 0.5;
+        const midY = (y0 + y1) * 0.5;
+        if (!touchPinch) {
+          touchPinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+          return;
+        }
+        const view = window.TacticalRenderer.getView(canvas);
+        const newZ = (view.zoom || 1) * (dist / touchPinch.lastDist);
+        window.TacticalRenderer.zoomAt(canvas, newZ, touchPinch.lastMidX, touchPinch.lastMidY, midX, midY);
+        touchPinch.lastDist = dist;
+        touchPinch.lastMidX = midX;
+        touchPinch.lastMidY = midY;
+        updateZoomReadout();
+        return;
+      }
+      if (e.touches.length === 1 && !touchPinch) {
+        e.preventDefault();
+        const t = e.touches[0];
+        const [px, py] = canvasXY(t);
+        const view = window.TacticalRenderer.getView(canvas);
+        if (state.draggingUnit && state.phase === "deploy") {
+          const pt = window.TacticalRenderer.screenToWorld(px, py, view, state.viewMode);
+          state.draggingUnit.pos = [Math.round(pt[0]), Math.round(pt[1])];
+          const col = String.fromCharCode(65 + Math.min(7, Math.floor(pt[0] / 2500)));
+          const row = 8 - Math.min(7, Math.floor(pt[1] / 2500));
+          $("hover-telemetry").textContent = `移动 #${state.draggingUnit.rosterId} → 方格 ${col}${row} · X ${(pt[0] / 1000).toFixed(2)} km · Y ${(pt[1] / 1000).toFixed(2)} km`;
+          return;
+        }
+        if (state.panningMap) {
+          const dx = px - state.panningMap.lastX;
+          const dy = py - state.panningMap.lastY;
+          state.panningMap.lastX = px;
+          state.panningMap.lastY = py;
+          window.TacticalRenderer.panBy(canvas, dx, dy);
+        }
+      }
+    }, { passive: false });
+
+    const onTouchEnd = async (e) => {
+      if (e.touches.length < 2) touchPinch = null;
+      if (e.touches.length === 0) {
+        state.panningMap = null;
+        canvas.classList.remove("panning");
+        await finishUnitDrag();
+      }
+    };
+    canvas.addEventListener("touchend", onTouchEnd);
+    canvas.addEventListener("touchcancel", onTouchEnd);
+    // 阻止 iPadOS Safari 在画布上触发系统级页面捏合抖动
+    canvas.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener("gesturechange", (e) => e.preventDefault(), { passive: false });
+
     window.addEventListener("keydown", (e) => {
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -1294,6 +1502,9 @@
       if (e.code === "Space" && state.phase === "battle") { e.preventDefault(); setSpeed(state.speed > 0 ? 0 : 1); }
       else if (e.code === "Tab") { e.preventDefault(); toggleViewMode(); }
       else if (e.code === "KeyN") skipToNextContact();
+      else if (e.code === "Equal" || e.code === "NumpadAdd") { e.preventDefault(); stepMapZoom(1.28); }
+      else if (e.code === "Minus" || e.code === "NumpadSubtract") { e.preventDefault(); stepMapZoom(1 / 1.28); }
+      else if (e.code === "Digit0" || e.code === "Numpad0") { e.preventDefault(); resetMapZoom(); }
       else if (state.phase === "battle" && ["Digit1", "Digit2", "Digit3"].includes(e.code)) {
         setSpeed({ Digit1: 1, Digit2: 4, Digit3: 8 }[e.code]);
       }

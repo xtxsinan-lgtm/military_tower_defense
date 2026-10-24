@@ -101,7 +101,7 @@ strong { font-weight: 600; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* 角标框线：四角各一段 2px 短线，像瞄准框/文书装订角 */
-.modal-box, .coach-bubble, .map-hud, .map-tip, .busy-indicator {
+.modal-box, .coach-bubble, .map-hud, .map-zoom-dock, .map-tip, .busy-indicator {
   --bc: var(--rule);
   background-image:
     linear-gradient(var(--bc), var(--bc)), linear-gradient(var(--bc), var(--bc)),
@@ -1078,4 +1078,112 @@ body.phase-deploy .map-hud .hud-chip:nth-child(n+2) { display: none; }
   padding: 1px 5px;
   border: 1px solid var(--line-strong);
   margin-left: 4px;
+}
+
+/* ───────── 战术地图缩放与主界面缩放控件（支持滚轮 + iPad 双指捏合） ───────── */
+#tactical-canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#tactical-canvas.panning { cursor: grabbing; }
+
+.zoom-inline {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-sunken);
+  height: 28px;
+}
+.zoom-lbl {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 0 8px;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
+}
+.zi-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.zi-btn:hover { background: var(--bg-hover); color: var(--text); }
+.zi-btn:active { background: var(--friend-wash); color: var(--friend); }
+.zi-val {
+  min-width: 46px;
+  height: 26px;
+  padding: 0 6px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--friend);
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.zi-val:hover { background: var(--bg-hover); color: var(--text); }
+
+/* 地图右下角触控缩放浮窗（方便 iPad 拇指单手点按与查看倍率） */
+.map-zoom-dock {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(10, 14, 19, 0.92);
+  border: 1px solid var(--line-strong);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.mzd-btn {
+  width: 38px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  transition: background 0.15s, color 0.15s;
+}
+.mzd-btn:hover { background: var(--bg-hover); color: var(--friend); }
+.mzd-btn:active { background: var(--friend-wash); color: var(--friend); }
+.mzd-readout {
+  width: 38px;
+  height: 26px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--friend);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mzd-readout:hover { background: var(--bg-hover); color: var(--text); }
+
+/* iPad 横屏与平板自适应优化：收窄侧栏，为中央防空态势图留出充足触控区 */
+@media (max-width: 1240px) {
+  :root { --gutter: 12px; }
+  .workspace { grid-template-columns: 268px minmax(0, 1fr) 246px; }
+  .topbar-clock { width: 250px; }
+  .brand-tag { display: none; }
+}
+@media (max-width: 960px) {
+  html, body { overflow: auto; height: auto; min-height: 100%; }
+  .workspace { grid-template-columns: 1fr; }
+  .center-stage { order: -1; min-height: 620px; }
+  .left-panel, .right-panel { border: 0; border-top: 1px solid var(--line-strong); }
 }
