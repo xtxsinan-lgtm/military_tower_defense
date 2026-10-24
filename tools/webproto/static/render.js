@@ -4,8 +4,10 @@
   const MAP_SIZE_M = 20000;
   const PAD = 34; // 平面图四周留白（逻辑像素），用于坐标格标注
 
-  const CAT_COLORS = { fire: "#ece8df", sensor: "#a3b18a", ew: "#a99bb8", deception: "#7b766c" };
-  const Q_COLORS = ["#7b766c", "#c8b98a", "#e3a043", "#d4664f"];
+  // 我方单位统一用北约军标"友军蓝"系，按类别细分明度/色相
+  const CAT_COLORS = { fire: "#5fb6ff", sensor: "#7fe0e0", ew: "#a9a4ff", deception: "#66778a" };
+  // 航迹质量：灰(刚发现) → 黄(未知) → 橙 → 红(敌对·已识别)，对应北约军标未知/敌对色
+  const Q_COLORS = ["#66778a", "#f5cf47", "#ff9a3c", "#ff5b4f"];
 
   const cache = {
     terrainKey: "", terrain: { command: null, live25d: null },
@@ -85,8 +87,8 @@
 
   // ───────────────────────── 配色工具 ─────────────────────────
   const RAMP = [
-    [0.0, [17, 17, 15]], [0.3, [22, 22, 19]], [0.55, [29, 28, 24]],
-    [0.78, [40, 38, 32]], [1.0, [60, 55, 45]],
+    [0.0, [13, 18, 24]], [0.3, [17, 23, 30]], [0.55, [22, 30, 39]],
+    [0.78, [31, 41, 52]], [1.0, [48, 60, 73]],
   ];
   function rampColor(t) {
     for (let i = 1; i < RAMP.length; i++) {
@@ -133,7 +135,7 @@
     const off = document.createElement("canvas");
     off.width = Math.round(W * dpr); off.height = Math.round(H * dpr);
     const ctx = off.getContext("2d");
-    ctx.fillStyle = "#0b0a09";
+    ctx.fillStyle = "#080b0f";
     ctx.fillRect(0, 0, off.width, off.height);
     if (!meta || !meta.map) return off;
 
@@ -175,7 +177,7 @@
         if (band !== Math.floor(eR / 20) || band !== Math.floor(eD / 20)) {
           const major = Math.floor(e / 100) !== Math.floor(eR / 100) || Math.floor(e / 100) !== Math.floor(eD / 100);
           const a = major ? 0.32 : 0.13;
-          const cc = major ? [200, 170, 120] : [150, 144, 132];
+          const cc = major ? [120, 165, 200] : [90, 112, 135];
           r = r * (1 - a) + cc[0] * a; gg = gg * (1 - a) + cc[1] * a; b = b * (1 - a) + cc[2] * a;
         }
         d[i * 4] = r; d[i * 4 + 1] = gg; d[i * 4 + 2] = b; d[i * 4 + 3] = 255;
@@ -202,7 +204,7 @@
     const ctx = off.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const sky = ctx.createLinearGradient(0, 0, 0, H * 0.35);
-    sky.addColorStop(0, "#090908"); sky.addColorStop(1, "#14130f");
+    sky.addColorStop(0, "#070a0e"); sky.addColorStop(1, "#0f151c");
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     if (!meta || !meta.map) return off;
 
@@ -238,7 +240,7 @@
         ctx.closePath(); ctx.fill(); ctx.stroke();
         // 每 100m 高程带勾一条细亮线
         if (Math.floor(e / 40) !== Math.floor(g[iy][Math.min(N - 1, ix + 1)] / 40)) {
-          ctx.strokeStyle = "rgba(227, 160, 67, 0.12)";
+          ctx.strokeStyle = "rgba(95, 182, 255, 0.10)";
           ctx.beginPath(); ctx.moveTo(p10.x, p10.y); ctx.lineTo(p11.x, p11.y); ctx.stroke();
         }
       }
@@ -246,7 +248,7 @@
     drawVectorLayers(ctx, meta, view, "live25d");
     // 远景雾化
     const fogG = ctx.createLinearGradient(0, H * 0.1, 0, H * 0.45);
-    fogG.addColorStop(0, "rgba(13, 12, 11, 0.55)"); fogG.addColorStop(1, "rgba(13, 12, 11, 0)");
+    fogG.addColorStop(0, "rgba(9, 13, 18, 0.55)"); fogG.addColorStop(1, "rgba(9, 13, 18, 0)");
     ctx.fillStyle = fogG; ctx.fillRect(0, 0, W, H * 0.45);
     return off;
   }
@@ -256,11 +258,11 @@
     const pxPerM = (view.width - PAD * 2) / MAP_SIZE_M;
     (ly.forests || []).forEach((f) => {
       polyPath(ctx, f.polygon, view, mode, meta);
-      ctx.fillStyle = "rgba(46, 52, 38, 0.32)"; ctx.fill();
-      ctx.strokeStyle = "rgba(163, 177, 138, 0.16)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "rgba(26, 42, 38, 0.32)"; ctx.fill();
+      ctx.strokeStyle = "rgba(126, 217, 154, 0.16)"; ctx.lineWidth = 1; ctx.stroke();
       // 树冠点阵
       const bb = bbox(f.polygon);
-      ctx.fillStyle = "rgba(140, 150, 110, 0.14)";
+      ctx.fillStyle = "rgba(100, 150, 130, 0.14)";
       for (let i = 0; i < 260; i++) {
         const wx = bb[0] + hash01(i * 3.1 + bb[0]) * (bb[2] - bb[0]);
         const wy = bb[1] + hash01(i * 7.7 + bb[1]) * (bb[3] - bb[1]);
@@ -271,31 +273,31 @@
     });
     (ly.urban || []).forEach((u) => {
       polyPath(ctx, u.polygon, view, mode, meta);
-      ctx.fillStyle = u.density === "core" ? "rgba(227, 160, 67, 0.07)" : "rgba(150, 144, 132, 0.05)";
+      ctx.fillStyle = u.density === "core" ? "rgba(238, 243, 247, 0.05)" : "rgba(112, 128, 146, 0.05)";
       ctx.fill();
       ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = u.density === "core" ? "rgba(227, 160, 67, 0.28)" : "rgba(150, 144, 132, 0.2)";
+      ctx.strokeStyle = u.density === "core" ? "rgba(238, 243, 247, 0.22)" : "rgba(112, 128, 146, 0.2)";
       ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
     });
     (ly.rivers || []).forEach((rv) => {
       const w = Math.max(3, (rv.widthM || 300) * pxPerM);
       linePath(ctx, rv.path, view, mode, meta);
       ctx.lineCap = "round"; ctx.lineJoin = "round";
-      ctx.strokeStyle = "rgba(10, 12, 13, 0.9)"; ctx.lineWidth = w + 3; ctx.stroke();
-      ctx.strokeStyle = "rgba(52, 66, 72, 0.85)"; ctx.lineWidth = w; ctx.stroke();
-      ctx.strokeStyle = "rgba(236, 232, 223, 0.22)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = "rgba(6, 9, 12, 0.9)"; ctx.lineWidth = w + 3; ctx.stroke();
+      ctx.strokeStyle = "rgba(38, 70, 96, 0.85)"; ctx.lineWidth = w; ctx.stroke();
+      ctx.strokeStyle = "rgba(220, 228, 236, 0.22)"; ctx.lineWidth = 1; ctx.stroke();
     });
     (ly.roads || []).forEach((rd) => {
       const main = rd.class === "main";
       linePath(ctx, rd.path, view, mode, meta);
       ctx.lineCap = "round";
       ctx.strokeStyle = "rgba(0, 0, 0, 0.45)"; ctx.lineWidth = main ? 4 : 2.6; ctx.stroke();
-      ctx.strokeStyle = main ? "rgba(214, 200, 160, 0.34)" : "rgba(180, 180, 170, 0.2)";
+      ctx.strokeStyle = main ? "rgba(170, 185, 200, 0.34)" : "rgba(140, 152, 165, 0.2)";
       ctx.lineWidth = main ? 1.8 : 1.1; ctx.stroke();
     });
 
     // 战术方格网 2.5km
-    ctx.strokeStyle = "rgba(177, 171, 158, 0.07)";
+    ctx.strokeStyle = "rgba(140, 154, 170, 0.07)";
     ctx.lineWidth = 1;
     for (let m = 2500; m < MAP_SIZE_M; m += 2500) {
       const a = worldToScreen(m, 0, 0, view, mode, 0), b = worldToScreen(m, MAP_SIZE_M, 0, view, mode, 0);
@@ -307,18 +309,18 @@
     // 北山脊标注
     const rp = worldToScreen(10000, 14500, 0, view, mode, sampleElevation(meta, 10000, 14500));
     pillLabel(ctx, "▲ 北山脊棱线 · 海拔≈280m · 低空雷达遮挡带", rp.x, rp.y - 10, {
-      fg: "#f2d29a", bg: "rgba(20, 18, 15, 0.72)", border: "rgba(227, 160, 67, 0.45)", size: 10.5,
+      fg: "#f5cf47", bg: "rgba(13, 18, 24, 0.8)", border: "rgba(245, 207, 71, 0.45)", size: 10.5,
     });
   }
 
   function drawCommandFrame(ctx, view) {
     const { width: W, height: H } = view;
     const x0 = PAD, y0 = PAD, x1 = W - PAD, y1 = H - PAD;
-    ctx.strokeStyle = "rgba(177, 171, 158, 0.38)";
+    ctx.strokeStyle = "rgba(140, 154, 170, 0.38)";
     ctx.lineWidth = 1;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
     // 1km 刻度
-    ctx.strokeStyle = "rgba(177, 171, 158, 0.35)";
+    ctx.strokeStyle = "rgba(140, 154, 170, 0.35)";
     for (let m = 0; m <= MAP_SIZE_M; m += 1000) {
       const t = (m / MAP_SIZE_M);
       const len = m % 5000 === 0 ? 7 : 3.5;
@@ -331,8 +333,8 @@
       ctx.stroke();
     }
     // 方格编号 A–H / 1–8
-    ctx.font = "600 10px 'IBM Plex Mono', 'SF Mono', Menlo, monospace";
-    ctx.fillStyle = "rgba(150, 144, 132, 0.6)";
+    ctx.font = "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace";
+    ctx.fillStyle = "rgba(112, 128, 146, 0.6)";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     const cells = MAP_SIZE_M / 2500;
     for (let i = 0; i < cells; i++) {
@@ -390,11 +392,11 @@
     const w = ctx.measureText(text).width + 12;
     const h = size + 7;
     const lx = x - w / 2, ly = y - h / 2;
-    ctx.fillStyle = o.bg || "rgba(13, 12, 11, 0.8)";
+    ctx.fillStyle = o.bg || "rgba(9, 13, 18, 0.8)";
     roundRect(ctx, lx, ly, w, h, 2);
     ctx.fill();
     if (o.border) { ctx.strokeStyle = o.border; ctx.lineWidth = 1; ctx.stroke(); }
-    ctx.fillStyle = o.fg || "#ece8df";
+    ctx.fillStyle = o.fg || "#dce4ec";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(text, x, y + 0.5);
     ctx.textBaseline = "alphabetic";
@@ -416,7 +418,7 @@
     ctx.font = font;
     ctx.textAlign = align || "center";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = "rgba(9, 9, 8, 0.85)";
+    ctx.strokeStyle = "rgba(6, 8, 11, 0.85)";
     ctx.lineWidth = 3;
     ctx.strokeText(text, x, y);
     ctx.fillStyle = fill;
@@ -476,7 +478,7 @@
         const q = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map((c) => P(c, view, "live25d", meta));
         ctx.beginPath();
         ctx.moveTo(q[0].x, q[0].y); q.slice(1).forEach((p) => ctx.lineTo(p.x, p.y)); ctx.closePath();
-        ctx.fillStyle = st === 2 ? "rgba(236, 232, 223, 0.045)" : "rgba(212, 102, 79, 0.26)";
+        ctx.fillStyle = st === 2 ? "rgba(220, 228, 236, 0.045)" : "rgba(255, 91, 79, 0.26)";
         ctx.fill();
       }
     }
@@ -510,12 +512,12 @@
     const dpr = view.dpr;
     if (!meta) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = "#0b0a09"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#080b0f"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       return;
     }
     if (!cache.hatchRed) {
-      cache.hatchRed = makeHatch("rgba(212, 102, 79, 0.55)", "rgba(212, 102, 79, 0.10)", Math.round(7 * dpr), 1.2 * dpr);
-      cache.hatchRedSoft = makeHatch("rgba(212, 102, 79, 0.35)", "rgba(212, 102, 79, 0.05)", Math.round(9 * dpr), 1 * dpr);
+      cache.hatchRed = makeHatch("rgba(255, 91, 79, 0.55)", "rgba(255, 91, 79, 0.10)", Math.round(7 * dpr), 1.2 * dpr);
+      cache.hatchRedSoft = makeHatch("rgba(255, 91, 79, 0.35)", "rgba(255, 91, 79, 0.05)", Math.round(9 * dpr), 1 * dpr);
     }
     const viewMode = state.viewMode || "command";
     const key = `${meta.levelId}_${meta.nightIndex}_${view.width}x${view.height}@${dpr}`;
@@ -554,10 +556,10 @@
         polyPath(ctx, fb.polygon, view, viewMode, meta);
         const pat = ctx.createPattern(cache.hatchRedSoft, "repeat");
         if (pat && pat.setTransform && typeof DOMMatrix === "function") pat.setTransform(new DOMMatrix([1 / dpr, 0, 0, 1 / dpr, 0, 0]));
-        ctx.fillStyle = pat || "rgba(212, 102, 79, 0.08)";
+        ctx.fillStyle = pat || "rgba(255, 91, 79, 0.08)";
         ctx.fill();
         ctx.setLineDash([5, 4]);
-        ctx.strokeStyle = "rgba(212, 102, 79, 0.6)"; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.strokeStyle = "rgba(255, 91, 79, 0.6)"; ctx.lineWidth = 1.2; ctx.stroke();
         ctx.setLineDash([]);
       });
     }
@@ -565,13 +567,13 @@
       const p = P(ap.pos, view, viewMode, meta);
       ctx.save();
       ctx.translate(p.x, p.y); ctx.rotate(Math.PI / 4);
-      ctx.strokeStyle = state.phase === "deploy" ? "rgba(236, 232, 223, 0.7)" : "rgba(236, 232, 223, 0.35)";
+      ctx.strokeStyle = state.phase === "deploy" ? "rgba(220, 228, 236, 0.7)" : "rgba(220, 228, 236, 0.35)";
       ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
       ctx.strokeRect(-4.5, -4.5, 9, 9);
       ctx.setLineDash([]);
       ctx.restore();
       if (state.phase === "deploy") {
-        haloText(ctx, ap.id.replace("alt_", "预备·"), p.x, p.y + 15, "rgba(236, 232, 223, 0.75)", "500 9px -apple-system, sans-serif");
+        haloText(ctx, ap.id.replace("alt_", "预备·"), p.x, p.y + 15, "rgba(220, 228, 236, 0.75)", "500 9px -apple-system, sans-serif");
       }
     });
 
@@ -586,7 +588,7 @@
     kts.forEach((kt) => {
       const p = P(kt.pos, view, viewMode, meta);
       const pulse = 0.5 + 0.5 * Math.sin(nowMs * 0.005);
-      ctx.strokeStyle = `rgba(212, 102, 79, ${0.55 + 0.4 * pulse})`;
+      ctx.strokeStyle = `rgba(255, 91, 79, ${0.55 + 0.4 * pulse})`;
       ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.arc(p.x, p.y, 18 + pulse * 3, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath();
@@ -594,7 +596,7 @@
         ctx.moveTo(p.x + dx * 14, p.y + dy * 14); ctx.lineTo(p.x + dx * 25, p.y + dy * 25);
       });
       ctx.stroke();
-      pillLabel(ctx, "已被敌标定", p.x, p.y - 32, { fg: "#ecc2b6", bg: "rgba(28, 14, 11, 0.8)", border: "rgba(212, 102, 79, 0.6)", size: 9.5 });
+      pillLabel(ctx, "已被敌标定", p.x, p.y - 32, { fg: "#ffc9c3", bg: "rgba(32, 10, 10, 0.8)", border: "rgba(255, 91, 79, 0.6)", size: 9.5 });
     });
 
     // 6. 我方防空单位与射程环
@@ -619,14 +621,87 @@
       if (hash01(i * 4.2) < unp) return;
       const p = P([pt.x, pt.y], view, mode, meta);
       const a = pt.b * (pt.core ? 0.55 : 0.35) * dim;
-      ctx.fillStyle = `rgba(242, 183, 102, ${a})`;
+      // 城市灯火用偏暖的白，避免与敌对红/橙混淆
+      ctx.fillStyle = `rgba(240, 228, 200, ${a})`;
       const s = (pt.core ? 1.4 : 1.1) * (p.scale || 1);
       ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
     });
     ctx.restore();
   }
 
+  const SHORT_UNIT_LABELS = {
+    mobile_fire_team: "皮卡机枪",
+    iris_t_sls: "IRIS‑T 近程导弹",
+    nasams: "NASAMS 中程导弹",
+    soviet_mid_range_radar: "警戒雷达",
+    acoustic_post: "听音哨",
+    visual_observer: "目视哨",
+  };
+
+  function isPassivePost(u) {
+    return u.unitDefId === "acoustic_post" || u.unitDefId === "visual_observer";
+  }
+
+  function drawAttackCorridor(ctx, waypoints, label, view, mode, meta, nowMs, alphaMul, labelWorldPos) {
+    if (!waypoints || waypoints.length < 2) return;
+    const pts = waypoints.map((pt) => P(pt, view, mode, meta));
+    ctx.save();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    // 底层宽光带
+    ctx.strokeStyle = `rgba(255, 91, 79, ${0.11 * alphaMul})`;
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    ctx.stroke();
+    // 动态行进虚线
+    ctx.strokeStyle = `rgba(255, 91, 79, ${0.62 * alphaMul})`;
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([7, 6]);
+    ctx.lineDashOffset = -(nowMs * 0.022);
+    ctx.beginPath();
+    pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    ctx.stroke();
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
+
+    // 末端箭头指向保护设施
+    const last = pts[pts.length - 1], prev = pts[pts.length - 2];
+    const ang = Math.atan2(last.y - prev.y, last.x - prev.x);
+    ctx.fillStyle = `rgba(255, 91, 79, ${0.82 * alphaMul})`;
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(last.x - Math.cos(ang - 0.42) * 11, last.y - Math.sin(ang - 0.42) * 11);
+    ctx.lineTo(last.x - Math.cos(ang + 0.42) * 11, last.y - Math.sin(ang + 0.42) * 11);
+    ctx.closePath();
+    ctx.fill();
+
+    if (label && alphaMul > 0.5) {
+      const mid = labelWorldPos ? P(labelWorldPos, view, mode, meta) : (pts[1] || pts[0]);
+      pillLabel(ctx, label, mid.x, mid.y - 12, {
+        fg: "#ffc9c3", bg: "rgba(32, 10, 10, 0.85)", border: "rgba(255, 91, 79, 0.55)", size: 9.5,
+      });
+    }
+    ctx.restore();
+  }
+
   function drawEntryPoints(ctx, view, mode, meta, state, nowMs) {
+    // 战前部署（或战中尚无敌情时）画出敌军预计攻击走廊，直接连向保卫设施
+    const hasActiveTracks = state.snapshot && (state.snapshot.tracks || []).length > 0;
+    const corridorAlpha = state.phase === "deploy" ? 1.0 : (hasActiveTracks ? 0.22 : 0.45);
+    drawAttackCorridor(
+      ctx,
+      [[19100, 13200], [16600, 10700], [14000, 7550]],
+      "▶ 东路无人机群 → 直扑【★热电厂】",
+      view, mode, meta, nowMs, corridorAlpha,
+      [15600, 13300]
+    );
+    drawAttackCorridor(
+      ctx,
+      [[1100, 18100], [4500, 15200], [7400, 12750], [10400, 10750]],
+      "▶ 西北低空巡航导弹 → 借盲区偷袭【★水厂 / 变电站】",
+      view, mode, meta, nowMs, corridorAlpha,
+      [4800, 15500]
+    );
+
     (meta.entryPoints || []).forEach((ep, idx) => {
       const cx = Math.max(500, Math.min(MAP_SIZE_M - 500, ep.pos[0]));
       const cy = Math.max(500, Math.min(MAP_SIZE_M - 500, ep.pos[1]));
@@ -639,15 +714,47 @@
       ctx.translate(p.x, p.y); ctx.rotate(sa);
       for (let k = 0; k < 3; k++) {
         const ph = (k / 3 + t) % 1;
-        ctx.strokeStyle = `rgba(212, 102, 79, ${0.25 + 0.6 * (1 - Math.abs(ph - 0.5) * 2)})`;
-        ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        ctx.strokeStyle = `rgba(255, 91, 79, ${0.3 + 0.65 * (1 - Math.abs(ph - 0.5) * 2)})`;
+        ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round";
         const x = -6 + k * 8;
         ctx.beginPath(); ctx.moveTo(x - 4, -6); ctx.lineTo(x + 2, 0); ctx.lineTo(x - 4, 6); ctx.stroke();
       }
       ctx.restore();
       const lx = p.x - Math.cos(sa) * 4, ly = p.y - Math.sin(sa) * 4 + (Math.sin(sa) > 0.3 ? -16 : 18);
-      pillLabel(ctx, `${ep.name}来袭`, lx, ly, { fg: "#ecc2b6", bg: "rgba(28, 14, 11, 0.78)", border: "rgba(212, 102, 79, 0.5)", size: 9.5 });
+      pillLabel(ctx, `${ep.name}来袭口`, lx, ly, { fg: "#ffc9c3", bg: "rgba(32, 10, 10, 0.85)", border: "rgba(255, 91, 79, 0.6)", size: 9.5 });
     });
+  }
+
+  function drawStructureIcon(ctx, x, y, sid, color) {
+    ctx.save();
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.6; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (sid === "tpp" || sid === "power_plant") {
+      // 闪电符号（代表核心供电热电厂）
+      ctx.beginPath();
+      ctx.moveTo(x + 1.5, y - 7);
+      ctx.lineTo(x - 4.5, y + 0.5);
+      ctx.lineTo(x + 0.5, y + 0.5);
+      ctx.lineTo(x - 1.5, y + 7);
+      ctx.lineTo(x + 4.5, y - 0.5);
+      ctx.lineTo(x - 0.5, y - 0.5);
+      ctx.closePath();
+      ctx.fill();
+    } else if (sid === "substation_central" || sid === "substation") {
+      // 变电枢纽符号（菱形核心 + 节点）
+      ctx.beginPath();
+      ctx.moveTo(x, y - 5.5); ctx.lineTo(x + 5.5, y); ctx.lineTo(x, y + 5.5); ctx.lineTo(x - 5.5, y); ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // 水厂符号（水滴）
+      ctx.beginPath();
+      ctx.moveTo(x, y - 6.5);
+      ctx.bezierCurveTo(x + 5.5, y - 1, x + 5.5, y + 6, x, y + 6);
+      ctx.bezierCurveTo(x - 5.5, y + 6, x - 5.5, y - 1, x, y - 6.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function drawGridAndStructures(ctx, view, state, mode, meta, nowMs) {
@@ -662,12 +769,12 @@
       if (!a || !b) return;
       const pa = P(a.pos, view, mode, meta), pb = P(b.pos, view, mode, meta);
       const ok = a.powered && b.powered;
-      ctx.strokeStyle = ok ? "rgba(236, 232, 223, 0.16)" : "rgba(212, 102, 79, 0.2)";
+      ctx.strokeStyle = ok ? "rgba(220, 228, 236, 0.16)" : "rgba(255, 91, 79, 0.22)";
       ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
-      ctx.strokeStyle = ok ? "rgba(236, 232, 223, 0.7)" : "rgba(212, 102, 79, 0.65)";
+      ctx.strokeStyle = ok ? "rgba(220, 228, 236, 0.65)" : "rgba(255, 91, 79, 0.65)";
       ctx.lineWidth = 1.2;
-      ctx.setLineDash([3, 6]);
+      ctx.setLineDash([4, 6]);
       ctx.lineDashOffset = ok ? -nowMs * 0.012 : 0;
       ctx.stroke();
       ctx.setLineDash([]); ctx.lineDashOffset = 0;
@@ -679,42 +786,84 @@
       const p = P(s.pos, view, mode, meta);
       const hpFrac = Math.max(0, s.hp / Math.max(1, s.maxHp));
       const sc = p.scale || 1;
-      // 保护半径
-      if (s.radiusM) {
-        ctx.strokeStyle = "rgba(227, 160, 67, 0.22)";
-        ctx.fillStyle = "rgba(227, 160, 67, 0.04)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        if (mode === "live25d") ctx.ellipse(p.x, p.y, s.radiusM * pxPerM * 0.86 * sc, s.radiusM * pxPerM * 0.6, 0, 0, Math.PI * 2);
-        else ctx.arc(p.x, p.y, s.radiusM * pxPerM, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-      }
-      const sz = 18 * Math.max(0.85, sc);
+      const isFocused = state.focusStructId === s.id;
+      const isPrimary = s.id === "tpp" || (s.weight && s.weight >= 4);
+
+      // 1. 醒目的重点保卫区光环 + 白色防区虚线环
+      const ringR = Math.max(isPrimary ? 34 : 26, (s.radiusM || 200) * pxPerM * 2.2) * Math.max(0.85, sc);
       ctx.save();
-      // 保护目标：平涂方块，不加渐变与辉光
-      ctx.fillStyle = s.destroyed ? "#2e130e" : (s.powered === false ? "#3a3731" : "#e3a043");
-      roundRect(ctx, p.x - sz / 2, p.y - sz / 2, sz, sz, 2);
+      const rg = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, ringR);
+      if (s.destroyed) {
+        rg.addColorStop(0, "rgba(255, 91, 79, 0.25)");
+        rg.addColorStop(1, "rgba(255, 91, 79, 0.0)");
+      } else {
+        rg.addColorStop(0, isPrimary ? "rgba(238, 243, 247, 0.24)" : "rgba(238, 243, 247, 0.16)");
+        rg.addColorStop(0.65, "rgba(238, 243, 247, 0.05)");
+        rg.addColorStop(1, "rgba(238, 243, 247, 0.0)");
+      }
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      if (mode === "live25d") ctx.ellipse(p.x, p.y, ringR, ringR * 0.68, 0, 0, Math.PI * 2);
+      else ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.strokeStyle = s.destroyed ? "rgba(255, 91, 79, 0.65)" : (isFocused ? "#fff" : "rgba(238, 243, 247, 0.68)");
+      ctx.lineWidth = isPrimary || isFocused ? 1.6 : 1.2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      if (mode === "live25d") ctx.ellipse(p.x, p.y, ringR, ringR * 0.68, 0, 0, Math.PI * 2);
+      else ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (isFocused) {
+        const pulse = 0.5 + 0.5 * Math.sin(nowMs * 0.008);
+        ctx.strokeStyle = `rgba(238, 243, 247, ${0.4 + 0.5 * pulse})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ringR + 6 + pulse * 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
-      ctx.strokeStyle = s.destroyed ? "#d4664f" : "rgba(13, 12, 11, 0.9)";
-      ctx.lineWidth = 1;
-      roundRect(ctx, p.x - sz / 2, p.y - sz / 2, sz, sz, 2); ctx.stroke();
-      ctx.fillStyle = s.destroyed ? "#ecc2b6" : "#1a1205";
-      ctx.font = `600 ${Math.round(sz * 0.6)}px "Noto Serif SC", "Songti SC", serif`;
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText((s.name || "?").slice(0, 1), p.x, p.y + 0.5);
-      ctx.textBaseline = "alphabetic";
-      // 名称 + 血条
-      const sr = pillLabel(ctx, `${s.name}  ${s.hp}/${s.maxHp}`, p.x, p.y - sz / 2 - 11, {
-        fg: s.destroyed ? "#e59a88" : "#ece8df", bg: "rgba(20, 18, 15, 0.78)",
-        border: s.destroyed ? "rgba(212, 102, 79, 0.6)" : "rgba(227, 160, 67, 0.4)", size: 10,
+
+      // 2. 保卫目标地标主体（双层纯白护盾方章，尺寸远大于普通单位）
+      const sz = (isPrimary ? 26 : 23) * Math.max(0.88, sc);
+      ctx.save();
+      ctx.fillStyle = s.destroyed ? "#3a1210" : (s.powered === false ? "#2a3644" : "#eef3f7");
+      roundRect(ctx, p.x - sz / 2, p.y - sz / 2, sz, sz, 4);
+      ctx.fill();
+      ctx.strokeStyle = s.destroyed ? "#ff5b4f" : "#ffffff";
+      ctx.lineWidth = isPrimary ? 1.8 : 1.3;
+      roundRect(ctx, p.x - sz / 2, p.y - sz / 2, sz, sz, 4);
+      ctx.stroke();
+
+      // 内层深色核 + 专属建筑符号
+      const inSz = sz - 6;
+      ctx.fillStyle = s.destroyed ? "#240a08" : "#0b0f14";
+      roundRect(ctx, p.x - inSz / 2, p.y - inSz / 2, inSz, inSz, 2.5);
+      ctx.fill();
+      drawStructureIcon(ctx, p.x, p.y, s.id, s.destroyed ? "#ff5b4f" : "#eef3f7");
+      ctx.restore();
+
+      // 3. 顶部高优先级保卫目标铭牌（绝不被普通单位遮挡）
+      const tagPrefix = isPrimary ? "★ 核心保卫 · " : "★ 保卫 · ";
+      const sr = pillLabel(ctx, `${tagPrefix}${s.name}  ${s.hp}/${s.maxHp}`, p.x, p.y - sz / 2 - 13, {
+        fg: s.destroyed ? "#ff9d94" : "#eef3f7",
+        bg: s.destroyed ? "rgba(40, 12, 10, 0.92)" : "rgba(11, 16, 22, 0.92)",
+        border: s.destroyed ? "rgba(255, 91, 79, 0.85)" : "rgba(238, 243, 247, 0.85)",
+        size: isPrimary ? 11 : 10.5,
+        weight: 600,
       });
-      cache.frameRects.push(sr, { x: p.x - sz / 2, y: p.y - sz / 2, w: sz, h: sz + 10 });
-      const bw = 30;
-      ctx.fillStyle = "rgba(9, 9, 8, 0.85)";
-      roundRect(ctx, p.x - bw / 2 - 1, p.y + sz / 2 + 4, bw + 2, 5, 2.5); ctx.fill();
-      ctx.fillStyle = hpFrac > 0.5 ? "#a3b18a" : (hpFrac > 0.2 ? "#e3a043" : "#d4664f");
-      roundRect(ctx, p.x - bw / 2, p.y + sz / 2 + 5, Math.max(0.5, bw * hpFrac), 3, 1.5); ctx.fill();
+      cache.frameRects.push(sr, { x: p.x - sz / 2 - 4, y: p.y - sz / 2 - 4, w: sz + 8, h: sz + 18 });
+
+      // 4. 底部醒目血条
+      const bw = isPrimary ? 44 : 36;
+      ctx.fillStyle = "rgba(6, 8, 11, 0.92)";
+      roundRect(ctx, p.x - bw / 2 - 1, p.y + sz / 2 + 4, bw + 2, 6, 3); ctx.fill();
+      ctx.strokeStyle = "rgba(238, 243, 247, 0.4)"; ctx.lineWidth = 0.8;
+      roundRect(ctx, p.x - bw / 2 - 1, p.y + sz / 2 + 4, bw + 2, 6, 3); ctx.stroke();
+      ctx.fillStyle = hpFrac > 0.5 ? "#7ed99a" : (hpFrac > 0.2 ? "#f5cf47" : "#ff5b4f");
+      roundRect(ctx, p.x - bw / 2, p.y + sz / 2 + 5, Math.max(1, bw * hpFrac), 4, 2); ctx.fill();
     });
   }
 
@@ -740,62 +889,115 @@
     return P(u.pos, view, state.viewMode || "command", state.meta);
   }
 
-  function drawUnitGlyph(ctx, x, y, cat, color) {
-    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.4; ctx.lineCap = "round";
-    if (cat === "sensor") {
+  function drawUnitGlyph(ctx, x, y, u, color) {
+    const defId = u.unitDefId || "";
+    const cat = u.category || "fire";
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (defId === "mobile_fire_team") {
+      // 皮卡高射机枪：车底座 + 双联高射枪管斜指天空
+      ctx.beginPath();
+      ctx.moveTo(x - 6.5, y + 4.5); ctx.lineTo(x + 5.5, y + 4.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x - 3.5, y + 5.5, 1.3, 0, Math.PI * 2);
+      ctx.arc(x + 3.0, y + 5.5, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      // 双枪管向右上斜指
+      ctx.beginPath();
+      ctx.moveTo(x - 2, y + 3.5); ctx.lineTo(x + 6, y - 4.5);
+      ctx.moveTo(x - 3.5, y + 2); ctx.lineTo(x + 4.5, y - 6);
+      ctx.stroke();
+    } else if (defId === "nasams" || defId === "iris_t_sls" || cat === "fire") {
+      // 防空导弹发射架：底座 + 两枚倾斜待发导弹
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y + 5); ctx.lineTo(x + 7, y + 5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 4.5, y + 3.5); ctx.lineTo(x + 2.5, y - 4.5);
+      ctx.moveTo(x - 0.5, y + 3.5); ctx.lineTo(x + 6.5, y - 4.5);
+      ctx.stroke();
+      // 导弹尖端
+      ctx.beginPath();
+      ctx.arc(x + 2.5, y - 4.5, 1.1, 0, Math.PI * 2);
+      ctx.arc(x + 6.5, y - 4.5, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (cat === "sensor") {
       ctx.beginPath(); ctx.arc(x + 2.5, y + 3, 6, Math.PI * 1.0, Math.PI * 1.5); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x + 2.5, y + 3); ctx.lineTo(x - 1.5, y - 1); ctx.stroke();
       ctx.beginPath(); ctx.arc(x + 2.5, y + 3, 1.2, 0, Math.PI * 2); ctx.fill();
     } else if (cat === "ew") {
       ctx.beginPath(); ctx.moveTo(x - 3.5, y - 4); ctx.lineTo(x + 1, y - 0.5); ctx.lineTo(x - 1, y + 0.5); ctx.lineTo(x + 3.5, y + 4); ctx.stroke();
-    } else if (cat === "deception") {
+    } else {
       ctx.font = "700 9px -apple-system, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("?", x, y + 0.5); ctx.textBaseline = "alphabetic";
-    } else {
-      // 防空火力：底部半圆穹顶（APP-6 防空符号意象）
-      ctx.beginPath(); ctx.arc(x, y + 5, 5.5, Math.PI, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x - 7, y + 5); ctx.lineTo(x + 7, y + 5); ctx.stroke();
     }
   }
 
   function drawUnits(ctx, view, state, mode, meta, nowMs) {
     const list = unitList(state);
-    const pxPerM = (view.width - PAD * 2) / MAP_SIZE_M;
     const labelRects = cache.frameRects || [];
-    list.forEach((u) => { const q = P(u.pos, view, mode, meta); labelRects.push({ x: q.x - 10, y: q.y - 7, w: 20, h: 14 }); });
+    list.forEach((u) => {
+      if (isPassivePost(u)) return;
+      const q = P(u.pos, view, mode, meta);
+      labelRects.push({ x: q.x - 13, y: q.y - 9, w: 26, h: 18 });
+    });
     const hit = (r) => labelRects.some((o) => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
 
-    // 先画选中单位的射程环（置于底层）
-    const selU = list.find((u) => (u.id || u.rosterId) === state.selectedUnitKey);
-    if (selU) {
-      const detR = selU.detectionRangeM || 0;
-      if (detR > 0) {
-        ringPath(ctx, selU.pos[0], selU.pos[1], detR, view, mode, meta);
-        ctx.fillStyle = "rgba(163, 177, 138, 0.035)"; ctx.fill();
-        ctx.strokeStyle = "rgba(163, 177, 138, 0.55)"; ctx.lineWidth = 1.1;
-        ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]);
-        const tp = worldToScreen(selU.pos[0], Math.min(MAP_SIZE_M, selU.pos[1] + detR), 0, view, mode, 0);
-        haloText(ctx, `探测 ${(detR / 1000).toFixed(1)}km`, tp.x, tp.y - 4, "rgba(190, 200, 168, 0.9)", "600 9.5px 'IBM Plex Mono', 'SF Mono', Menlo, monospace");
-      }
-      (selU.weapons || []).forEach((w, wi) => {
-        if (!(w.rangeM > 0)) return;
-        ringPath(ctx, selU.pos[0], selU.pos[1], w.rangeM, view, mode, meta);
-        ctx.fillStyle = "rgba(236, 232, 223, 0.06)"; ctx.fill();
-        ctx.strokeStyle = "rgba(236, 232, 223, 0.75)"; ctx.lineWidth = 1.3; ctx.stroke();
-        const tp = worldToScreen(selU.pos[0], Math.max(0, selU.pos[1] - w.rangeM), 0, view, mode, 0);
-        haloText(ctx, `${w.name || w.weaponId} · ${(w.rangeM / 1000).toFixed(1)}km`, tp.x, tp.y + 13 + wi * 12, "rgba(236, 232, 223, 0.95)", "600 9.5px 'IBM Plex Mono', 'SF Mono', Menlo, monospace");
+    // 1. 战前部署阶段：常驻画出全部 6 部防空武器的轻量化射程圈（皮卡机枪 2.5km 圈 + 导弹虚线圈），一眼看懂火力网
+    if (state.phase === "deploy") {
+      list.forEach((u) => {
+        if ((u.category || "fire") !== "fire") return;
+        const idKey = u.id || u.rosterId;
+        if (idKey === state.selectedUnitKey) return;
+        const w0 = (u.weapons || [])[0];
+        if (!w0 || !(w0.rangeM > 0)) return;
+        const isGun = u.unitDefId === "mobile_fire_team";
+        ringPath(ctx, u.pos[0], u.pos[1], w0.rangeM, view, mode, meta);
+        ctx.fillStyle = isGun ? "rgba(95, 182, 255, 0.04)" : "rgba(95, 182, 255, 0.015)";
+        ctx.fill();
+        ctx.strokeStyle = isGun ? "rgba(95, 182, 255, 0.36)" : "rgba(95, 182, 255, 0.18)";
+        ctx.lineWidth = isGun ? 1.1 : 0.9;
+        ctx.setLineDash(isGun ? [3, 4] : [5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
       });
     }
 
-    // 排序：选中/悬停最后画，保证在最上层
+    // 2. 选中（或悬停）单位的高亮射程环与探测环
+    const focusU = list.find((u) => (u.id || u.rosterId) === state.selectedUnitKey)
+      || list.find((u) => (u.id || u.rosterId) === state.hoverUnitKey);
+    if (focusU) {
+      const detR = focusU.detectionRangeM || 0;
+      if (detR > 0 && (focusU.category === "sensor" || !(focusU.weapons || []).length)) {
+        ringPath(ctx, focusU.pos[0], focusU.pos[1], detR, view, mode, meta);
+        ctx.fillStyle = "rgba(126, 217, 154, 0.04)"; ctx.fill();
+        ctx.strokeStyle = "rgba(126, 217, 154, 0.6)"; ctx.lineWidth = 1.2;
+        ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]);
+        const tp = worldToScreen(focusU.pos[0], Math.min(MAP_SIZE_M, focusU.pos[1] + detR), 0, view, mode, 0);
+        haloText(ctx, `探测范围 ${(detR / 1000).toFixed(1)}km`, tp.x, tp.y - 4, "rgba(127, 224, 224, 0.92)", "600 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
+      }
+      (focusU.weapons || []).forEach((w, wi) => {
+        if (!(w.rangeM > 0)) return;
+        const isGun = focusU.unitDefId === "mobile_fire_team";
+        ringPath(ctx, focusU.pos[0], focusU.pos[1], w.rangeM, view, mode, meta);
+        ctx.fillStyle = isGun ? "rgba(95, 182, 255, 0.08)" : "rgba(95, 182, 255, 0.06)";
+        ctx.fill();
+        ctx.strokeStyle = isGun ? "rgba(127, 224, 224, 0.9)" : "rgba(95, 182, 255, 0.88)";
+        ctx.lineWidth = 1.5; ctx.stroke();
+        const tp = worldToScreen(focusU.pos[0], Math.max(0, focusU.pos[1] - w.rangeM), 0, view, mode, 0);
+        haloText(ctx, `${w.name || w.weaponId} · 射程 ${(w.rangeM / 1000).toFixed(1)}km`, tp.x, tp.y + 13 + wi * 12, isGun ? "#7fe0e0" : "#c4e0ff", "600 10px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
+      });
+    }
+
+    // 排序：被动哨所最底层 → 普通单位 → 选中/悬停最顶层
     const order = list.slice().sort((a, b) => {
       const ka = (a.id || a.rosterId), kb = (b.id || b.rosterId);
-      const wa = (ka === state.selectedUnitKey ? 2 : 0) + (ka === state.hoverUnitKey ? 1 : 0);
-      const wb = (kb === state.selectedUnitKey ? 2 : 0) + (kb === state.hoverUnitKey ? 1 : 0);
+      const pa = isPassivePost(a) ? -2 : 0, pb = isPassivePost(b) ? -2 : 0;
+      const wa = pa + (ka === state.selectedUnitKey ? 4 : 0) + (ka === state.hoverUnitKey ? 2 : 0);
+      const wb = pb + (kb === state.selectedUnitKey ? 4 : 0) + (kb === state.hoverUnitKey ? 2 : 0);
       return wa - wb;
     });
 
-    // 选中/悬停单位的标签优先占位
     const labelQueue = [];
 
     order.forEach((u) => {
@@ -804,33 +1006,57 @@
       const isHover = state.hoverUnitKey === idKey;
       const p = P(u.pos, view, mode, meta);
       const cat = u.category || "fire";
-      const color = CAT_COLORS[cat] || CAT_COLORS.fire;
       const inactive = u.deployState && !["ACTIVE", "Deployed"].includes(u.deployState);
 
       // 机动转移路线
       if (u.relocation && u.relocation.dest) {
         const dp = P(u.relocation.dest, view, mode, meta);
-        ctx.strokeStyle = "rgba(236, 232, 223, 0.85)"; ctx.lineWidth = 1.4;
+        ctx.strokeStyle = "rgba(220, 228, 236, 0.85)"; ctx.lineWidth = 1.4;
         ctx.setLineDash([4, 4]); ctx.lineDashOffset = -nowMs * 0.02;
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(dp.x, dp.y); ctx.stroke();
         ctx.setLineDash([]); ctx.lineDashOffset = 0;
         const a = Math.atan2(dp.y - p.y, dp.x - p.x);
-        ctx.fillStyle = "#ece8df";
+        ctx.fillStyle = "#dce4ec";
         ctx.beginPath(); ctx.moveTo(dp.x, dp.y);
         ctx.lineTo(dp.x - Math.cos(a - 0.4) * 8, dp.y - Math.sin(a - 0.4) * 8);
         ctx.lineTo(dp.x - Math.cos(a + 0.4) * 8, dp.y - Math.sin(a + 0.4) * 8);
         ctx.closePath(); ctx.fill();
       }
 
-      // 2.5D：机动防空组探照灯光锥
-      if (mode === "live25d" && u.unitDefId === "mobile_fire_team" && state.phase === "battle") {
-        const ang = -Math.PI * 0.5 + Math.sin(nowMs * 0.0015 + idKey) * 0.45;
+      // ── 分支 A：被动暗哨（声学听音哨 / 目视哨）画成低调的小圆点图钉，不抢防空武器视觉 ──
+      if (isPassivePost(u)) {
+        const r = isSel || isHover ? 6.5 : 4.5;
+        ctx.save();
+        if (inactive) ctx.globalAlpha = 0.45;
+        ctx.fillStyle = "rgba(9, 13, 18, 0.92)";
+        ctx.strokeStyle = isSel || isHover ? "#7fe0e0" : "rgba(127, 224, 224, 0.62)";
+        ctx.lineWidth = isSel || isHover ? 1.8 : 1.2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = isSel || isHover ? "#ffffff" : "rgba(127, 224, 224, 0.85)";
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        if (isSel || isHover) {
+          labelQueue.push({ u, p, isSel, isHover, inactive, shortName: SHORT_UNIT_LABELS[u.unitDefId] || u.name });
+        }
+        return;
+      }
+
+      // ── 分支 B：主力防空武器（皮卡机枪、IRIS-T、NASAMS）与主力警戒雷达 ──
+      const isGun = u.unitDefId === "mobile_fire_team";
+      const isMissile = cat === "fire" && !isGun;
+      const color = CAT_COLORS[cat] || CAT_COLORS.fire;
+
+      // 皮卡高射机枪：在平面图与 2.5D 下都画出探照灯光锥，直观体现“探照灯+高射机枪”
+      if (isGun && !inactive) {
+        const ang = -Math.PI * 0.15 + Math.sin(nowMs * 0.0014 + idKey * 1.3) * 0.42;
+        const coneLen = mode === "live25d" ? 64 : 42;
         ctx.save();
         ctx.translate(p.x, p.y); ctx.rotate(ang);
-        const grad = ctx.createLinearGradient(0, 0, 80, 0);
-        grad.addColorStop(0, "rgba(242, 232, 205, 0.3)"); grad.addColorStop(1, "rgba(242, 232, 205, 0)");
+        const grad = ctx.createLinearGradient(0, 0, coneLen, 0);
+        grad.addColorStop(0, "rgba(127, 224, 224, 0.28)");
+        grad.addColorStop(1, "rgba(127, 224, 224, 0)");
         ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(80, -13); ctx.lineTo(80, 13); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(coneLen, -9); ctx.lineTo(coneLen, 9); ctx.closePath(); ctx.fill();
         ctx.restore();
       }
 
@@ -838,81 +1064,102 @@
       const emOn = u.emitter ? u.emitter.on : (u.emissionPolicy !== "silent" && (cat === "sensor" || u.unitDefId === "nasams" || u.unitDefId === "soviet_mid_range_radar"));
       if (emOn) {
         const a = (nowMs * 0.0025 + idKey * 1.7) % (Math.PI * 2);
-        const R = 24;
+        const R = 25;
         if (ctx.createConicGradient) {
           const cg = ctx.createConicGradient(a, p.x, p.y);
-          cg.addColorStop(0, "rgba(163, 177, 138, 0)");
-          cg.addColorStop(0.82, "rgba(163, 177, 138, 0)");
-          cg.addColorStop(1, "rgba(163, 177, 138, 0.42)");
+          cg.addColorStop(0, "rgba(126, 217, 154, 0)");
+          cg.addColorStop(0.82, "rgba(126, 217, 154, 0)");
+          cg.addColorStop(1, "rgba(126, 217, 154, 0.42)");
           ctx.fillStyle = cg;
           ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill();
         }
-        ctx.strokeStyle = "rgba(190, 200, 168, 0.75)"; ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(127, 224, 224, 0.75)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + Math.cos(a) * R, p.y + Math.sin(a) * R); ctx.stroke();
-        ctx.strokeStyle = "rgba(163, 177, 138, 0.18)";
+        ctx.strokeStyle = "rgba(126, 217, 154, 0.2)";
         ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.stroke();
       }
 
       // 暴露度外环
       const exp = u.exposure !== undefined ? u.exposure : (u.carryExposure || 0);
       if (exp > 5) {
-        ctx.strokeStyle = "rgba(150, 144, 132, 0.18)"; ctx.lineWidth = 2.4;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2); ctx.stroke();
-        ctx.strokeStyle = exp >= 70 ? "#d4664f" : "#e3a043";
+        ctx.strokeStyle = "rgba(112, 128, 146, 0.2)"; ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 16, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = exp >= 70 ? "#ff5b4f" : "#f5cf47";
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 14, -Math.PI * 0.5, -Math.PI * 0.5 + Math.min(1, exp / 100) * Math.PI * 2);
+        ctx.arc(p.x, p.y, 16, -Math.PI * 0.5, -Math.PI * 0.5 + Math.min(1, exp / 100) * Math.PI * 2);
         ctx.stroke();
       }
 
-      // 悬停/选中高亮
+      // 悬停/选中高亮框
+      const fw = isMissile ? 26 : 22, fh = isMissile ? 17 : 15;
       if (isSel || isHover) {
-        ctx.strokeStyle = isSel ? "rgba(255, 255, 255, 0.9)" : "rgba(255, 255, 255, 0.45)";
-        ctx.lineWidth = 1;
-        const s = 15, c = 5;
+        ctx.strokeStyle = isSel ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.5)";
+        ctx.lineWidth = 1.2;
+        const sx0 = fw / 2 + 4, sy0 = fh / 2 + 4, c = 5;
         ctx.beginPath();
         [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => {
-          ctx.moveTo(p.x + sx * s, p.y + sy * (s - c)); ctx.lineTo(p.x + sx * s, p.y + sy * s); ctx.lineTo(p.x + sx * (s - c), p.y + sy * s);
+          ctx.moveTo(p.x + sx * sx0, p.y + sy * (sy0 - c));
+          ctx.lineTo(p.x + sx * sx0, p.y + sy * sy0);
+          ctx.lineTo(p.x + sx * (sx0 - c), p.y + sy * sy0);
         });
         ctx.stroke();
       }
 
-      // 单位主体符号：圆角框 + 类别图形
+      // 武器/雷达主体框
       ctx.save();
       if (inactive) ctx.globalAlpha = 0.5;
-      const fw = 20, fh = 14;
-      if (isSel) { ctx.shadowColor = color; ctx.shadowBlur = 4; }
-      ctx.fillStyle = "rgba(13, 12, 11, 0.92)";
+      if (isSel) { ctx.shadowColor = color; ctx.shadowBlur = 5; }
+      ctx.fillStyle = "rgba(9, 13, 18, 0.94)";
       roundRect(ctx, p.x - fw / 2, p.y - fh / 2, fw, fh, 3); ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = color; ctx.lineWidth = isSel ? 2 : 1.4;
-      if (cat === "deception") ctx.setLineDash([2.5, 2]);
+      ctx.strokeStyle = color; ctx.lineWidth = isSel ? 2.1 : 1.5;
       roundRect(ctx, p.x - fw / 2, p.y - fh / 2, fw, fh, 3); ctx.stroke();
-      ctx.setLineDash([]);
-      drawUnitGlyph(ctx, p.x, p.y, cat, color);
+      drawUnitGlyph(ctx, p.x, p.y, u, color);
+
+      // 导弹车右上角显示当前装填弹药数角标
+      if (isMissile && u.weapons && u.weapons[0]) {
+        const w0 = u.weapons[0];
+        const rds = w0.rounds !== undefined ? w0.rounds : w0.magazine;
+        if (typeof rds === "number" && rds >= 0 && rds < 9000) {
+          const bx = p.x + fw / 2 + 2, by = p.y - fh / 2 - 2;
+          ctx.fillStyle = rds === 0 ? "#ff5b4f" : "#111820";
+          ctx.strokeStyle = rds === 0 ? "#ff9d94" : color;
+          ctx.lineWidth = 1;
+          roundRect(ctx, bx - 7, by - 5, 14, 10, 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = "#dce4ec";
+          ctx.font = "600 8.5px 'JetBrains Mono', monospace";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(String(rds), bx, by + 0.5);
+          ctx.textBaseline = "alphabetic";
+        }
+      }
+
       // 规避静默标记
       if (u.emitter && u.emitter.armSilenced) {
-        ctx.fillStyle = "#e3a043";
-        ctx.beginPath(); ctx.arc(p.x + fw / 2, p.y - fh / 2, 3.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#f5cf47";
+        ctx.beginPath(); ctx.arc(p.x - fw / 2, p.y - fh / 2, 3.2, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
 
-      labelQueue.push({ u, p, isSel, isHover, inactive });
+      labelQueue.push({
+        u, p, isSel, isHover, inactive,
+        shortName: SHORT_UNIT_LABELS[u.unitDefId] || u.name,
+      });
     });
 
-    // 标签：选中 > 悬停 > 其他，碰撞时跳过
+    // 标签：选中 > 悬停 > 防空武器/主力雷达
     labelQueue.sort((a, b) => (b.isSel * 2 + b.isHover) - (a.isSel * 2 + a.isHover));
-    labelQueue.forEach(({ u, p, isSel, isHover, inactive }) => {
-      const nm = `${u.name.replace("防空系统", "").replace("火控雷达", "")}`;
-      const text = isSel || isHover ? `#${u.rosterId} ${nm}` : nm;
-      const font = isSel ? "700 11px -apple-system, 'PingFang SC', sans-serif" : "500 10px -apple-system, 'PingFang SC', sans-serif";
+    labelQueue.forEach(({ u, p, isSel, isHover, inactive, shortName }) => {
+      const text = `#${u.rosterId} ${shortName}`;
+      const font = isSel ? "700 11px -apple-system, 'PingFang SC', sans-serif" : "600 10px -apple-system, 'PingFang SC', sans-serif";
       ctx.font = font;
       const w = ctx.measureText(text).width + 4;
-      const cands = [[p.x, p.y + 20], [p.x, p.y - 13], [p.x + w / 2 + 14, p.y + 4], [p.x - w / 2 - 14, p.y + 4]];
+      const cands = [[p.x, p.y + 21], [p.x, p.y - 14], [p.x + w / 2 + 15, p.y + 4], [p.x - w / 2 - 15, p.y + 4]];
       for (const [lx, ly] of cands) {
         const r = { x: lx - w / 2, y: ly - 10, w, h: 13 };
         if (!isSel && !isHover && hit(r)) continue;
         labelRects.push(r);
-        const fill = isSel ? "#ffffff" : (inactive ? "rgba(150, 144, 132, 0.7)" : "rgba(222, 217, 206, 0.88)");
+        const fill = isSel ? "#ffffff" : (inactive ? "rgba(112, 128, 146, 0.7)" : "rgba(196, 224, 255, 0.94)");
         haloText(ctx, text, lx, ly, fill, font);
         break;
       }
@@ -945,10 +1192,10 @@
         const elev = sampleElevation(meta, th.pos[0], th.pos[1]);
         const p = worldToScreen(th.pos[0], th.pos[1], th.altM, view, mode, elev);
         if (mode === "live25d" && p.groundY) {
-          ctx.strokeStyle = "rgba(212, 102, 79, 0.3)"; ctx.lineWidth = 1;
+          ctx.strokeStyle = "rgba(255, 91, 79, 0.3)"; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.moveTo(p.x, p.groundY); ctx.lineTo(p.x, p.y); ctx.stroke();
         }
-        ctx.strokeStyle = "rgba(212, 140, 120, 0.75)"; ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "rgba(255, 140, 130, 0.75)"; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - 5); ctx.lineTo(p.x + 5, p.y); ctx.lineTo(p.x, p.y + 5); ctx.lineTo(p.x - 5, p.y); ctx.closePath(); ctx.stroke();
       });
     }
@@ -958,7 +1205,7 @@
     tracks.forEach((trk) => {
       const tr = cache.trails.get(trk.id);
       if (!tr || tr.length < 2) return;
-      const col = Q_COLORS[trk.quality] || "#d4664f";
+      const col = Q_COLORS[trk.quality] || "#ff5b4f";
       for (let i = 1; i < tr.length; i++) {
         const a = worldToScreen(tr[i - 1][0], tr[i - 1][1], 140, view, mode, sampleElevation(meta, tr[i - 1][0], tr[i - 1][1]));
         const b = worldToScreen(tr[i][0], tr[i][1], 140, view, mode, sampleElevation(meta, tr[i][0], tr[i][1]));
@@ -972,15 +1219,15 @@
     tracks.forEach((trk) => {
       const elev = sampleElevation(meta, trk.pos[0], trk.pos[1]);
       const p = worldToScreen(trk.pos[0], trk.pos[1], 140, view, mode, elev);
-      const col = Q_COLORS[trk.quality] || "#d4664f";
+      const col = Q_COLORS[trk.quality] || "#ff5b4f";
       if (mode === "live25d" && p.groundY) {
-        ctx.strokeStyle = "rgba(150, 144, 132, 0.25)"; ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(112, 128, 146, 0.25)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(p.x, p.groundY); ctx.lineTo(p.x, p.y); ctx.stroke();
         ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
         ctx.beginPath(); ctx.ellipse(p.x, p.groundY, 4, 1.6, 0, 0, Math.PI * 2); ctx.fill();
       }
       if (trk.quality === 0) {
-        ctx.strokeStyle = "rgba(150, 144, 132, 0.5)"; ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(112, 128, 146, 0.5)"; ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(10, (trk.uncertaintyRadiusM || 600) * ((view.width - PAD * 2) / MAP_SIZE_M)), 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
@@ -994,12 +1241,12 @@
       ctx.moveTo(8, 0); ctx.lineTo(-5, -5); ctx.lineTo(-2.5, 0); ctx.lineTo(-5, 5); ctx.closePath();
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(9, 9, 8, 0.9)"; ctx.lineWidth = 0.8; ctx.stroke();
+      ctx.strokeStyle = "rgba(6, 8, 11, 0.9)"; ctx.lineWidth = 0.8; ctx.stroke();
       ctx.restore();
 
       const TAGS = { UAV: "无人机", CM: "巡航弹", BM: "弹道弹", AC_LOW: "飞机", ARM: "反辐射", DECOY: "诱饵", UNKNOWN: "?" };
       const tagStr = trk.identifiedAsDecoy ? "诱饵" : (trk.quality >= 3 || trk.classified ? (TAGS[trk.tag] || trk.tag) : "?");
-      haloText(ctx, tagStr, p.x + 10, p.y + 3.5, col, "600 9.5px 'IBM Plex Mono', 'SF Mono', Menlo, monospace", "left");
+      haloText(ctx, tagStr, p.x + 10, p.y + 3.5, col, "600 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace", "left");
     });
 
     // 飞行中的拦截弹与高炮曳光弹链
@@ -1008,7 +1255,7 @@
       const pc = worldToScreen(ic.curPos[0], ic.curPos[1], 120, view, mode, sampleElevation(meta, ic.curPos[0], ic.curPos[1]));
       const isGun = ic.weaponId === "gepard_35mm" || ic.weaponId === "mdf_hmg" || ic.weaponId === "zu23_2";
       const grad = ctx.createLinearGradient(p0.x, p0.y, pc.x, pc.y);
-      const c = isGun ? "242, 183, 102" : "236, 232, 223";
+      const c = isGun ? "242, 183, 102" : "205, 230, 255";
       grad.addColorStop(0, `rgba(${c}, 0)`); grad.addColorStop(1, `rgba(${c}, 0.95)`);
       ctx.strokeStyle = grad; ctx.lineWidth = isGun ? 1.3 : 1.8;
       if (isGun) { ctx.setLineDash([3, 4]); ctx.lineDashOffset = -nowMs * 0.08; }
@@ -1035,17 +1282,17 @@
       if (age < 0.35 && !minor) {
         const fa = 1 - age / 0.35;
         const rg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R);
-        rg.addColorStop(0, isImpact ? `rgba(242, 214, 170, ${fa})` : `rgba(236, 232, 223, ${fa})`);
-        rg.addColorStop(0.4, isImpact ? `rgba(214, 120, 60, ${fa * 0.75})` : `rgba(163, 177, 138, ${fa * 0.55})`);
+        rg.addColorStop(0, isImpact ? `rgba(242, 214, 170, ${fa})` : `rgba(220, 228, 236, ${fa})`);
+        rg.addColorStop(0.4, isImpact ? `rgba(255, 130, 70, ${fa * 0.75})` : `rgba(126, 217, 154, ${fa * 0.55})`);
         rg.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = rg;
         ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.strokeStyle = isImpact ? `rgba(212, 102, 79, ${1 - age})` : (isKill ? `rgba(163, 177, 138, ${1 - age})` : `rgba(177, 171, 158, ${(1 - age) * 0.5})`);
+      ctx.strokeStyle = isImpact ? `rgba(255, 91, 79, ${1 - age})` : (isKill ? `rgba(126, 217, 154, ${1 - age})` : `rgba(140, 154, 170, ${(1 - age) * 0.5})`);
       ctx.lineWidth = isImpact ? 2.2 : (isKill ? 1.6 : 1);
       ctx.beginPath(); ctx.arc(p.x, p.y, 3 + age * (isImpact ? 38 : (isKill ? 24 : 8)), 0, Math.PI * 2); ctx.stroke();
       if (isImpact) {
-        ctx.strokeStyle = `rgba(227, 160, 67, ${(1 - age) * 0.6})`;
+        ctx.strokeStyle = `rgba(255, 150, 80, ${(1 - age) * 0.6})`;
         ctx.beginPath(); ctx.arc(p.x, p.y, 2 + age * 20, 0, Math.PI * 2); ctx.stroke();
       }
     });
@@ -1055,7 +1302,7 @@
     state.pulses.forEach((pl) => {
       const age = ((nowMs - pl.t0) % 1000) / 1000;
       const p = worldToScreen(pl.pos[0], pl.pos[1], 0, view, mode, sampleElevation(meta, pl.pos[0], pl.pos[1]));
-      ctx.strokeStyle = `rgba(212, 102, 79, ${1 - age})`;
+      ctx.strokeStyle = `rgba(255, 91, 79, ${1 - age})`;
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(p.x, p.y, 10 + age * 30, 0, Math.PI * 2); ctx.stroke();
     });
@@ -1070,32 +1317,32 @@
 
     // 指北针
     const cx = W - PAD - 22, cy = PAD + 24;
-    ctx.fillStyle = "rgba(13, 12, 11, 0.72)";
-    ctx.strokeStyle = "rgba(177, 171, 158, 0.35)"; ctx.lineWidth = 1;
+    ctx.fillStyle = "rgba(9, 13, 18, 0.72)";
+    ctx.strokeStyle = "rgba(140, 154, 170, 0.35)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#d4664f";
+    ctx.fillStyle = "#ff5b4f";
     ctx.beginPath(); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx + 4.5, cy); ctx.lineTo(cx - 4.5, cy); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "rgba(200, 194, 182, 0.65)";
+    ctx.fillStyle = "rgba(156, 170, 184, 0.65)";
     ctx.beginPath(); ctx.moveTo(cx, cy + 12); ctx.lineTo(cx + 4.5, cy); ctx.lineTo(cx - 4.5, cy); ctx.closePath(); ctx.fill();
-    haloText(ctx, "N", cx, cy - 19, "#ecc2b6", "700 9.5px 'IBM Plex Mono', 'SF Mono', Menlo, monospace");
+    haloText(ctx, "N", cx, cy - 19, "#ffc9c3", "700 9.5px 'JetBrains Mono', 'SF Mono', Menlo, monospace");
 
     // 比例尺（平面图）
     if (mode !== "live25d") {
       const pxPerM = (W - PAD * 2) / MAP_SIZE_M;
       const len = 2000 * pxPerM;
       const x0 = PAD + 14, y0 = H - PAD - 14;
-      ctx.fillStyle = "rgba(13, 12, 11, 0.72)";
+      ctx.fillStyle = "rgba(9, 13, 18, 0.72)";
       roundRect(ctx, x0 - 8, y0 - 18, len + 16, 26, 5); ctx.fill();
-      ctx.fillStyle = "rgba(236, 232, 223, 0.85)";
+      ctx.fillStyle = "rgba(220, 228, 236, 0.85)";
       ctx.fillRect(x0, y0, len / 2, 3);
-      ctx.fillStyle = "rgba(110, 105, 96, 0.85)";
+      ctx.fillStyle = "rgba(86, 100, 116, 0.85)";
       ctx.fillRect(x0 + len / 2, y0, len / 2, 3);
-      ctx.font = "600 9px 'IBM Plex Mono', 'SF Mono', Menlo, monospace"; ctx.fillStyle = "rgba(200, 194, 182, 0.8)";
+      ctx.font = "600 9px 'JetBrains Mono', 'SF Mono', Menlo, monospace"; ctx.fillStyle = "rgba(156, 170, 184, 0.8)";
       ctx.textAlign = "left"; ctx.fillText("0", x0 - 2, y0 - 5);
       ctx.textAlign = "center"; ctx.fillText("1", x0 + len / 2, y0 - 5);
       ctx.textAlign = "right"; ctx.fillText("2 km", x0 + len + 4, y0 - 5);
     } else {
-      pillLabel(ctx, "2.5D 实况斜视角 · 25°", PAD + 70, PAD + 4, { fg: "#ece8df", bg: "rgba(13, 12, 11, 0.72)", border: "rgba(236, 232, 223, 0.35)", size: 10 });
+      pillLabel(ctx, "2.5D 实况斜视角 · 25°", PAD + 70, PAD + 4, { fg: "#dce4ec", bg: "rgba(9, 13, 18, 0.72)", border: "rgba(220, 228, 236, 0.35)", size: 10 });
     }
   }
 

@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0d0c0b" />
+  <meta name="theme-color" content="#0b0f14" />
   <title>《守夜》Nightwatch · 纸上原型 · test_01</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d0c0b'/%3E%3Cg fill='none' stroke='%23e3a043' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M7 22a9 9 0 0 1 18 0'/%3E%3Cpath d='M4 22h24'/%3E%3C/g%3E%3Ccircle cx='16' cy='9' r='1.8' fill='%23e3a043'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0f14'/%3E%3Cg fill='none' stroke='%235fb6ff' stroke-width='2'%3E%3Ccircle cx='16' cy='16' r='10'/%3E%3Cpath d='M16 3v5M16 24v5M3 16h5M24 16h5M16 16l7-7'/%3E%3C/g%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Noto+Serif+SC:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="phase-deploy">
@@ -17,14 +17,16 @@
     <div class="tb-left topbar-brand">
       <a class="logo" href="#" aria-label="守夜 Nightwatch">
         <svg viewBox="0 0 32 32" class="logo-mark" aria-hidden="true">
-          <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M7 22a9 9 0 0 1 18 0" />
-            <path d="M4 22h24" />
+          <g fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="16" cy="16" r="11" />
+            <circle cx="16" cy="16" r="5.5" stroke-opacity="0.5" />
+            <path d="M16 2v5M16 25v5M2 16h5M25 16h5" />
+            <path d="M16 16L24 8" stroke-linecap="square" />
           </g>
-          <circle cx="16" cy="9" r="1.7" fill="currentColor" />
+          <rect x="21.2" y="10.2" width="3" height="3" fill="currentColor" />
         </svg>
         <span class="logo-title">守夜</span>
-        <span class="brand-tag">Nightwatch</span>
+        <span class="brand-tag">NIGHTWATCH</span>
       </a>
       <span class="tb-divider" aria-hidden="true"></span>
       <div class="mission">
@@ -86,7 +88,7 @@
 
       <section id="deploy-controls-section" class="card card-deploy">
         <div class="card-header">
-          <span class="card-title"><i class="ico">I</i>布置防空网</span>
+          <span class="card-title"><i class="ico">01</i>布置防空网</span>
           <span id="validation-badge" class="badge badge-ok">部署合法</span>
         </div>
         <p class="card-lead">
@@ -140,29 +142,29 @@
 
       <section id="unit-inspector" class="card">
         <div class="card-header">
-          <span class="card-title"><i class="ico">II</i><span id="insp-unit-title">选中单位</span></span>
+          <span class="card-title"><i class="ico">02</i><span id="insp-unit-title">选中防空武器</span></span>
           <span id="insp-unit-state" class="badge">—</span>
         </div>
         <div id="insp-body" class="inspector-body">
-          <div class="empty-hint">点击地图上的单位，看看它能做什么。</div>
+          <div class="empty-hint">点击地图上的防空武器，设置开火策略与雷达开关。</div>
         </div>
+      </section>
+
+      <section class="card flex-grow-card" id="roster-card">
+        <div class="card-header">
+          <span class="card-title"><i class="ico">03</i>防空武器与雷达</span>
+          <span id="roster-count-badge" class="badge">6 部武器</span>
+        </div>
+        <div id="unit-roster-list" class="roster-list"></div>
       </section>
 
       <section class="card">
         <div class="card-header">
-          <span class="card-title"><i class="ico">III</i>今晚情报</span>
+          <span class="card-title"><i class="ico">04</i>今晚情报</span>
           <span id="intel-count-badge" class="badge">0 条</span>
         </div>
         <div class="card-note">情报不一定准确，标“研判估计”的是推测。</div>
         <div id="intel-list" class="intel-list"></div>
-      </section>
-
-      <section class="card flex-grow-card">
-        <div class="card-header">
-          <span class="card-title"><i class="ico">IV</i>我的部队</span>
-          <span id="roster-count-badge" class="badge">16 单位</span>
-        </div>
-        <div id="unit-roster-list" class="roster-list"></div>
       </section>
     </aside>
 
@@ -174,7 +176,7 @@
         <div class="step" data-step="battle"><i>2</i><span>守夜：应对空袭</span></div>
         <b class="step-sep"></b>
         <div class="step" data-step="report"><i>3</i><span>拂晓结算</span></div>
-        <div class="step-goal" id="step-goal">目标：守住 3 处设施，撑到 06:00</div>
+        <div class="step-goal" id="step-goal">保卫目标：★ 热电厂 · 中心变电站 · 水厂</div>
       </div>
 
       <div class="map-toolbar">
@@ -227,13 +229,13 @@
       <div class="canvas-wrapper" id="canvas-wrapper">
         <canvas id="tactical-canvas" width="920" height="920"></canvas>
         <div id="map-hud" class="map-hud">
-          <div class="hud-chip" id="hud-structs" data-tip="完好的保护设施"><span>设施</span><b>3/3</b></div>
+          <div class="hud-chip" id="hud-structs" data-tip="完好的保护设施（★ 热电厂、中心变电站、水厂）"><span>保卫设施</span><b>3/3</b></div>
           <div class="hud-chip hud-good" id="hud-kills" data-tip="今晚成功拦截的敌方目标"><span>拦截</span><b>0</b></div>
           <div class="hud-chip hud-bad" id="hud-leaks" data-tip="突防并落地命中的敌方目标"><span>突防</span><b>0</b></div>
           <div class="hud-chip" id="hud-threats" data-tip="当前雷达屏幕上的敌机数量"><span>空中敌情</span><b>0</b></div>
         </div>
         <div id="map-hint" class="map-hint">
-          <span><b>拖动</b>单位调整阵地　<b>点击</b>查看射程　<span class="hl-red">红色斜线</span>＝雷达盲区</span>
+          <span><b style="color:var(--accent)">★ 白色地标</b>＝保卫目标　<b>拖动武器</b>堵截敌军红箭头来路　<span class="hl-red">红色斜线</span>＝山脊盲区</span>
           <button class="map-hint-x" id="map-hint-x" aria-label="关闭提示">×</button>
         </div>
         <div id="toast-stack" class="toast-stack"></div>
@@ -244,12 +246,11 @@
       </div>
 
       <footer class="map-footer">
-        <div id="hover-telemetry" class="telemetry-readout">把鼠标移到地图上，查看单位说明</div>
+        <div id="hover-telemetry" class="telemetry-readout">把鼠标移到地图上，查看防空武器与保卫目标</div>
         <div class="map-legend">
-          <span class="legend-item" data-tip="敌机箭头的颜色＝我们锁定它的程度。到“可开火”武器才会射击。"><i class="dot dot-t0"></i>刚发现</span>
-          <span class="legend-item"><i class="dot dot-t1"></i>粗略跟踪</span>
-          <span class="legend-item"><i class="dot dot-t2"></i>可开火</span>
-          <span class="legend-item"><i class="dot dot-t3"></i>已识别</span>
+          <span class="legend-item" data-tip="你要死守的城市命脉设施（热电厂、中心变电站、水厂）"><i class="sw sw-struct"></i>★ 保卫目标</span>
+          <span class="legend-item" data-tip="你控制的防空导弹与皮卡高射机枪"><i class="sw sw-weapon"></i>防空武器</span>
+          <span class="legend-item" data-tip="敌机箭头的颜色＝锁定程度。到“可开火”时武器自动射击"><i class="dot dot-t1"></i>跟踪 <i class="dot dot-t2"></i>可开火 <i class="dot dot-t3"></i>已识别</span>
           <span class="legend-item" data-tip="山脊挡住雷达视线的低空区域"><i class="sw sw-blind"></i>雷达盲区</span>
         </div>
       </footer>
@@ -257,9 +258,18 @@
 
     <!-- 右栏 -->
     <aside class="panel right-panel">
+      <section class="card card-structures" id="structures-card">
+        <div class="card-header">
+          <span class="card-title"><i class="ico">05</i>保卫目标</span>
+          <span id="grid-status-badge" class="badge badge-ok">电网正常</span>
+        </div>
+        <div class="card-note">点击下方设施可在地图上高亮它的防区位置。</div>
+        <div id="structures-list" class="structures-list"></div>
+      </section>
+
       <section class="card card-advisor" id="advisor-card">
         <div class="card-header">
-          <span class="card-title"><i class="ico">V</i>参谋建议</span>
+          <span class="card-title"><i class="ico">06</i>参谋建议</span>
           <span class="badge" id="advisor-count"></span>
         </div>
         <div id="advisor-list" class="advisor-list"></div>
@@ -267,15 +277,7 @@
 
       <section class="card">
         <div class="card-header">
-          <span class="card-title"><i class="ico">VI</i>要保护的设施</span>
-          <span id="grid-status-badge" class="badge badge-ok">电网正常</span>
-        </div>
-        <div id="structures-list" class="structures-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="card-header">
-          <span class="card-title"><i class="ico">VII</i>导弹库存</span>
+          <span class="card-title"><i class="ico">07</i>导弹库存</span>
           <span class="badge" data-tip="导弹打完就没了，剩余数量会带到下一夜">跨夜结转</span>
         </div>
         <div id="ammo-pool-list" class="ammo-grid"></div>
@@ -283,7 +285,7 @@
 
       <section class="card flex-grow-card">
         <div class="card-header">
-          <span class="card-title"><i class="ico">VIII</i>战况记录</span>
+          <span class="card-title"><i class="ico">08</i>战况记录</span>
           <button id="btn-clear-log" class="btn btn-xs btn-ghost">清空</button>
         </div>
         <div id="event-log-list" class="event-log-list">
@@ -297,33 +299,36 @@
   <div id="briefing-modal" class="modal-backdrop hidden">
     <div class="modal-box modal-briefing" role="dialog" aria-modal="true" aria-labelledby="brief-title">
       <div class="brief-head">
-        <span class="brand-tag">Mission Briefing · 任务简报</span>
+        <span class="eyebrow">作战简报 · 防空值班</span>
         <h2 id="brief-title">第 1 夜 · 测试地图 01</h2>
         <p id="brief-story" class="brief-story"></p>
       </div>
       <div class="brief-cards">
         <div class="brief-card">
-          <div class="bc-num">I</div>
-          <div class="bc-title">你的目标</div>
-          <div class="bc-text" id="brief-goal">保护<b>热电厂、变电站、水厂</b>，从 22:00 撑到 <b>06:00 拂晓</b>。设施受损越少，评级越高。</div>
+          <div class="bc-num">01</div>
+          <div class="bc-title">你要保卫什么（★ 白色地标）</div>
+          <div class="bc-text" id="brief-goal">死守地图中央偏南的 3 座民生设施：<b>★ 热电厂</b>（全城供电核心，炸毁即瘫痪）、<b>★ 中心变电站</b>、<b>★ 水厂</b>。</div>
         </div>
         <div class="brief-card">
-          <div class="bc-num">II</div>
-          <div class="bc-title">你的部队</div>
-          <div class="bc-text"><b>雷达和观察哨</b>负责发现敌人，<b>火力单元</b>负责开火。看不见就打不着，所以别留盲区。</div>
+          <div class="bc-num">02</div>
+          <div class="bc-title">你手里的防空武器</div>
+          <div class="bc-text">
+            • <b>皮卡高射机枪组 ×4</b>：双联机枪 + 探照灯，<b>子弹无限</b>，前推专打廉价无人机。<br />
+            • <b>IRIS‑T 近程导弹 ×1</b> / <b>NASAMS 中程导弹 ×1</b>：专打巡航导弹，<b>全关仅十余发</b>，别浪费在无人机上。
+          </div>
         </div>
         <div class="brief-card">
-          <div class="bc-num">III</div>
-          <div class="bc-title">敌人</div>
-          <div class="bc-text" id="brief-enemy"><b>东面</b>：成群的无人机。<br /><b>西北</b>：沿河谷低飞的巡航导弹。</div>
+          <div class="bc-num">03</div>
+          <div class="bc-title">敌军主攻方向与盲区</div>
+          <div class="bc-text" id="brief-enemy"><b>东路</b>：无人机群直扑<b>热电厂</b>。<br /><b>西北河谷</b>：巡航导弹贴着北山脊后的<b>红色雷达盲区</b>低飞，偷袭<b>变电站与水厂</b>。（小绿点是自动听音/目视暗哨，用来补盲，战中不用管）</div>
         </div>
       </div>
       <div class="brief-how">
-        <div class="how-title">怎么玩</div>
+        <div class="how-title">你的核心玩点</div>
         <ol class="how-steps">
-          <li><b>布置</b><span>拖动单位消除红色盲区，或直接选“推荐”阵型，然后点“开始守夜”。</span></li>
-          <li><b>守夜</b><span>武器会<b>自动开火</b>。你要做的是：敌机逼近时拉响防空警报，雷达暴露太高时关机或转移。右侧“参谋建议”会告诉你该做什么。</span></li>
-          <li><b>结算</b><span>拂晓时评级。剩下的导弹、被敌人记住的阵地都会带到下一夜。</span></li>
+          <li><b>布防堵路</b><span>把<b>皮卡机枪</b>摆在东面无人机来路上当“筛子”，把<b>防空导弹</b>护在电厂和变电站周围，用雷达+暗哨照亮山脊盲区。</span></li>
+          <li><b>开火纪律</b><span>选中导弹车，可一键设为<b>“省弹：只打导弹”</b>，把无人机留给皮卡机枪，防止好导弹被骗光。</span></li>
+          <li><b>电磁博弈</b><span>主力雷达和 NASAMS 开机越久越容易暴露（引来反辐射导弹猎杀）。看参谋建议随时<b>切闪烁/关机/转移阵地</b>。</span></li>
         </ol>
       </div>
       <div class="brief-foot">
@@ -364,7 +369,7 @@
     <div class="modal-box modal-report" role="dialog" aria-modal="true" aria-labelledby="report-title">
       <div class="report-header">
         <div>
-          <span class="brand-tag">Dawn Debrief · 拂晓战报</span>
+          <span class="eyebrow">战后报告 · 当夜复盘</span>
           <h2 id="report-title">第 1 夜 防空作战总结</h2>
         </div>
         <div class="report-rating-box">

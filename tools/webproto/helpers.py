@@ -58,6 +58,19 @@ def _cached_build_horizon(
 TerrainModel.build_horizon_profile = _cached_build_horizon  # type: ignore[method-assign]
 
 
+_WEBPROTO_LOC_OVERRIDES: Dict[str, str] = {
+    "unit.mobile_fire_team.name": "皮卡高射机枪组",
+    "unit.iris_t_sls.name": "IRIS‑T 近程导弹车",
+    "unit.nasams.name": "NASAMS 中程防空导弹",
+    "sensor.soviet_mid_range_radar.name": "苏制警戒雷达站",
+    "sensor.acoustic_post.name": "声学听音哨",
+    "sensor.visual_observer.name": "目视观察哨",
+    "weapon.mobile_fire_team_gun.name": "双联12.7mm高射机枪",
+    "weapon.iris_t_sls_missile.name": "IRIS‑T 近程导弹",
+    "weapon.nasams_missile.name": "AIM‑120 中程导弹",
+}
+
+
 def get_loc() -> Dict[str, str]:
     global _LOC_CACHE
     if _LOC_CACHE is None:
@@ -68,6 +81,8 @@ def get_loc() -> Dict[str, str]:
 
 
 def tr(key: str, default: Optional[str] = None) -> str:
+    if key in _WEBPROTO_LOC_OVERRIDES:
+        return _WEBPROTO_LOC_OVERRIDES[key]
     loc = get_loc()
     if key in loc:
         return loc[key]

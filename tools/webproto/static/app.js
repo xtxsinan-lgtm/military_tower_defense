@@ -19,19 +19,67 @@
   };
 
   // ───────────── 玩家可读的说明文字（仅用于界面，不参与模拟） ─────────────
-  const UNIT_INFO = {
-    mobile_fire_team: { role: "近程火力", desc: "皮卡载机枪/高炮。专打<b>低慢的无人机</b>，弹药几乎用不完。自己<b>没有雷达</b>，要靠别人发现目标。" },
-    iris_t_sls: { role: "近程导弹", desc: "命中率高的防空导弹。<b>导弹数量有限</b>（见右侧库存），尽量别浪费在廉价无人机上。" },
-    nasams: { role: "主力防空", desc: "自带雷达的中远程系统，是你的主力。<b>雷达开机会暴露位置</b>，小心反辐射导弹。" },
-    soviet_mid_range_radar: { role: "警戒雷达", desc: "负责<b>远距离发现敌人</b>，自己不能开火。山脊会挡住它看低空；开机也会暴露位置。" },
-    acoustic_post: { role: "声学哨", desc: "靠<b>听声音</b>发现附近的低空无人机，<b>不会暴露</b>。适合填补雷达盲区。" },
-    visual_observer: { role: "目视哨", desc: "用眼睛发现附近目标，<b>不会暴露</b>。适合放进山脊后的盲区。" },
+  const FRIENDLY_NAMES = {
+    mobile_fire_team: "皮卡高射机枪组",
+    iris_t_sls: "IRIS‑T 近程导弹车",
+    nasams: "NASAMS 中程防空导弹",
+    soviet_mid_range_radar: "苏制警戒雷达站",
+    acoustic_post: "声学听音哨",
+    visual_observer: "目视观察哨",
   };
-  const CAT_ROLE = { fire: "火力单元", sensor: "侦察单元", ew: "电子战", deception: "诱饵" };
+  const WEAPON_NAMES = {
+    mobile_fire_team_gun: "双联 12.7mm 高射机枪",
+    iris_t_sls_missile: "IRIS‑T 红外近程导弹",
+    nasams_missile: "AIM‑120 中程防空导弹",
+  };
+  const UNIT_INFO = {
+    mobile_fire_team: {
+      role: "皮卡高射机枪",
+      weaponSpec: "双联 12.7mm 高射机枪 + 探照灯",
+      targetRole: "专打低慢无人机 · 机枪弹药无限",
+      desc: "四驱皮卡架设双联重机枪与大功率探照灯。<b>子弹无限</b>，专门前推堵截东面成群的廉价无人机，替导弹省弹药。自己<b>没有雷达</b>，靠雷达或暗哨发现目标后开灯扫射。",
+    },
+    iris_t_sls: {
+      role: "近程防空导弹",
+      weaponSpec: "IRIS‑T 红外近程防空导弹（12 km）",
+      targetRole: "专拦巡航导弹 · 红外被动不暴露",
+      desc: "高命中率防空导弹，不发射雷达波（<b>不会暴露位置</b>）。<b>全关导弹数量有限</b>，强烈建议设为<b>“省弹：只打导弹”</b>，别浪费在廉价无人机上。",
+    },
+    nasams: {
+      role: "主力中程防空",
+      weaponSpec: "AIM‑120 中程防空导弹（25 km）+ 火控雷达",
+      targetRole: "防空网核心主力 · 覆盖全城",
+      desc: "你的头号主力防空武器，射程覆盖大半个战区。<b>自带火控雷达，开机越久越容易暴露</b>（满 70% 会招来反辐射导弹猎杀），注意用闪烁/静默规避。",
+    },
+    soviet_mid_range_radar: {
+      role: "远程警戒雷达",
+      weaponSpec: "150 km 区域搜索雷达（无武装）",
+      targetRole: "远距搜捕敌机 · 引导全场防空武器开火",
+      desc: "自己不能开火，但能远距离发现敌机并替防空武器指示目标。<b>北山脊会挡住它看低空</b>；开机也会积累暴露度。",
+    },
+    acoustic_post: {
+      role: "被动听音暗哨",
+      weaponSpec: "电线杆麦克风阵列（无武装 · 自动工作）",
+      targetRole: "5 km 听声辨位 · 零暴露 · 无视山脊遮挡",
+      desc: "靠<b>听发动机声音</b>发现附近低空无人机，<b>绝对不会暴露</b>。战前摆在盲区即可，<b>开战后全自动报信，无需手动操作</b>。",
+    },
+    visual_observer: {
+      role: "被动目视暗哨",
+      weaponSpec: "光学 / 热像观察哨（无武装 · 自动工作）",
+      targetRole: "5 km 目视盯梢 · 零暴露 · 填补河谷盲区",
+      desc: "靠<b>眼睛与热像仪</b>发现低空目标，<b>绝对不会暴露</b>。适合塞进北山脊后的河谷盲区，<b>开战后全自动报信，无需手动操作</b>。",
+    },
+  };
+  const CAT_ROLE = { fire: "防空武器", sensor: "雷达/暗哨", ew: "电子战", deception: "诱饵" };
   const STRUCT_INFO = {
-    power_plant: "城市供电的核心，<b>最重要</b>。被毁会让大片城区断电。",
-    substation: "电网枢纽。被毁会切断下游供电，部分防空阵地也会转入备用电池。",
-    water_plant: "城市供水设施。",
+    power_plant: "全城供电核心（<b>权重×5 · 头号保卫目标</b>）。一旦被炸毁，全城立即断电瘫痪。",
+    substation: "电网输电枢纽（<b>权重×3 · 重点保卫目标</b>）。被毁会切断下游供电，防空阵地转入备用电池。",
+    water_plant: "城市民生供水设施（<b>权重×2 · 保卫目标</b>）。西北河谷低飞的巡航导弹常偷袭这里。",
+  };
+  const STRUCT_ROLE = {
+    power_plant: "供电核心",
+    substation: "电网枢纽",
+    water_plant: "城市供水",
   };
   const TAG_CN = { UAV: "无人机", CM: "巡航导弹", BM: "弹道导弹", AC_LOW: "低空飞机", ARM: "反辐射导弹", DECOY: "诱饵", UNKNOWN: "未识别目标" };
   const Q_CN = ["刚发现，位置模糊", "粗略跟踪中", "已锁定，可以开火", "已识别型号"];
@@ -100,14 +148,25 @@
     (meta.unitCatalog || []).forEach((c) => { catMap[c.unitDefId] = c; });
     state.placements = (meta.currentPlacements || []).map((p) => {
       const c = catMap[p.unitDefId] || {};
+      const weapons = (c.weapons || []).map((w) => Object.assign({}, w, {
+        name: WEAPON_NAMES[w.id || w.weaponId] || w.name || w.id,
+        rule: w.rule || "any",
+        whitelist: (w.whitelist || ["UAV", "CM", "BM", "AC_LOW"]).slice(),
+        ammoReserve: w.ammoReserve || 0,
+        shootLookShoot: w.shootLookShoot !== false,
+      }));
       return Object.assign({}, p, {
-        name: p.name || c.name || p.unitDefId, category: p.category || c.category || "fire",
+        name: FRIENDLY_NAMES[p.unitDefId] || p.name || c.name || p.unitDefId,
+        category: p.category || c.category || "fire",
         hasRadar: Boolean(c.hasRadar), mobility: p.mobility || c.mobility,
         detectionRangeM: c.radarRangeM || c.detectionRangeM || c.selfAcquisitionRangeM || 0,
-        weapons: c.weapons || [],
+        weapons,
       });
     });
-    state.selectedUnitKey = state.placements.length ? state.placements[0].rosterId : null;
+    const defaultUnit = state.placements.find((p) => p.unitDefId === "nasams")
+      || state.placements.find((p) => p.category === "fire")
+      || state.placements[0];
+    state.selectedUnitKey = defaultUnit ? defaultUnit.rosterId : null;
     state.ammoInitial = Object.assign({}, (meta.carryIn && meta.carryIn.ammoPool) || {});
     $("level-title").textContent = meta.levelName;
     $("level-title").title = meta.briefing || "";
@@ -117,8 +176,7 @@
     $("world-clock").textContent = "22:00:00";
     $("tick-readout").textContent = "战前准备";
     $("clock-progress").style.width = "0%";
-    const nStruct = (meta.structures || []).length;
-    $("step-goal").textContent = `目标：守住 ${nStruct} 处设施，撑到 06:00`;
+    $("step-goal").textContent = `保卫目标：★ 热电厂 · 中心变电站 · 水厂（撑到 06:00）`;
     setCp(meta.commandPointsPerNight, meta.commandPointsPerNight);
     $("deploy-controls-section").classList.remove("hidden");
     $("report-modal").classList.add("hidden");
@@ -126,8 +184,8 @@
     $("btn-alert-toggle").textContent = "防空警报：关";
     $("btn-alert-toggle").className = "btn btn-sm battle-only";
     setRadio(meta.nightIndex > 1
-      ? "第 2 夜：昨晚暴露的阵地已被敌人记住，开战前先转移它们。"
-      : "战前部署：拖动单位调整阵地，尽量消除北山脊后的红色盲区。");
+      ? "第 2 夜：昨晚暴露的防空阵地已被敌人记住，开战前先把它们挪走。"
+      : "战前部署：把【皮卡机枪】摆在无人机来路上，把【IRIS-T / NASAMS 导弹】护在 ★ 热电厂周围。");
     $("event-log-list").innerHTML = '<div class="log-empty">开战后，发现敌机、拦截、命中等事件会在这里滚动。</div>';
     Toast.clear();
     updateHud();
@@ -192,17 +250,33 @@
     const snap = state.snapshot;
     const structs = (snap && snap.structures) || (state.meta && state.meta.structures) || [];
     $("structures-list").innerHTML = structs.map((s) => {
+      const metaStruct = (state.meta && (state.meta.structures || []).find((m) => m.id === s.id)) || s;
+      const typ = metaStruct.type || s.type;
+      const roleTag = STRUCT_ROLE[typ] || "保卫设施";
+      const desc = STRUCT_INFO[typ] || "";
       const frac = Math.max(0, Math.min(1, s.hp / Math.max(1, s.maxHp)));
-      const col = frac > 0.5 ? "var(--ok)" : (frac > 0.2 ? "var(--accent)" : "var(--danger)");
+      const col = frac > 0.5 ? "var(--ok)" : (frac > 0.2 ? "var(--warn)" : "var(--danger)");
       const pwr = s.destroyed ? '<span class="badge badge-err">已摧毁</span>'
         : (s.powered === false ? '<span class="badge badge-err">断电</span>' : '<span class="badge badge-ok">正常</span>');
-      return `<div class="struct-item ${s.destroyed ? "destroyed" : ""}">
+      return `<div class="struct-item ${s.destroyed ? "destroyed" : ""}" data-sid="${esc(s.id)}" data-tip="${esc(desc)}（点击在地图上定位）">
         <div class="struct-row">
-          <span class="struct-name"><span class="struct-glyph">${esc((s.name || "?").slice(0, 1))}</span>${esc(s.name)}</span>
+          <span class="struct-name"><span class="struct-glyph">★</span>${esc(s.name)} <span class="struct-role-tag">${esc(roleTag)}</span></span>
           <span class="struct-hp">${s.hp}/${s.maxHp} ${pwr}</span>
         </div>
         <div class="hp-bar-wrap"><div class="hp-bar-fill" style="width:${frac * 100}%;background:${col}"></div></div></div>`;
     }).join("");
+    $("structures-list").querySelectorAll(".struct-item").forEach((el) => {
+      const sid = el.dataset.sid;
+      const stObj = structs.find((x) => String(x.id) === String(sid));
+      el.addEventListener("mouseenter", () => { state.focusStructId = sid; });
+      el.addEventListener("mouseleave", () => { state.focusStructId = null; });
+      el.addEventListener("click", () => {
+        if (stObj && stObj.pos) {
+          state.focusStructId = sid;
+          state.pulses.push({ pos: stObj.pos, t0: performance.now(), color: "ok" });
+        }
+      });
+    });
     const gBadge = $("grid-status-badge");
     if (snap && snap.grid) {
       const unp = Math.round((snap.grid.unpoweredFrac || 0) * 100);
@@ -229,34 +303,62 @@
 
   const getActiveUnits = () => state.phase === "deploy" ? state.placements : ((state.snapshot && state.snapshot.units) || []);
   const unitKey = (u) => u.id || u.rosterId;
-  const CAT_ORDER = ["fire", "sensor", "ew", "deception"];
-  const CAT_NAMES = { fire: "火力单元 · 负责开火", sensor: "侦察单元 · 负责发现", ew: "电子战", deception: "诱饵" };
+  const isPassiveSensor = (u) => u && (u.unitDefId === "acoustic_post" || u.unitDefId === "visual_observer");
+
+  function renderRosterItem(u) {
+    const key = unitKey(u), sel = key === state.selectedUnitKey ? "selected" : "";
+    const expV = u.exposure !== undefined ? u.exposure : (u.carryExposure || 0);
+    const expFlag = u.isExposed || u.isKnownTarget || expV >= 70 ? "exposed" : "";
+    const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
+    const em = isArmSilenced ? '<span class="em-arm">规避静默</span>'
+      : (u.emitter && u.emitter.hasEmitter ? (u.emitter.on ? '<span class="em-on">雷达开</span>' : '<span>雷达关</span>') : "");
+    const w0Obj = u.weapons && u.weapons[0];
+    let w0 = "";
+    if (w0Obj) {
+      if (w0Obj.rounds !== undefined) w0 = w0Obj.rounds >= 0 ? `弹${w0Obj.rounds}` : "无限弹";
+      else if (w0Obj.magazine) w0 = w0Obj.magazine > 100 ? "无限弹" : `弹${w0Obj.magazine}`;
+    }
+    const expTxt = expV > 0 ? `<span class="${expV >= 70 ? "exp-hi" : (expV >= 35 ? "exp-mid" : "")}">暴露${Math.round(expV)}%</span>` : "";
+    const st = u.deployState ? (STATE_NAMES[u.deployState] || u.deployState) : "";
+    const inactive = !isActiveState(u.deployState);
+    const info = UNIT_INFO[u.unitDefId] || {};
+    const subSpec = !isPassiveSensor(u) && info.weaponSpec ? `<div class="roster-sub">${esc(info.weaponSpec)}</div>` : "";
+    return `<div class="roster-item ${sel} ${expFlag}" data-ukey="${key}">
+      <i class="roster-pip cat-${esc(u.category || "fire")} ${inactive ? "inactive" : ""}"></i>
+      <div class="roster-name"><div><span class="rid">#${u.rosterId}</span><strong>${esc(FRIENDLY_NAMES[u.unitDefId] || u.name)}</strong>${st && st !== "就绪" ? `<span class="rstate">${esc(st)}</span>` : ""}</div>${subSpec}</div>
+      <div class="roster-meta">${em}${w0 ? `<span>${w0}</span>` : ""}${expTxt}</div></div>`;
+  }
 
   function renderRosterAndInspector() {
     const units = getActiveUnits();
-    $("roster-count-badge").textContent = `${units.length} 单位`;
+    const fireOrder = { nasams: 0, iris_t_sls: 1, mobile_fire_team: 2 };
+    const fireUnits = units.filter((u) => (u.category || "fire") === "fire")
+      .sort((a, b) => (fireOrder[a.unitDefId] ?? 9) - (fireOrder[b.unitDefId] ?? 9) || (a.rosterId - b.rosterId));
+    const radarUnits = units.filter((u) => u.category === "sensor" && !isPassiveSensor(u));
+    const passiveUnits = units.filter((u) => isPassiveSensor(u));
+
+    $("roster-count-badge").textContent = `${fireUnits.length} 部武器 · ${radarUnits.length} 座雷达`;
     const rBox = $("unit-roster-list");
     const scrollTop = rBox.scrollTop;
-    const groups = {};
-    units.forEach((u) => { const c = u.category || "fire"; (groups[c] = groups[c] || []).push(u); });
-    const cats = CAT_ORDER.filter((c) => groups[c]).concat(Object.keys(groups).filter((c) => !CAT_ORDER.includes(c)));
-    rBox.innerHTML = cats.map((cat) => `<div class="roster-group">${CAT_NAMES[cat] || cat} · ${groups[cat].length}</div>` + groups[cat].map((u) => {
-      const key = unitKey(u), sel = key === state.selectedUnitKey ? "selected" : "";
-      const expV = u.exposure !== undefined ? u.exposure : (u.carryExposure || 0);
-      const expFlag = u.isExposed || u.isKnownTarget || expV >= 70 ? "exposed" : "";
-      const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
-      const em = isArmSilenced ? '<span class="em-arm">规避静默</span>'
-        : (u.emitter && u.emitter.hasEmitter ? (u.emitter.on ? '<span class="em-on">雷达开</span>' : '<span>雷达关</span>') : "");
-      const w0 = (u.weapons && u.weapons[0] && u.weapons[0].rounds !== undefined) ? (u.weapons[0].rounds >= 0 ? `弹${u.weapons[0].rounds}` : "") : "";
-      const expTxt = expV > 0 ? `<span class="${expV >= 70 ? "exp-hi" : (expV >= 35 ? "exp-mid" : "")}">暴露${Math.round(expV)}%</span>` : "";
-      const st = u.deployState ? (STATE_NAMES[u.deployState] || u.deployState) : "";
-      const inactive = !isActiveState(u.deployState);
-      return `<div class="roster-item ${sel} ${expFlag}" data-ukey="${key}">
-        <i class="roster-pip cat-${esc(u.category || "fire")} ${inactive ? "inactive" : ""}"></i>
-        <div class="roster-name"><span class="rid">#${u.rosterId}</span><strong>${esc(u.name)}</strong>${st && st !== "就绪" ? `<span class="rstate">${esc(st)}</span>` : ""}</div>
-        <div class="roster-meta">${em}${w0 ? `<span>${w0}</span>` : ""}${expTxt}</div></div>`;
-    }).join("")).join("");
+    let html = "";
+    if (fireUnits.length) {
+      html += `<div class="roster-group">主力防空武器 · ${fireUnits.length}</div>` + fireUnits.map(renderRosterItem).join("");
+    }
+    if (radarUnits.length) {
+      html += `<div class="roster-group">远程警戒雷达 · ${radarUnits.length}</div>` + radarUnits.map(renderRosterItem).join("");
+    }
+    if (passiveUnits.length) {
+      const selInPassive = passiveUnits.some((u) => unitKey(u) === state.selectedUnitKey);
+      const openAttr = (state.openPassiveRoster || selInPassive) ? "open" : "";
+      html += `<details class="passive-roster-fold" ${openAttr}>
+        <summary class="roster-group passive-summary">辅助暗哨（听音×6 / 目视×3）· 自动补盲，战中免操作</summary>
+        <div class="passive-roster-body">${passiveUnits.map(renderRosterItem).join("")}</div>
+      </details>`;
+    }
+    rBox.innerHTML = html;
     rBox.scrollTop = scrollTop;
+    const pFold = rBox.querySelector(".passive-roster-fold");
+    if (pFold) pFold.addEventListener("toggle", () => { state.openPassiveRoster = pFold.open; });
     rBox.querySelectorAll(".roster-item").forEach((el) => {
       el.addEventListener("click", () => { state.selectedUnitKey = Number(el.dataset.ukey); renderRosterAndInspector(); });
     });
@@ -273,13 +375,14 @@
     if (body.contains(document.activeElement) && document.activeElement.tagName !== "BUTTON" && body.dataset.ukey === String(u && unitKey(u))) return;
     body.dataset.ukey = String(u ? unitKey(u) : "");
     if (!u) {
-      $("insp-unit-title").textContent = "选中单位";
+      $("insp-unit-title").textContent = "选中防空武器";
       $("insp-unit-state").textContent = "—";
-      body.innerHTML = '<div class="empty-hint">点击地图上的单位，看看它能做什么。</div>';
+      body.innerHTML = '<div class="empty-hint">点击地图上的防空武器（皮卡机枪、IRIS‑T、NASAMS），查看它的射程与开火设置。</div>';
       return;
     }
-    const info = UNIT_INFO[u.unitDefId] || { role: CAT_ROLE[u.category] || "单位", desc: "" };
-    $("insp-unit-title").textContent = `${u.name}`;
+    const info = UNIT_INFO[u.unitDefId] || { role: CAT_ROLE[u.category] || "单位", weaponSpec: "", targetRole: "", desc: "" };
+    const dispName = FRIENDLY_NAMES[u.unitDefId] || u.name;
+    $("insp-unit-title").textContent = `#${u.rosterId} ${dispName}`;
     const st = u.deployState || "PRE-NIGHT";
     const stEl = $("insp-unit-state");
     stEl.textContent = st === "PRE-NIGHT" ? info.role : (STATE_NAMES[st] || st);
@@ -290,50 +393,69 @@
     const curPol = u.emitter ? u.emitter.policyId : (u.emissionPolicy || "blink");
     const isArmSilenced = Boolean(u.emitter && u.emitter.armSilenced);
     const hasEmitter = (u.emitter && u.emitter.hasEmitter) || u.hasRadar || u.unitDefId === "soviet_mid_range_radar" || u.unitDefId === "nasams";
-    const expCol = exp >= 70 ? "var(--danger)" : (exp >= 35 ? "var(--accent)" : "var(--text)");
+    const expCol = exp >= 70 ? "var(--danger)" : (exp >= 35 ? "var(--warn)" : "var(--text)");
     const rng = rangeOf(u), det = u.detectionRangeM || 0;
 
-    let html = `<div class="insp-desc"><b>${esc(info.role)}</b>　${info.desc}</div>
+    let html = "";
+    if (info.weaponSpec) {
+      html += `<div class="insp-weapon-banner">
+        <div class="iwb-top"><span class="iwb-lbl">武器装备</span><strong class="iwb-spec">${esc(info.weaponSpec)}</strong></div>
+        ${info.targetRole ? `<div class="iwb-sub">作战分工：<b>${esc(info.targetRole)}</b></div>` : ""}
+      </div>`;
+    }
+    html += `<div class="insp-desc">${info.desc}</div>
       <div class="insp-stats">
-        <div class="insp-stat"><span class="k">${rng ? "射程" : "探测范围"}</span><span class="v">${((rng || det) / 1000).toFixed(1)} km</span></div>
+        <div class="insp-stat"><span class="k">${rng ? "有效射程" : "探测范围"}</span><span class="v">${((rng || det) / 1000).toFixed(1)} km</span></div>
         <div class="insp-stat"><span class="k">今夜击落</span><span class="v">${u.killsTonight || 0}</span></div>
         <div class="insp-stat"><span class="k">暴露度</span><span class="v" style="color:${expCol}">${exp}%</span></div>
       </div>
       <div class="exp-bar-wrap" data-tip="暴露度：雷达开机越久越高。超过 70% 敌人会记住这个位置，下一夜专门来打。"><div class="exp-bar-fill" style="width:${Math.min(100, exp)}%"></div></div>`;
 
+    if (isPassiveSensor(u)) {
+      html += `<div class="passive-notice-box">
+        <div><b>被动辅助暗哨（战中 100% 全自动）</b>：只负责帮防空武器照亮山脊背面的低空盲区，战斗中<b>无需手动操作</b>。</div>
+        <button id="btn-jump-main-weapon" class="btn btn-xs" style="margin-top:6px">→ 切回主力防空武器</button>
+      </div>`;
+    }
+
     if (isArmSilenced) html += `<div class="insp-alert">正在关机躲避反辐射导弹，这段时间看不见敌人。危险过去后点下方“闪烁”或“常开”恢复。</div>`;
 
     if (hasEmitter) {
-      html += `<div class="insp-section-lbl">雷达开关</div>
+      html += `<div class="insp-section-lbl">雷达开关（影响探测与暴露度）</div>
         <div class="policy-seg">${POLICY.map(([id, nm, tip]) =>
           `<button class="policy-btn ${curPol === id || (id === "continuous" && curPol === "always_on") ? "active" : ""}" data-pol="${id}"><b>${nm}</b><small>${tip}</small></button>`).join("")}</div>`;
     }
 
-    if (u.mobility !== "fixed" && alts.length > 0) {
-      html += `<div class="insp-section-lbl">${state.phase === "deploy" ? "移到预备阵地（也可以直接在地图上拖动）" : "转移阵地：撤收→机动→展开，期间不能开火"}</div>
-        <div class="insp-row">
-          <select id="insp-sel-alt" class="select-sm flex-1">${altOpts}</select>
-          <button id="insp-btn-reloc" class="btn btn-xs ${state.phase === "deploy" ? "" : "btn-warn"}">${state.phase === "deploy" ? "移过去" : "转移 · 1 CP"}</button>
-        </div>`;
-    }
-
     if ((u.weapons || []).length) {
       const carryUsedMap = (state.meta && state.meta.carryIn && state.meta.carryIn.perLevelUsed) || {};
-      html += `<details class="adv-weapons" ${state.openWeapons ? "open" : ""}><summary>射击规则（高级，一般不用改）</summary>`;
       (u.weapons || []).forEach((w) => {
         const wid = w.weaponId || w.id;
+        const wName = WEAPON_NAMES[wid] || w.name || wid;
         const wl = w.whitelist || ["UAV", "CM", "BM", "AC_LOW"];
-        const rds = w.rounds !== undefined ? (w.rounds < 0 ? "充足" : `${w.rounds}/${w.maxRounds}`) : (w.magazine || "充足");
+        const rds = w.rounds !== undefined ? (w.rounds < 0 ? "无限（机枪弹链充足）" : `${w.rounds}/${w.maxRounds} 发`) : (w.magazine > 100 ? "无限（机枪弹链充足）" : `${w.magazine || 8} 发`);
+        const isMissile = u.unitDefId === "nasams" || u.unitDefId === "iris_t_sls";
+        const isHold = w.rule === "hold_fire";
+        const isMissileOnly = !isHold && !wl.includes("UAV") && wl.includes("CM");
+        const isAllOpen = !isHold && wl.includes("UAV");
         const plLim = w.perLevelLimit !== undefined && w.perLevelLimit !== null ? Number(w.perLevelLimit) : null;
         let quotaHtml = "";
         if (plLim !== null) {
           const remQ = w.remainingQuota !== undefined && w.remainingQuota !== null ? Number(w.remainingQuota) : Math.max(0, plLim - Number(carryUsedMap[wid] || 0));
-          quotaHtml = `<div class="insp-row" style="font-size:11px;color:${remQ <= 0 ? "var(--danger)" : "var(--text-2)"};"><span>本关剩余配额 <strong>${remQ}/${plLim}</strong>${remQ <= 0 ? " · 已用完" : ""}</span></div>`;
+          quotaHtml = `<div class="insp-row" style="font-size:11px;color:${remQ <= 0 ? "var(--danger)" : "var(--text-2)"};"><span>本关剩余导弹配额 <strong>${remQ}/${plLim}</strong>${remQ <= 0 ? " · 已用完" : ""}</span></div>`;
         }
         html += `<div class="weapon-box">
-          <div class="insp-row"><span class="weapon-name">${esc(w.name)}</span><span class="weapon-ammo">弹 ${rds}${w.reloadRemSec > 0 ? ` · 装填 ${w.reloadRemSec}s` : ""}</span></div>
-          ${quotaHtml}
-          <div class="insp-row"><span class="insp-label">什么时候开火</span>
+          <div class="insp-row"><span class="weapon-name">${esc(wName)}</span><span class="weapon-ammo">备弹 ${rds}${w.reloadRemSec > 0 ? ` · 装填 ${w.reloadRemSec}s` : ""}</span></div>
+          ${quotaHtml}`;
+        if (isMissile) {
+          html += `<div class="insp-section-lbl" style="margin-top:2px">开火纪律（打什么目标）</div>
+            <div class="doctrine-seg">
+              <button class="doctrine-btn ${isMissileOnly ? "active" : ""}" data-doc="missile_only" data-wid="${esc(wid)}"><b>只打导弹</b><small>省弹 · 无人机留给机枪</small></button>
+              <button class="doctrine-btn ${isAllOpen ? "active" : ""}" data-doc="all_open" data-wid="${esc(wid)}"><b>无人机也打</b><small>全开 · 危急时帮忙清场</small></button>
+              <button class="doctrine-btn ${isHold ? "active" : ""}" data-doc="hold" data-wid="${esc(wid)}"><b>停火待命</b><small>保留弹药暂不开火</small></button>
+            </div>`;
+        }
+        html += `<details class="adv-weapons" ${state.openWeapons ? "open" : ""}><summary>细分目标与保留弹数</summary>
+          <div class="insp-row" style="margin-top:6px"><span class="insp-label">开火原则</span>
             <select class="select-sm insp-w-rule" data-wid="${esc(wid)}">
               <option value="any" ${w.rule === "any" ? "selected" : ""}>见到就打</option>
               <option value="high_value_only" ${w.rule === "high_value_only" ? "selected" : ""}>只打高价值目标</option>
@@ -344,17 +466,26 @@
           <div class="insp-row"><span class="insp-label" data-tip="至少留几发不打，以备更危险的目标">保留弹数 <strong id="lbl-res-${esc(wid)}" style="color:var(--text);font-family:var(--font-mono);font-weight:400">${w.ammoReserve || 0}</strong></span>
             <input type="range" min="0" max="4" value="${w.ammoReserve || 0}" class="insp-w-res" data-wid="${esc(wid)}" />
           </div>
-          <div class="insp-label">可以打哪些目标</div>
+          <div class="insp-label">允许拦截的目标类型</div>
           <div class="tag-checks">
             ${["UAV", "CM", "BM", "AC_LOW"].map((tg) => `<label><input type="checkbox" class="insp-w-tag" data-wid="${esc(wid)}" value="${tg}" ${wl.includes(tg) ? "checked" : ""}/>${TAG_CN[tg]}</label>`).join("")}
             <label data-tip="先打一发，看结果再决定是否补射，更省弹"><input type="checkbox" class="insp-w-sls" data-wid="${esc(wid)}" ${w.shootLookShoot !== false ? "checked" : ""}/>打一发看一眼</label>
           </div>
-          ${state.phase === "battle" && hasEmitter ? `<button id="insp-btn-burst" class="btn btn-xs" data-tip="强制全功率开机 15 秒刷新航迹，暴露度 +8%">短促扫描</button>` : ""}
+        </details>
+        ${state.phase === "battle" && hasEmitter ? `<button id="insp-btn-burst" class="btn btn-xs" data-tip="强制全功率开机 15 秒刷新航迹，暴露度 +8%">短促扫描</button>` : ""}
         </div>`;
       });
-      html += `</details>`;
     }
-    if (state.phase === "deploy" && u.mobility !== "fixed") html += `<div class="card-note">提示：在地图上按住它拖动即可换位置。</div>`;
+
+    if (u.mobility !== "fixed" && alts.length > 0) {
+      html += `<div class="insp-section-lbl">${state.phase === "deploy" ? "移到预备阵地（也可以直接在地图上拖动）" : "转移阵地：撤收→机动→展开，期间不能开火"}</div>
+        <div class="insp-row">
+          <select id="insp-sel-alt" class="select-sm flex-1">${altOpts}</select>
+          <button id="insp-btn-reloc" class="btn btn-xs ${state.phase === "deploy" ? "" : "btn-warn"}">${state.phase === "deploy" ? "移过去" : "转移 · 1 CP"}</button>
+        </div>`;
+    }
+
+    if (state.phase === "deploy" && u.mobility !== "fixed") html += `<div class="card-note">提示：在地图上按住该防空武器拖动即可换位置。</div>`;
     body.innerHTML = html;
     bindInspectorEvents(u);
   }
@@ -362,17 +493,56 @@
   function bindInspectorEvents(u) {
     const det = document.querySelector("#insp-body .adv-weapons");
     if (det) det.addEventListener("toggle", () => { state.openWeapons = det.open; });
+    const jumpBtn = $("btn-jump-main-weapon");
+    if (jumpBtn) {
+      jumpBtn.addEventListener("click", () => {
+        const units = getActiveUnits();
+        const mainW = units.find((x) => x.unitDefId === "nasams") || units.find((x) => (x.category || "fire") === "fire");
+        if (mainW) { state.selectedUnitKey = unitKey(mainW); renderRosterAndInspector(); }
+      });
+    }
     document.querySelectorAll("#insp-body .policy-btn").forEach((b) => b.addEventListener("click", () => setPolicy(u, b.dataset.pol)));
+    document.querySelectorAll("#insp-body .doctrine-btn").forEach((b) => b.addEventListener("click", async () => {
+      const wid = b.dataset.wid, doc = b.dataset.doc;
+      const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === wid);
+      if (doc === "missile_only") {
+        if (wObj) { wObj.rule = "any"; wObj.whitelist = ["CM", "BM", "AC_LOW"]; }
+        if (state.phase === "battle") {
+          await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: wid, rule: "any" });
+          await sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: wid, tags: ["CM", "BM", "AC_LOW"] });
+        }
+      } else if (doc === "all_open") {
+        if (wObj) { wObj.rule = "any"; wObj.whitelist = ["UAV", "CM", "BM", "AC_LOW"]; }
+        if (state.phase === "battle") {
+          await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: wid, rule: "any" });
+          await sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: wid, tags: ["UAV", "CM", "BM", "AC_LOW"] });
+        }
+      } else if (doc === "hold") {
+        if (wObj) { wObj.rule = "hold_fire"; }
+        if (state.phase === "battle") {
+          await sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: wid, rule: "hold_fire" });
+        }
+      }
+      renderRosterAndInspector();
+    }));
     const burstBtn = $("insp-btn-burst");
     if (burstBtn) burstBtn.addEventListener("click", () => sendCommand({ type: "BurstScan", unitId: u.id, durationSec: 15 }));
     const relocBtn = $("insp-btn-reloc");
     if (relocBtn) relocBtn.addEventListener("click", () => relocateUnit(u, $("insp-sel-alt").value));
     document.querySelectorAll(".insp-w-rule").forEach((el) => {
-      el.addEventListener("change", () => { sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: el.dataset.wid, rule: el.value }); el.blur(); });
+      el.addEventListener("change", () => {
+        const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === el.dataset.wid);
+        if (wObj) wObj.rule = el.value;
+        sendCommand({ type: "SetEngagementRule", unitId: u.id, weaponId: el.dataset.wid, rule: el.value });
+        el.blur();
+        if (state.phase === "deploy") renderRosterAndInspector();
+      });
     });
     document.querySelectorAll(".insp-w-res").forEach((el) => {
       el.addEventListener("input", () => {
         $(`lbl-res-${el.dataset.wid}`).textContent = el.value;
+        const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === el.dataset.wid);
+        if (wObj) wObj.ammoReserve = Number(el.value);
         sendCommand({ type: "SetAmmoReserve", unitId: u.id, weaponId: el.dataset.wid, reserve: Number(el.value) });
       });
       el.addEventListener("change", () => el.blur());
@@ -381,12 +551,20 @@
       el.addEventListener("change", () => {
         const wid = el.dataset.wid;
         const tags = Array.from(document.querySelectorAll(`.insp-w-tag[data-wid="${wid}"]:checked`)).map((c) => c.value);
+        const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === wid);
+        if (wObj) wObj.whitelist = tags;
         sendCommand({ type: "SetTargetWhitelist", unitId: u.id, weaponId: wid, tags });
         el.blur();
+        if (state.phase === "deploy") renderRosterAndInspector();
       });
     });
     document.querySelectorAll(".insp-w-sls").forEach((el) => {
-      el.addEventListener("change", () => { sendCommand({ type: "SetShootLookShoot", unitId: u.id, weaponId: el.dataset.wid, enabled: el.checked }); el.blur(); });
+      el.addEventListener("change", () => {
+        const wObj = (u.weapons || []).find((x) => (x.weaponId || x.id) === el.dataset.wid);
+        if (wObj) wObj.shootLookShoot = el.checked;
+        sendCommand({ type: "SetShootLookShoot", unitId: u.id, weaponId: el.dataset.wid, enabled: el.checked });
+        el.blur();
+      });
     });
   }
 
@@ -563,6 +741,15 @@
   }
 
   function applySnapshot(snap) {
+    if (snap && snap.units) {
+      snap.units.forEach((u) => {
+        if (FRIENDLY_NAMES[u.unitDefId]) u.name = FRIENDLY_NAMES[u.unitDefId];
+        (u.weapons || []).forEach((w) => {
+          const wid = w.weaponId || w.id;
+          if (WEAPON_NAMES[wid]) w.name = WEAPON_NAMES[wid];
+        });
+      });
+    }
     const firstTracks = state.snapshot && !(state.snapshot.tracks || []).length && (snap.tracks || []).length;
     state.snapshot = snap;
     if ((snap.tracks || []).length) state.lastThreatTick = snap.tick;
@@ -794,27 +981,30 @@
     let html = "";
     const u = pickUnitAt(e, 18);
     if (u) {
-      const info = UNIT_INFO[u.unitDefId] || { role: CAT_ROLE[u.category] || "", desc: "" };
+      const info = UNIT_INFO[u.unitDefId] || { role: CAT_ROLE[u.category] || "", weaponSpec: "", desc: "" };
       const rng = rangeOf(u), det = u.detectionRangeM || 0;
       const exp = Math.round(u.exposure !== undefined ? u.exposure : (u.carryExposure || 0));
-      html = `<div class="mt-title">${esc(u.name)}<span class="mt-kind">${esc(info.role)}</span></div>
+      const dispName = FRIENDLY_NAMES[u.unitDefId] || u.name;
+      html = `<div class="mt-title">#${u.rosterId} ${esc(dispName)}<span class="mt-kind">${esc(info.role)}</span></div>
+        ${info.weaponSpec ? `<div style="color:var(--friend);font-size:11.5px;font-weight:600;margin:2px 0">${esc(info.weaponSpec)}</div>` : ""}
         <div>${info.desc}</div>
-        <div class="mt-row">${rng ? `射程 ${(rng / 1000).toFixed(1)} km` : ""}${rng && det ? " · " : ""}${det ? `探测 ${(det / 1000).toFixed(1)} km` : ""}${exp ? ` · 暴露 ${exp}%` : ""}</div>
-        <div class="mt-hint">${state.phase === "deploy" && u.mobility !== "fixed" ? "按住拖动换位置 · 点击查看射程" : "点击选中，在左侧调整"}</div>`;
+        <div class="mt-row">${rng ? `有效射程 ${(rng / 1000).toFixed(1)} km` : ""}${rng && det ? " · " : ""}${det ? `探测 ${(det / 1000).toFixed(1)} km` : ""}${exp ? ` · 暴露 ${exp}%` : ""}</div>
+        <div class="mt-hint">${state.phase === "deploy" && u.mobility !== "fixed" ? "按住拖动换位置 · 点击查看射程与开火设置" : "点击选中，在左侧调整开火纪律"}</div>`;
     } else {
       const structs = (state.snapshot && state.snapshot.structures) || state.meta.structures || [];
-      const s = pickNearest(structs, (x) => worldToCanvas(x.pos), px, py, 18);
+      const s = pickNearest(structs, (x) => worldToCanvas(x.pos), px, py, 24);
       if (s) {
         const typ = (state.meta.structures.find((m) => m.id === s.id) || {}).type;
-        html = `<div class="mt-title">${esc(s.name)}<span class="mt-kind">要保护的设施</span></div>
-          <div>${STRUCT_INFO[typ] || "需要保护的城市设施。"}</div>
-          <div class="mt-row">耐久 ${s.hp}/${s.maxHp}${s.destroyed ? " · 已摧毁" : ""}</div>`;
+        const roleTag = STRUCT_ROLE[typ] || "保卫目标";
+        html = `<div class="mt-title">★ ${esc(s.name)}<span class="mt-kind">${esc(roleTag)}</span></div>
+          <div>${STRUCT_INFO[typ] || "需要保护的城市关键设施。"}</div>
+          <div class="mt-row">耐久 ${s.hp}/${s.maxHp}${s.destroyed ? " · 已摧毁" : " · 敌方空袭走廊终点"}</div>`;
       } else if (state.snapshot) {
         const t = pickNearest(state.snapshot.tracks || [], (x) => worldToCanvas(x.pos, 140), px, py, 16);
         if (t) {
           const kind = t.identifiedAsDecoy ? "诱饵（不用管）" : (t.quality >= 3 || t.classified ? (TAG_CN[t.tag] || t.tag) : "类型未知");
           html = `<div class="mt-title">敌方目标 T-${t.id}<span class="mt-kind">${esc(kind)}</span></div>
-            <div>${Q_CN[t.quality] || ""}${t.quality < 2 ? "——还不能开火，需要更近或更好的探测。" : "——射程内的武器会自动开火。"}</div>
+            <div>${Q_CN[t.quality] || ""}${t.quality < 2 ? "——还不能开火，需要更近或更好的探测。" : "——射程内的防空武器会自动开火。"}</div>
             <div class="mt-row">速度 ${Math.round((t.speedMps || 0) * 3.6)} km/h</div>`;
         }
       }
@@ -858,7 +1048,10 @@
     setPhase("battle");
     $("deploy-controls-section").classList.add("hidden");
     applySnapshot(snap);
-    state.selectedUnitKey = snap.units.length ? snap.units[0].id : null;
+    const mainBattleUnit = snap.units.find((u) => u.unitDefId === "nasams")
+      || snap.units.find((u) => u.category === "fire")
+      || snap.units[0];
+    state.selectedUnitKey = mainBattleUnit ? mainBattleUnit.id : null;
     renderRosterAndInspector();
     setSpeed(1);
     hint("battleStart");
@@ -870,8 +1063,8 @@
     if (meta) {
       $("brief-title").textContent = `第 ${meta.nightIndex} 夜 · ${meta.levelName}`;
       $("brief-story").textContent = meta.briefing || "";
-      const names = (meta.structures || []).map((s) => s.name).join("、");
-      $("brief-goal").innerHTML = `保护<b>${esc(names)}</b>，从 22:00 撑到 <b>06:00 拂晓</b>。设施受损越少，评级越高。`;
+      const names = (meta.structures || []).map((s) => `★ ${s.name}`).join("、");
+      $("brief-goal").innerHTML = `核心目标：死守<b>${esc(names)}</b>，用<b>皮卡高射机枪</b>拦截廉价无人机、用<b>IRIS‑T / NASAMS 防空导弹</b>拦截巡航导弹，撑到 <b>06:00 拂晓</b>。`;
     }
     $("briefing-modal").classList.remove("hidden");
   }
@@ -893,42 +1086,44 @@
     LS.set("nw_hints_off", "");
     state.hintsSeen = {};
     const meta = state.meta;
-    const sel = () => state.placements.find((p) => p.rosterId === state.selectedUnitKey) || state.placements[0];
+    const sel = () => state.placements.find((p) => p.unitDefId === "nasams")
+      || state.placements.find((p) => p.rosterId === state.selectedUnitKey)
+      || state.placements[0];
     Coach.run([
       {
-        title: "这三个金色方块是你要保护的设施",
-        text: "热电厂、变电站和水厂。敌人的无人机和导弹会冲着它们来。<b>热电厂最重要</b>——它一倒，城市就断电。",
-        target: () => rectFromWorld((meta.structures || []).map((s) => s.pos), 34),
+        title: "这三个 ★ 白色地标是你要保卫的城市命脉",
+        text: "<b>★ 热电厂、★ 中心变电站、★ 水厂</b>。地图上的红色虚线箭头标出了敌机冲向它们的攻击走廊。<b>热电厂最重要</b>——它一倒，全城断电。",
+        target: () => rectFromWorld((meta.structures || []).map((s) => s.pos), 38),
       },
       {
-        title: "敌人从这两个方向来",
-        text: "<b>东面</b>是成群的无人机，<b>西北</b>是沿河谷低飞的巡航导弹。注意地图北边的<b>山脊</b>：它会挡住雷达看低空。",
+        title: "敌人从两条走廊袭来",
+        text: "<b>东面走廊</b>是成群的廉价自杀式无人机（冲向热电厂），<b>西北河谷走廊</b>是贴地低飞的巡航导弹（冲向水厂与变电站）。",
         target: () => rectFromWorld([[600, 13600], [19400, 18600]], 10),
       },
       {
-        title: "这些方框是你的防空单位",
-        text: "带<b>半圆</b>的是火力单元（负责开火），带<b>雷达弧线</b>的是侦察单元（负责发现）。<b>按住拖动</b>就能换位置；点一下会显示它的射程圈。",
-        target: () => { const u = sel(); return u ? rectFromWorld([u.pos], 34) : null; },
+        title: "你指挥的 3 种防空武器（6 部火力 + 1 座雷达）",
+        text: "<b>皮卡高射机枪组 ×4</b>（双联12.7mm机枪+探照灯，无限子弹专打无人机）、<b>IRIS‑T 近程导弹</b>与<b>NASAMS 中程导弹</b>（宝贵导弹专打巡航导弹）。小圆点是自动工作的听音哨，战中不用管。",
+        target: () => { const u = sel(); return u ? rectFromWorld([u.pos], 36) : null; },
         onEnter: () => { const u = sel(); if (u) { state.selectedUnitKey = u.rosterId; renderRosterAndInspector(); } },
       },
       {
-        title: "红色斜线 = 雷达盲区",
-        text: "山脊后面、河谷里，雷达看不到低空。这两个数字告诉你覆盖得怎么样：<b>雷达覆盖</b>越高越好，<b>低空盲区</b>越低越好。",
+        title: "红色斜线 = 雷达低空盲区",
+        text: "山脊背面雷达照不到低空。把<b>警戒雷达</b>或辅助小圆点（听音哨/观察哨）拖过山脊，就能为防空武器照亮盲区。",
         target: "#coverage-summary",
       },
       {
-        title: "懒得摆？选一个阵型",
-        text: "<b>推荐</b>阵型已经把雷达推过山脊，盲区很少。也可以试试<b>抱团</b>，看看盲区会变得多大。",
+        title: "懒得摆？一键切换预设阵型",
+        text: "<b>推荐</b>阵型已经把皮卡机枪顶在无人机来路上、把导弹护在热电厂旁。也可以试试<b>抱团</b>对比效果。",
         target: ".preset-row",
       },
       {
-        title: "右边的参谋会给你建议",
-        text: "不知道该干什么时，看这里。每条建议都带按钮，<b>点一下就执行</b>。",
-        target: "#advisor-card",
+        title: "右栏顶部看保卫目标，参谋随时给建议",
+        text: "右侧第一张卡实时显示三座保卫设施的血量；下方的<b>参谋建议</b>每条都带一键执行按钮。",
+        target: "#structures-card",
       },
       {
         title: "准备好了就开战",
-        text: "开战后时间会自动走，武器会<b>自动开火</b>。你只需要在关键时刻做决定。",
+        text: "开战后防空武器会<b>自动瞄准开火</b>。你主要负责管理<b>雷达开关、导弹省弹纪律（只打导弹）与防空警报</b>。",
         target: "#btn-start-night",
         nextLabel: "知道了",
       },
